@@ -10,15 +10,18 @@ DONE: If there is a player/robot sprite collision, then it should be game over
 
 DONE: add a winning condition and a win screen. For example, a terminal in the second room that has a "disable missile" entry. Select that, and you go to the win screen. Press any key and back to the intro screen
 
+move game states to separate files (terminal.asm, intro.asm, game.asm, map.asm, gameover.asm, win.asm) and keep tritanfall.asm as the overall file (perhaps including the others). It will make maintenance easier in the future.
+
+proper detection of t key (not c). 
+
+Change from cursor keys to WASD and also add joystick support as an alternative
+
 make it possible to become the other robot though the terminal
 
-proper detection of t key (not c)
-
-move game states to separate files (terminal.asm, intro.asm, game.asm, map.asm, gameover.asm, win.asm) and keep tritanfall.asm as the overall file (perhaps including the others). It will make maintenance easier in the future.
 
 ---
 
-Add music in the intro screen, so set up when starting, close down when exiting to game morde. Use exomizer to create a combined prg with two parts - the gamecode and the music routine. Let's use music/armalyte.prg. First "lda #0" (for the first song) and make a call to $c000 to init the music routine when setting up the intro screen. Then call $c059 from the interrupt if we're in the intro screen to play the music. There's no stop routine, so just silence the SID when leaving the intro screen
+DONE: Add music in the intro screen, so set up when starting, close down when exiting to game morde. Use exomizer to create a combined prg with two parts - the gamecode and the music routine. Let's use music/armalyte.prg. First "lda #0" (for the first song) and make a call to $c000 to init the music routine when setting up the intro screen. Then call $c059 from the interrupt if we're in the intro screen to play the music. There's no stop routine, so just silence the SID when leaving the intro screen
 
 ---
 

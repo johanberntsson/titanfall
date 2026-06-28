@@ -9,17 +9,24 @@ This is a Commodore 64 game called **TITAN Fall** (working title) — a cinemati
 ## Build & Run
 
 ```
-acme -f cbm -o titanfall.prg src/titanfall.asm   # assemble
-x64sc titanfall.prg                                # run in Vice
+make        # assemble + pack
+make run    # assemble, pack, and launch in Vice
+make clean  # remove game.prg and titanfall.prg
 ```
 
-Assembler: **ACME 0.97** (`-f cbm` produces a standard `.prg` with a 2-byte load address header).  
-Emulator: **x64sc** (Vice).
+The build is two steps handled by the Makefile:
+1. **ACME 0.97** assembles `src/titanfall.asm` → `game.prg` (`-f cbm`, 2-byte load header)
+2. **Exomizer** packs `game.prg` + `music/armalyte.prg` into a self-extracting `titanfall.prg`
+
+Emulator: **x64sc** (Vice). Do not run `acme` directly; always use `make`.
 
 ## Code Layout
 
 - `src/titanfall.asm` — single source file; entry point at `$0810` (SYS 2064)
-- `titanfall.prg` — assembled output (load address `$0801`, not committed)
+- `game.prg` — intermediate assembled output (not committed)
+- `titanfall.prg` — final self-extracting packed output (not committed)
+- `music/armalyte.prg` — stripped Armalyte SID music binary (load address `$C000`)
+- `music/armalyte.info` — sidplayfp info for the music file
 
 ### BASIC stub convention
 
@@ -52,6 +59,7 @@ The SYS address in `!pet` must be kept in sync manually if the header ever chang
 | `$3F00` | Sprite 1 data — robot enemy (64-byte aligned, pointer `$FC`) |
 | `$3F40` | Sprite 0 data — player (64-byte aligned, pointer `$FD`) |
 | `$3F80` | Room data (`ROOM_DATA`, `ROOM2_DATA`) and all string constants |
+| `$C000–$CF81` | Armalyte SID music (init `$C000`, play `$C059`; loaded by exomizer) |
 
 ## Core Design Constraints
 
@@ -243,9 +251,32 @@ No runtime copy loop. Both pointer bytes at `$07F8`/`$07F9` must be set at init 
 ### Sprite collision register clears on read
 `VIC_SPCOLL` (`$D01E`) is cleared by the hardware the moment it is read. Read it exactly once per frame in `CHECK_SPRITE_HIT` and act on the value immediately — reading it again will always return 0.
 
-## SID Death Sound
+## SID / Music
 
-Voice 1, sawtooth wave. `SOUND_DEATH_START` gates on at ~350 Hz. `SOUND_TICK` (called every game frame) sweeps frequency downward over 50 frames (~1 second PAL), then gates off.
+### Background music
+`music/armalyte.prg` is the Armalyte SID tune (Martin Walker, 1988 Thalamus), stripped to load at `$C000–$CF81`.
+
+- **Init:** `lda #0 : jsr $C000` — called once during startup (after SID clear, before `cli`). `A` must be 0 to select song 1.
+- **Play:** `jsr $C059` — called from `RASTER_IRQ` every frame (50 Hz PAL).
+- **Death sound interlock:** `RASTER_IRQ` skips the `$C059` call while `SND_TMR > 0`, giving the death sound exclusive SID control for its ~1 second sweep. Music resumes automatically when `SND_TMR` reaches 0.
+
+### Death sound effect
+Voice 1, sawtooth wave. `SOUND_DEATH_START` gates on at ~350 Hz. `SOUND_TICK` (called every game frame from the top of `DO_GAME`) sweeps frequency downward over 50 frames, then gates off.
+
+## Screen Art
+
+Non-game screens (intro, game over, win) use a PETSCII box design: rows 3–13 form a bordered panel drawn at 50 Hz by the relevant setup routine. All three share the subroutine `DRAW_INTRO_SCREEN` for the intro layout (called from `SHOW_INTRO`, the `DO_GAMEOVER` restart path, and the `DO_WIN` restart path).
+
+### Shared string labels (each exactly 40 bytes)
+- `SCR_BORDER` — `+---...---+` box top/bottom
+- `SCR_BLANK` — `| ... |` empty interior row
+- `ITR_SEP` — `| ==...== |` separator (reused by all three screens)
+- `ITR_TITLE`, `ITR_TAG`, `ITR_M1`–`ITR_M3` — intro panel content
+- `GO_TITLE`, `GO_M1`–`GO_M3` — game over panel content
+- `WIN_TITLE`, `WIN_M1`–`WIN_M3` — win panel content
+- `TXT_PRESS`, `TXT_GOPRESS`, `TXT_WINPRESS` — blinking footer prompts
+
+Star characters (`*`) in each title are recoloured to YELLOW after the row loop by writing to individual CRAM addresses.
 
 ## What's Not Yet Implemented
 
@@ -254,4 +285,3 @@ Voice 1, sawtooth wave. `SOUND_DEATH_START` gates on at ~350 Hz. `SOUND_TICK` (c
 - Clock penalty on death (currently DEATH_TMR just leads to game over, no time deduction)
 - Robot patrol paths drawn in room data (currently pure sprite movement, no tile-level representation)
 - More than 2 rooms / sector navigation beyond the current prototype
-- Music

@@ -174,39 +174,9 @@ SHOW_INTRO
         lda #0     : sta BLINK_ST
 
         jsr CLS
-        lda #$FD   : sta SPRPTR     ; CLS wiped $07F8 — restore sprite pointers
+        lda #$FD   : sta SPRPTR
         lda #$FC   : sta SPRPTR+1
-
-        ; Row 5 — title
-        ldx #39
-IROW5   lda TXT_TITLE,x
-        sta SCRN+200,x
-        lda #PURPLE
-        sta CRAM+200,x
-        dex
-        bpl IROW5
-        lda #YELLOW : sta CRAM+213 : sta CRAM+226
-
-        ; Row 7 — tagline
-        ldx #39
-IROW7   lda TXT_TAG,x
-        sta SCRN+280,x
-        lda #CYAN
-        sta CRAM+280,x
-        dex
-        bpl IROW7
-
-        ; Row 9 — divider
-        ldx #39
-IROW9   lda #CH_HBLK
-        sta SCRN+360,x
-        lda #BLUE
-        sta CRAM+360,x
-        dex
-        bpl IROW9
-
-        ; Row 20 — "press space" (starts visible)
-        jsr BLINK_ON
+        jsr DRAW_INTRO_SCREEN
 
         ; ---- fall into MAIN_LOOP ----
 
@@ -294,31 +264,11 @@ DO_GAMEOVER
         lda #0     : sta GAME_STATE
         lda #BLACK : sta VIC_BRDCOL : sta VIC_BGCOL
         lda #$00   : sta VIC_SPEN
-        lda #0     : sta BLINK_TMR
-        lda #0     : sta BLINK_ST
+        lda #0     : sta BLINK_TMR : sta BLINK_ST
         jsr CLS
-        lda #$FD   : sta SPRPTR     ; CLS wiped $07F8 — restore sprite pointers
+        lda #$FD   : sta SPRPTR
         lda #$FC   : sta SPRPTR+1
-        ldx #39
-GORESTART_T lda TXT_TITLE,x
-        sta SCRN+200,x
-        lda #PURPLE : sta CRAM+200,x
-        dex
-        bpl GORESTART_T
-        lda #YELLOW : sta CRAM+213 : sta CRAM+226
-        ldx #39
-GORESTART_G lda TXT_TAG,x
-        sta SCRN+280,x
-        lda #CYAN : sta CRAM+280,x
-        dex
-        bpl GORESTART_G
-        ldx #39
-GORESTART_D lda #CH_HBLK
-        sta SCRN+360,x
-        lda #BLUE : sta CRAM+360,x
-        dex
-        bpl GORESTART_D
-        jsr BLINK_ON
+        jsr DRAW_INTRO_SCREEN
         jmp MAIN_LOOP
 
 GO_NOBTN
@@ -347,25 +297,11 @@ DO_WIN
         lda #0     : sta GAME_STATE
         lda #BLACK : sta VIC_BRDCOL : sta VIC_BGCOL
         lda #$00   : sta VIC_SPEN
-        lda #0     : sta BLINK_TMR
-        lda #0     : sta BLINK_ST
+        lda #0     : sta BLINK_TMR : sta BLINK_ST
         jsr CLS
         lda #$FD   : sta SPRPTR
         lda #$FC   : sta SPRPTR+1
-        ldx #39
-WINRES_T lda TXT_TITLE,x : sta SCRN+200,x
-        lda #PURPLE : sta CRAM+200,x
-        dex : bpl WINRES_T
-        lda #YELLOW : sta CRAM+213 : sta CRAM+226
-        ldx #39
-WINRES_G lda TXT_TAG,x : sta SCRN+280,x
-        lda #CYAN : sta CRAM+280,x
-        dex : bpl WINRES_G
-        ldx #39
-WINRES_D lda #CH_HBLK : sta SCRN+360,x
-        lda #BLUE : sta CRAM+360,x
-        dex : bpl WINRES_D
-        jsr BLINK_ON
+        jsr DRAW_INTRO_SCREEN
         jmp MAIN_LOOP
 
 WIN_NOBTN
@@ -402,37 +338,74 @@ SETUP_WIN
         lda #4     : sta GAME_STATE
         lda #0     : sta $C6
         lda #0     : sta SND_TMR
-        lda #$00   : sta $D404      ; SID gate off
-        lda #$00   : sta $D418      ; SID volume off
+        lda #$00   : sta $D404
+        lda #$00   : sta $D418
         lda #$00   : sta VIC_SPEN
         lda #GREEN : sta VIC_BRDCOL
         lda #BLACK : sta VIC_BGCOL
-        lda #0     : sta BLINK_TMR
-        lda #0     : sta BLINK_ST
+        lda #0     : sta BLINK_TMR : sta BLINK_ST
 
         jsr CLS
         lda #$FD   : sta SPRPTR
         lda #$FC   : sta SPRPTR+1
 
-        ldx #39
-WINROW7 lda TXT_WIN1,x : sta SCRN+280,x
-        lda #LTGREEN : sta CRAM+280,x
-        dex : bpl WINROW7
+        ldx #39    ; row 3: top border (GREEN)
+WROW03  lda SCR_BORDER,x : sta SCRN+120,x
+        lda #GREEN : sta CRAM+120,x
+        dex : bpl WROW03
 
-        ldx #39
-WINROW9 lda TXT_WIN2,x : sta SCRN+360,x
-        lda #YELLOW : sta CRAM+360,x
-        dex : bpl WINROW9
+        ldx #39    ; row 4: blank (GREEN)
+WROW04  lda SCR_BLANK,x : sta SCRN+160,x
+        lda #GREEN : sta CRAM+160,x
+        dex : bpl WROW04
 
-        ldx #39
-WINROW11 lda TXT_WIN3,x : sta SCRN+440,x
+        ldx #39    ; row 5: title (LTGREEN)
+WROW05  lda WIN_TITLE,x : sta SCRN+200,x
+        lda #LTGREEN : sta CRAM+200,x
+        dex : bpl WROW05
+        lda #YELLOW
+        sta CRAM+203 : sta CRAM+205 : sta CRAM+207
+        sta CRAM+228 : sta CRAM+230 : sta CRAM+232
+
+        ldx #39    ; row 6: blank (GREEN)
+WROW06  lda SCR_BLANK,x : sta SCRN+240,x
+        lda #GREEN : sta CRAM+240,x
+        dex : bpl WROW06
+
+        ldx #39    ; row 7: separator (BLUE)
+WROW07  lda ITR_SEP,x : sta SCRN+280,x
+        lda #BLUE : sta CRAM+280,x
+        dex : bpl WROW07
+
+        ldx #39    ; row 8: launch aborted (YELLOW)
+WROW08  lda WIN_M1,x : sta SCRN+320,x
+        lda #YELLOW : sta CRAM+320,x
+        dex : bpl WROW08
+
+        ldx #39    ; row 9: secured (WHITE)
+WROW09  lda WIN_M2,x : sta SCRN+360,x
+        lda #WHITE : sta CRAM+360,x
+        dex : bpl WROW09
+
+        ldx #39    ; row 10: blank (GREEN)
+WROW10  lda SCR_BLANK,x : sta SCRN+400,x
+        lda #GREEN : sta CRAM+400,x
+        dex : bpl WROW10
+
+        ldx #39    ; row 11: well done (CYAN)
+WROW11  lda WIN_M3,x : sta SCRN+440,x
         lda #CYAN : sta CRAM+440,x
-        dex : bpl WINROW11
+        dex : bpl WROW11
 
-        ldx #39
-WINROW13 lda #CH_HBLK : sta SCRN+520,x
+        ldx #39    ; row 12: blank (GREEN)
+WROW12  lda SCR_BLANK,x : sta SCRN+480,x
+        lda #GREEN : sta CRAM+480,x
+        dex : bpl WROW12
+
+        ldx #39    ; row 13: bottom border (GREEN)
+WROW13  lda SCR_BORDER,x : sta SCRN+520,x
         lda #GREEN : sta CRAM+520,x
-        dex : bpl WINROW13
+        dex : bpl WROW13
 
         jsr WIN_BLINK_ON
         rts
@@ -487,50 +460,144 @@ SETUP_GAME
 ; =============================================================================
 SETUP_GAMEOVER
         lda #2     : sta GAME_STATE
-        lda #0     : sta $C6        ; flush kernal keyboard buffer (count = 0)
-        lda #0     : sta SND_TMR    ; stop sound tick
-        lda #$00   : sta $D404      ; SID gate off
-        lda #$00   : sta $D418      ; SID volume off
+        lda #0     : sta $C6
+        lda #0     : sta SND_TMR
+        lda #$00   : sta $D404
+        lda #$00   : sta $D418
         lda #$00   : sta VIC_SPEN
         lda #RED   : sta VIC_BRDCOL
         lda #BLACK : sta VIC_BGCOL
-        lda #0     : sta BLINK_TMR
-        lda #0     : sta BLINK_ST
+        lda #0     : sta BLINK_TMR : sta BLINK_ST
 
         jsr CLS
-        lda #$FD   : sta SPRPTR     ; CLS wiped $07F8 — restore sprite pointers
+        lda #$FD   : sta SPRPTR
         lda #$FC   : sta SPRPTR+1
 
-        ldx #39
-GOROW8  lda TXT_GO1,x
-        sta SCRN+320,x
-        lda #LTRED : sta CRAM+320,x
-        dex
-        bpl GOROW8
-        lda #YELLOW : sta CRAM+330 : sta CRAM+349
+        ldx #39    ; row 3: top border (RED)
+GOROW03 lda SCR_BORDER,x : sta SCRN+120,x
+        lda #RED : sta CRAM+120,x
+        dex : bpl GOROW03
 
-        ldx #39
-GOROW10 lda TXT_GO2,x
-        sta SCRN+400,x
-        lda #WHITE : sta CRAM+400,x
-        dex
-        bpl GOROW10
+        ldx #39    ; row 4: blank (RED)
+GOROW04 lda SCR_BLANK,x : sta SCRN+160,x
+        lda #RED : sta CRAM+160,x
+        dex : bpl GOROW04
 
-        ldx #39
-GOROW12 lda TXT_GO3,x
-        sta SCRN+480,x
-        lda #CYAN : sta CRAM+480,x
-        dex
-        bpl GOROW12
+        ldx #39    ; row 5: title (LTRED)
+GOROW05 lda GO_TITLE,x : sta SCRN+200,x
+        lda #LTRED : sta CRAM+200,x
+        dex : bpl GOROW05
+        lda #YELLOW
+        sta CRAM+203 : sta CRAM+205 : sta CRAM+207
+        sta CRAM+227 : sta CRAM+229 : sta CRAM+231
 
-        ldx #39
-GOROW14 lda #CH_HBLK
-        sta SCRN+560,x
-        lda #RED : sta CRAM+560,x
-        dex
-        bpl GOROW14
+        ldx #39    ; row 6: blank (RED)
+GOROW06 lda SCR_BLANK,x : sta SCRN+240,x
+        lda #RED : sta CRAM+240,x
+        dex : bpl GOROW06
+
+        ldx #39    ; row 7: separator (DGRAY)
+GOROW07 lda ITR_SEP,x : sta SCRN+280,x
+        lda #DGRAY : sta CRAM+280,x
+        dex : bpl GOROW07
+
+        ldx #39    ; row 8: operative terminated (WHITE)
+GOROW08 lda GO_M1,x : sta SCRN+320,x
+        lda #WHITE : sta CRAM+320,x
+        dex : bpl GOROW08
+
+        ldx #39    ; row 9: launch continues (LTRED)
+GOROW09 lda GO_M2,x : sta SCRN+360,x
+        lda #LTRED : sta CRAM+360,x
+        dex : bpl GOROW09
+
+        ldx #39    ; row 10: blank (RED)
+GOROW10 lda SCR_BLANK,x : sta SCRN+400,x
+        lda #RED : sta CRAM+400,x
+        dex : bpl GOROW10
+
+        ldx #39    ; row 11: mission failed (YELLOW)
+GOROW11 lda GO_M3,x : sta SCRN+440,x
+        lda #YELLOW : sta CRAM+440,x
+        dex : bpl GOROW11
+
+        ldx #39    ; row 12: blank (RED)
+GOROW12 lda SCR_BLANK,x : sta SCRN+480,x
+        lda #RED : sta CRAM+480,x
+        dex : bpl GOROW12
+
+        ldx #39    ; row 13: bottom border (RED)
+GOROW13 lda SCR_BORDER,x : sta SCRN+520,x
+        lda #RED : sta CRAM+520,x
+        dex : bpl GOROW13
 
         jsr GO_BLINK_ON
+        rts
+
+; =============================================================================
+; DRAW_INTRO_SCREEN — draws intro box art. Called via jsr; CLS+sprite pointers
+; must already be done by caller.
+; =============================================================================
+DRAW_INTRO_SCREEN
+        ldx #39    ; row 3: top border (DGRAY)
+DIRS03  lda SCR_BORDER,x : sta SCRN+120,x
+        lda #DGRAY : sta CRAM+120,x
+        dex : bpl DIRS03
+
+        ldx #39    ; row 4: blank (DGRAY)
+DIRS04  lda SCR_BLANK,x : sta SCRN+160,x
+        lda #DGRAY : sta CRAM+160,x
+        dex : bpl DIRS04
+
+        ldx #39    ; row 5: title (PURPLE), * chars in YELLOW
+DIRS05  lda ITR_TITLE,x : sta SCRN+200,x
+        lda #PURPLE : sta CRAM+200,x
+        dex : bpl DIRS05
+        lda #YELLOW
+        sta CRAM+205 : sta CRAM+207 : sta CRAM+209
+        sta CRAM+224 : sta CRAM+226 : sta CRAM+228
+
+        ldx #39    ; row 6: tagline (CYAN)
+DIRS06  lda ITR_TAG,x : sta SCRN+240,x
+        lda #CYAN : sta CRAM+240,x
+        dex : bpl DIRS06
+
+        ldx #39    ; row 7: separator (BLUE)
+DIRS07  lda ITR_SEP,x : sta SCRN+280,x
+        lda #BLUE : sta CRAM+280,x
+        dex : bpl DIRS07
+
+        ldx #39    ; row 8: blank (DGRAY)
+DIRS08  lda SCR_BLANK,x : sta SCRN+320,x
+        lda #DGRAY : sta CRAM+320,x
+        dex : bpl DIRS08
+
+        ldx #39    ; row 9: mission line 1 (MGRAY)
+DIRS09  lda ITR_M1,x : sta SCRN+360,x
+        lda #MGRAY : sta CRAM+360,x
+        dex : bpl DIRS09
+
+        ldx #39    ; row 10: mission line 2 (MGRAY)
+DIRS10  lda ITR_M2,x : sta SCRN+400,x
+        lda #MGRAY : sta CRAM+400,x
+        dex : bpl DIRS10
+
+        ldx #39    ; row 11: warning (LTRED)
+DIRS11  lda ITR_M3,x : sta SCRN+440,x
+        lda #LTRED : sta CRAM+440,x
+        dex : bpl DIRS11
+
+        ldx #39    ; row 12: blank (DGRAY)
+DIRS12  lda SCR_BLANK,x : sta SCRN+480,x
+        lda #DGRAY : sta CRAM+480,x
+        dex : bpl DIRS12
+
+        ldx #39    ; row 13: bottom border (DGRAY)
+DIRS13  lda SCR_BORDER,x : sta SCRN+520,x
+        lda #DGRAY : sta CRAM+520,x
+        dex : bpl DIRS13
+
+        jsr BLINK_ON
         rts
 
 ; =============================================================================
@@ -1061,51 +1128,38 @@ RIRQ_SKIP
         jmp $EA31
 
 ; =============================================================================
-; Screen text strings (all exactly 40 chars)
+; Screen text strings — all exactly 40 chars
 ; =============================================================================
-TXT_TITLE
-        !pet "           * titan fall *            "
-        !byte $20,$20,$20   ; pad to 40
 
-TXT_TAG
-        !pet "   infiltrate. subvert. stop launch. "
-        !byte $20,$20,$20   ; pad to 40
+; Shared box elements
+SCR_BORDER  !pet "+--------------------------------------+"
+SCR_BLANK   !pet "|                                      |"
 
-TXT_PRESS
-        !pet "        press any key to start       "
-        !byte $20,$20,$20   ; pad to 40
+; Intro screen
+ITR_TITLE   !pet "|    * * *  titan fall  * * *          |"
+ITR_TAG     !pet "|  infiltrate. subvert. stop launch.   |"
+ITR_SEP     !pet "|  ==================================  |"
+ITR_M1      !pet "|  mission: abort launch sequence      |"
+ITR_M2      !pet "|  location: titan missile complex     |"
+ITR_M3      !pet "|  warning: launch in t-minus 5 hours  |"
 
-TXT_GO1
-        !pet "          * security breach *        "
-        !byte $20,$20,$20,$20   ; pad to 40
+TXT_PRESS   !pet "        press any key to start          "
 
-TXT_GO2
-        !pet "          operative terminated       "
-        !byte $20,$20,$20,$20,$20   ; pad to 40
+; Game over screen
+GO_TITLE    !pet "|  * * *  security breach  * * *       |"
+GO_M1       !pet "|  operative terminated                |"
+GO_M2       !pet "|  titan launch sequence continues...  |"
+GO_M3       !pet "|  your mission has failed             |"
 
-TXT_GO3
-        !pet "  titan launch sequence continues... "
-        !byte $20,$20,$20   ; pad to 40
+TXT_GOPRESS !pet "        press any key to retry          "
 
-TXT_GOPRESS
-        !pet "        press any key to retry       "
-        !byte $20,$20,$20   ; pad to 40
+; Win screen
+WIN_TITLE   !pet "|  * * *  mission complete  * * *      |"
+WIN_M1      !pet "|  launch sequence aborted!            |"
+WIN_M2      !pet "|  titan complex secured               |"
+WIN_M3      !pet "|  well done, operative                |"
 
-TXT_WIN1
-        !pet "          * mission complete *        "
-        !byte $20,$20   ; pad to 40
-
-TXT_WIN2
-        !pet "      launch sequence aborted!        "
-        !byte $20,$20   ; pad to 40
-
-TXT_WIN3
-        !pet "   titan complex secured. well done.  "
-        !byte $20,$20   ; pad to 40
-
-TXT_WINPRESS
-        !pet "      press any key to continue       "
-        !byte $20,$20   ; pad to 40
+TXT_WINPRESS !pet "      press any key to continue         "
 
 ; =============================================================================
 ; Sprite 1 — robot enemy, at $3F00 (pointer $FC)
