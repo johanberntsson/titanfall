@@ -947,7 +947,7 @@ SNDOUT  rts
 ; Clock does not tick in this state (TICK_CLOCK only called from GAME_ALIVE).
 ; Sprite is hidden on entry and restored on exit.
 ;
-; Screen layout (rows 4-13 within the cleared room area):
+; Screen layout (rows 4-15 within the cleared room area):
 ;   row  4: +--------------------------------------+
 ;   row  5: |  * sector drone network - terminal   |
 ;   row  6: |  access verified. select unit:       |
@@ -956,9 +956,11 @@ SNDOUT  rts
 ;   row  9: |    [2] bot-3312  splicer  available  |
 ;   row 10: |    [3] bot-9901  centurion locked    |
 ;   row 11: |                                      |
-;   row 12: |   return=link   f7=abort    [t=open] |
-;   row 13: +--------------------------------------+
-;   row 14: (status message)
+;   row 12: |  > [ ] logoff                        |
+;   row 13: |                                      |
+;   row 14: |   return=select   f7=exit            |
+;   row 15: +--------------------------------------+
+;   row 16: (status message)
 ;
 ; TERM_SEL = 0,1,2
 ; TERM_TMR > 0 = showing "link established" confirmation
@@ -967,10 +969,12 @@ SNDOUT  rts
 TERM_ROW0 = SCRN + 8*40    ; row 8  = SCRN+320
 TERM_ROW1 = SCRN + 9*40    ; row 9  = SCRN+360
 TERM_ROW2 = SCRN + 10*40   ; row 10 = SCRN+400
+TERM_ROW3 = SCRN + 12*40   ; row 12 = SCRN+480 (logoff)
 TERM_COL0 = CRAM + 8*40
 TERM_COL1 = CRAM + 9*40
 TERM_COL2 = CRAM + 10*40
-TERM_MSGROW = SCRN + 14*40 ; row 14 = SCRN+560 — status message
+TERM_COL3 = CRAM + 12*40
+TERM_MSGROW = SCRN + 16*40 ; row 16 = SCRN+640 — status message
 
 ; ---------------------------------------------------------------------------
 ; CLEAR_ROOM — blank rows 2-23 (SCRN+80..SCRN+959) with spaces / DGRAY
@@ -1052,19 +1056,31 @@ TSETB5  lda TBOX_BLK,x : sta SCRN+440,x
         lda #GREEN : sta CRAM+440,x
         dex : bpl TSETB5
 
-        ; Row 12: key hint
+        ; Row 12: logoff entry
         ldx #39
-TSETB6  lda TBOX_HNT,x : sta SCRN+480,x
-        lda #DGRAY : sta CRAM+480,x
+TSETD3  lda TBOX_D3,x : sta TERM_ROW3,x
+        lda #GREEN : sta TERM_COL3,x
+        dex : bpl TSETD3
+
+        ; Row 13: blank
+        ldx #39
+TSETB6  lda TBOX_BLK,x : sta SCRN+520,x
+        lda #GREEN : sta CRAM+520,x
         dex : bpl TSETB6
 
-        ; Row 13: bottom border
+        ; Row 14: key hint
         ldx #39
-TSETB7  lda TBOX_BOT,x : sta SCRN+520,x
-        lda #LTGREEN : sta CRAM+520,x
+TSETB7  lda TBOX_HNT,x : sta SCRN+560,x
+        lda #DGRAY : sta CRAM+560,x
         dex : bpl TSETB7
 
-        ; Clear message row
+        ; Row 15: bottom border
+        ldx #39
+TSETB8  lda TBOX_BOT,x : sta SCRN+600,x
+        lda #LTGREEN : sta CRAM+600,x
+        dex : bpl TSETB8
+
+        ; Clear message row (row 16)
         ldx #39
 TSETM   lda #CH_SPC : sta TERM_MSGROW,x
         dex : bpl TSETM
@@ -1076,32 +1092,12 @@ TSETM   lda #CH_SPC : sta TERM_MSGROW,x
 ; DO_TERMINAL — called each frame in state 3
 ; ---------------------------------------------------------------------------
 DO_TERMINAL
-        ; If link confirmation timer running, count down then return to game
-        lda TERM_TMR : beq TERM_INPUT
-        dec TERM_TMR
-        beq TEXPIRE
-        jmp MAIN_LOOP
-TEXPIRE ; Timer expired — back to game
-        lda #1 : sta GAME_STATE
-        jsr DRAW_ROOM
-        jsr DRAW_STATUS
-        lda #$01 : sta VIC_SPEN      ; restore sprite
-        jsr UPDATE_SPRITE0
-        jmp MAIN_LOOP
-
-TERM_INPUT
-        ; Read keyboard directly each frame (not using KEY_* flags — those need
-        ; READ_KEYS which is only called in game state)
-        ; Use GETIN for simplicity — it reads from KERNAL buffer (EA31 populates it)
+        ; GETIN returns PETSCII: F7=$88, Return=$0D, cursor up=$91, dn=$11
         jsr GETIN
         beq TERM_DONE
-
-        ; F7 ($03 in KERNAL key table) or '-' used as escape — just check common values
-        ; Actually GETIN returns PETSCII: F1=$85, F7=$88, Return=$0D, cursor up=$91, dn=$11
-        cmp #$88 : beq TERM_ABORT      ; F7 = abort
-        cmp #$1B : beq TERM_ABORT      ; ESC = abort (some setups)
-        cmp #$0D : beq TERM_LINK       ; Return = link
-        cmp #$85 : beq TERM_LINK       ; F1 = link
+        cmp #$88 : beq TERM_ABORT      ; F7 = quick exit
+        cmp #$0D : beq TERM_LINK       ; Return = confirm selection
+        cmp #$85 : beq TERM_LINK       ; F1 = confirm selection
         cmp #$91 : beq TERM_UP         ; cursor up
         cmp #$11 : beq TERM_DOWN       ; cursor down
         bne TERM_DONE
@@ -1113,29 +1109,29 @@ TERM_UP
         bne TERM_DONE
 
 TERM_DOWN
-        lda TERM_SEL : cmp #2 : bcs TERM_DONE
+        lda TERM_SEL : cmp #3 : bcs TERM_DONE
         inc TERM_SEL
         jsr TERM_DRAW_SEL
         bne TERM_DONE
 
 TERM_LINK
-        ; Can't link to bot-9901 (locked, row 2)
-        lda TERM_SEL : cmp #2 : beq TERM_LOCKED
-        ; Show confirmation message
+        lda TERM_SEL : cmp #3 : beq TERM_LOGOFF   ; logoff row selected
+        cmp #2 : beq TERM_LOCKED                   ; locked drone
+        ; Link to drone 0 or 1 — show message and stay in terminal
         ldx #39
 TLINK1  lda TMSG_OK,x : sta TERM_MSGROW,x
-        lda #LTGREEN : sta CRAM+560,x
+        lda #LTGREEN : sta CRAM+(16*40),x
         dex : bpl TLINK1
-        lda #75 : sta TERM_TMR   ; ~1.5 seconds then return
         bne TERM_DONE
 
 TERM_LOCKED
         ldx #39
 TLOCK1  lda TMSG_LCK,x : sta TERM_MSGROW,x
-        lda #LTRED : sta CRAM+560,x
+        lda #LTRED : sta CRAM+(16*40),x
         dex : bpl TLOCK1
         bne TERM_DONE
 
+TERM_LOGOFF
 TERM_ABORT
         lda #1 : sta GAME_STATE
         jsr DRAW_ROOM
@@ -1147,14 +1143,14 @@ TERM_DONE
         jmp MAIN_LOOP
 
 ; ---------------------------------------------------------------------------
-; TERM_DRAW_SEL — redraw all 3 drone rows, highlight selected one
+; TERM_DRAW_SEL — redraw all 4 rows, highlight selected one
 ; ---------------------------------------------------------------------------
 TERM_DRAW_SEL
         ; Row 0 colour
         ldx #39
         lda TERM_SEL : bne TDSEL1
-        lda #LTGREEN : !byte $2C        ; selected
-TDSEL1  lda #GREEN                      ; unselected
+        lda #LTGREEN : !byte $2C
+TDSEL1  lda #GREEN
         sta TERM_COL0,x : dex : bpl TDSEL1
 
         ; Row 1 colour
@@ -1168,20 +1164,28 @@ TDSEL2  lda #GREEN
         ldx #39
 TDSEL3  lda #DGRAY : sta TERM_COL2,x : dex : bpl TDSEL3
 
-        ; Draw '>' selector character in col 3 of correct row
-        ; Clear all three first
+        ; Row 3 colour (logoff — selectable)
+        ldx #39
+        lda TERM_SEL : cmp #3 : bne TDSEL4
+        lda #LTGREEN : !byte $2C
+TDSEL4  lda #GREEN
+        sta TERM_COL3,x : dex : bpl TDSEL4
+
+        ; Draw '>' in col 3 of selected row, clear others
         lda #CH_SPC
         sta TERM_ROW0+3
         sta TERM_ROW1+3
         sta TERM_ROW2+3
-        ; Draw '>' in selected row
+        sta TERM_ROW3+3
         lda #$3E                        ; PETSCII '>'
         ldx TERM_SEL
         beq TDSELA
         cpx #1 : beq TDSELB
-        sta TERM_ROW2+3 : bne TDSELX
+        cpx #2 : beq TDSELC
+        sta TERM_ROW3+3 : bne TDSELX
 TDSELA  sta TERM_ROW0+3 : bne TDSELX
-TDSELB  sta TERM_ROW1+3
+TDSELB  sta TERM_ROW1+3 : bne TDSELX
+TDSELC  sta TERM_ROW2+3
 TDSELX  rts
 
 ; ---------------------------------------------------------------------------
@@ -1194,7 +1198,8 @@ TBOX_BLK  !pet "|                                      |"
 TBOX_D0  !pet "|   [1] bot-7741  loader    available  |"
 TBOX_D1  !pet "|   [2] bot-3312  splicer   available  |"
 TBOX_D2  !pet "|   [3] bot-9901  centurion  locked    |"
-TBOX_HNT  !pet "|   return=link   f7=abort    [t=open] |"
+TBOX_D3  !pet "|   [ ] logoff                         |"
+TBOX_HNT  !pet "|   return=select   f7=exit            |"
 TBOX_BOT  !pet "+--------------------------------------+"
 TMSG_OK  !pet "  proxy link established. unit active   "
 TMSG_LCK  !pet "  access denied. unit locked by titan.  "

@@ -6,6 +6,8 @@ add two different robot sprites. Put one robot in each room and let them move ba
 
 If there is a player/robot sprite collision, then it should be game over
 
+make it possible to become the other robot though the terminal
+
 add a map screen similar to the terminal window (so, a new map state). It should pause the time but keep the HUD like in the terminal. The screen should show the two rooms and highlight the room you're in
 
 add a winning condition and a win screen. For example, a terminal in the second room that has a "disable missile" entry. Select that, and you go to the win screen. Press any key and back to the intro screen
