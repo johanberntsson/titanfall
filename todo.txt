@@ -10,7 +10,7 @@ DONE: If there is a player/robot sprite collision, then it should be game over
 
 DONE: add a winning condition and a win screen. For example, a terminal in the second room that has a "disable missile" entry. Select that, and you go to the win screen. Press any key and back to the intro screen
 
-move game states to separate files (terminal.asm, intro.asm, game.asm, map.asm, gameover.asm, win.asm) and keep tritanfall.asm as the overall file (perhaps including the others). It will make maintenance easier in the future.
+DONE: move game states to separate files (terminal.asm, intro.asm, game.asm, map.asm, gameover.asm, win.asm) and keep tritanfall.asm as the overall file (perhaps including the others). It will make maintenance easier in the future.
 
 proper detection of t key (not c). 
 

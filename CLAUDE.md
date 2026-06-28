@@ -22,15 +22,29 @@ Emulator: **x64sc** (Vice). Do not run `acme` directly; always use `make`.
 
 ## Code Layout
 
-- `src/titanfall.asm` — single source file; entry point at `$0810` (SYS 2064)
+The source is split into one orchestrator and six state modules, all `!source`d into a single ACME assembly pass:
+
+| File | Contents |
+|------|----------|
+| `src/titanfall.asm` | Constants, BASIC stub, entry point, `MAIN_LOOP`, `CLS`, `RASTER_IRQ`, shared strings, sprite data, room data |
+| `src/intro.asm` | `DO_INTRO`, `DRAW_INTRO_SCREEN`, `BLINK_ON/OFF`, intro strings |
+| `src/game.asm` | `DO_GAME`, `SETUP_GAME`, HUD, clock, reactor, player/robot movement, sound |
+| `src/gameover.asm` | `DO_GAMEOVER`, `SETUP_GAMEOVER`, `GO_BLINK` helpers, strings |
+| `src/win.asm` | `DO_WIN`, `SETUP_WIN`, `WIN_BLINK` helpers, strings |
+| `src/terminal.asm` | `SETUP_TERMINAL`, `DO_TERMINAL`, `TERM_DRAW_SEL`, `CLEAR_ROOM`, strings |
+| `src/map.asm` | `DO_MAP`, `SETUP_MAP`, map strings |
+
+Other files:
 - `game.prg` — intermediate assembled output (not committed)
 - `titanfall.prg` — final self-extracting packed output (not committed)
 - `music/armalyte.prg` — stripped Armalyte SID music binary (load address `$C000`)
 - `music/armalyte.info` — sidplayfp info for the music file
 
+`!source` paths in `titanfall.asm` are relative to the project root (where `make` runs), so they are written as `!source "src/intro.asm"` etc.
+
 ### BASIC stub convention
 
-Every `.asm` file must begin with the standard BASIC loader at `* = $0801`:
+Only `src/titanfall.asm` carries the BASIC stub. The `* = $0801` loader appears once in the whole codebase:
 
 ```asm
 * = $0801
@@ -52,7 +66,7 @@ The SYS address in `!pet` must be kept in sync manually if the header ever chang
 | Address | Purpose |
 |---------|---------|
 | `$0801` | BASIC stub (SYS 2064) |
-| `$0810` | Entry point / code start (code ends ~$12B9) |
+| `$0810` | Entry point / code start (code + strings end before `$3F00`) |
 | `$0400–$07FF` | Screen RAM (default VIC bank) |
 | `$D800–$DBFF` | Colour RAM |
 | `$07F8` | Sprite pointer table (end of screen RAM — **must be restored after every CLS call**) |
@@ -85,6 +99,8 @@ When implementing code, always respect these C64 hardware limits:
 | 5 | Map | Sector map overlay (M key; time paused; sprite hidden; any key to return) |
 
 **Stack discipline:** The state machine uses fall-through / `jmp` between states, not `jsr`/`rts`. `MAIN_LOOP` is entered by falling through from init code, never by `jsr`. State transitions use `jmp SETUP_*` not `jsr`, so the return address on the stack is always the one from `DISPATCH`'s `jsr TICK_*`. Never `jsr` into anything that falls into `MAIN_LOOP`.
+
+**Dispatch uses `bne`+`jmp` pairs, not `beq`.** The `DO_*` handlers live in `!source`d files assembled after `CLS`/`RASTER_IRQ`/shared strings, placing them beyond the ±127-byte range of a `beq`. The dispatch reads: `bne MLNOT0 : jmp DO_INTRO` etc.
 
 **State >= 4 guard in GAME_ALIVE:** After `MOVE_PLAYER` and `READ_KEYS`, `GAME_ALIVE` checks `lda GAME_STATE : cmp #4 : bcs GAME_TICK_DONE`. This skips sprite update / HUD / status draws whenever state 4 (win) or 5 (map) was triggered mid-frame.
 
