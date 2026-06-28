@@ -47,6 +47,13 @@ KEY_RET    = $23   ; Return key flag
 KEY_ESC    = $24   ; F7/Escape key flag (exit terminal)
 CUR_ROOM   = $25   ; current room index (0=room1, 1=room2)
 KEY_MAP    = $26   ; M key flag (open map)
+ROB0_X     = $27   ; room 1 robot tile X
+ROB0_Y     = $28   ; room 1 robot tile Y
+ROB0_DIR   = $29   ; room 1 robot direction (0=left 1=right)
+ROB1_X     = $2A   ; room 2 robot tile X
+ROB1_Y     = $2B   ; room 2 robot tile Y
+ROB1_DIR   = $2C   ; room 2 robot direction
+ROB_TMR    = $2D   ; robot movement timer
 
 ; ---------------------------------------------------------------------------
 ; Hardware
@@ -55,6 +62,7 @@ SCRN       = $0400
 CRAM       = $D800
 SPRPTR     = $07F8
 SPRDAT0    = $3F40   ; 64-byte aligned — $3F40/64=$FD, safely above all code
+SPRDAT1    = $3F00   ; 64-byte aligned — $3F00/64=$FC, just before SPRDAT0
 
 VIC_SP0X   = $D000
 VIC_SP0Y   = $D001
@@ -66,6 +74,9 @@ VIC_IRQ    = $D019
 VIC_IRQEN  = $D01A
 VIC_SPEN   = $D015
 VIC_SPCOL0 = $D027
+VIC_SP1X   = $D002
+VIC_SP1Y   = $D003
+VIC_SPCOL1 = $D028
 VIC_BRDCOL = $D020
 VIC_BGCOL  = $D021
 
@@ -124,8 +135,9 @@ SIDCLR  lda #0
         lda #$16 : sta VIC_VMCSB
         lda #$0E : sta $0291
 
-        ; Sprite pointer — data lives at $3F40 (placed there by assembler)
-        lda #$FD   : sta SPRPTR     ; $3F40/64 = $FD
+        ; Sprite pointers
+        lda #$FD   : sta SPRPTR     ; spr0 → $3F40
+        lda #$FC   : sta SPRPTR+1   ; spr1 → $3F00
         lda #CYAN  : sta VIC_SPCOL0
         lda #$00   : sta $D01C
         lda #$00   : sta $D01D
@@ -157,7 +169,8 @@ SHOW_INTRO
         lda #0     : sta BLINK_ST
 
         jsr CLS
-        lda #$FD   : sta SPRPTR     ; CLS wiped $07F8 — restore sprite pointer
+        lda #$FD   : sta SPRPTR     ; CLS wiped $07F8 — restore sprite pointers
+        lda #$FC   : sta SPRPTR+1
 
         ; Row 5 — title
         ldx #39
@@ -253,10 +266,12 @@ DO_GAME
 GAME_ALIVE
         jsr TICK_CLOCK
         jsr TICK_REACTOR
+        jsr TICK_ROBOT
         jsr READ_KEYS
         jsr MOVE_PLAYER
         lda GAME_STATE : cmp #4 : bcs GAME_TICK_DONE  ; win/map triggered this frame
         jsr UPDATE_SPRITE0
+        jsr UPDATE_SPRITE1
         jsr DRAW_HUD_DYNAMIC
         jsr DRAW_STATUS
 GAME_TICK_DONE
@@ -276,7 +291,8 @@ DO_GAMEOVER
         lda #0     : sta BLINK_TMR
         lda #0     : sta BLINK_ST
         jsr CLS
-        lda #$FD   : sta SPRPTR     ; CLS wiped $07F8 — restore sprite pointer
+        lda #$FD   : sta SPRPTR     ; CLS wiped $07F8 — restore sprite pointers
+        lda #$FC   : sta SPRPTR+1
         ldx #39
 GORESTART_T lda TXT_TITLE,x
         sta SCRN+200,x
@@ -329,6 +345,7 @@ DO_WIN
         lda #0     : sta BLINK_ST
         jsr CLS
         lda #$FD   : sta SPRPTR
+        lda #$FC   : sta SPRPTR+1
         ldx #39
 WINRES_T lda TXT_TITLE,x : sta SCRN+200,x
         lda #PURPLE : sta CRAM+200,x
@@ -367,8 +384,9 @@ DO_MAP
         lda #0 : sta $C6            ; flush keyboard buffer
         jsr DRAW_ROOM
         jsr DRAW_STATUS
-        lda #$01 : sta VIC_SPEN    ; restore sprite
+        lda #$03 : sta VIC_SPEN    ; restore player + robot sprites
         jsr UPDATE_SPRITE0
+        jsr UPDATE_SPRITE1
 MAPDONE jmp MAIN_LOOP
 
 ; =============================================================================
@@ -388,6 +406,7 @@ SETUP_WIN
 
         jsr CLS
         lda #$FD   : sta SPRPTR
+        lda #$FC   : sta SPRPTR+1
 
         ldx #39
 WINROW7 lda TXT_WIN1,x : sta SCRN+280,x
@@ -437,13 +456,24 @@ SETUP_GAME
         lda #0   : sta BFLASH
         lda #0   : sta SND_TMR
 
+        lda #2   : sta ROB0_X
+        lda #7   : sta ROB0_Y
+        lda #1   : sta ROB0_DIR     ; starts moving right
+        lda #2   : sta ROB1_X
+        lda #5   : sta ROB1_Y
+        lda #1   : sta ROB1_DIR
+        lda #20  : sta ROB_TMR
+
         jsr CLS
-        lda #$FD   : sta SPRPTR     ; CLS wiped $07F8 — restore sprite pointer
+        lda #$FD   : sta SPRPTR     ; CLS wiped $07F8 — restore sprite pointers
+        lda #$FC   : sta SPRPTR+1
+        lda #ORANGE : sta VIC_SPCOL1
         jsr DRAW_HUD_STATIC
         jsr DRAW_ROOM
 
-        lda #$01 : sta VIC_SPEN
+        lda #$03 : sta VIC_SPEN     ; enable player (spr0) + robot (spr1)
         jsr UPDATE_SPRITE0
+        jsr UPDATE_SPRITE1
         rts
 
 ; =============================================================================
@@ -462,7 +492,8 @@ SETUP_GAMEOVER
         lda #0     : sta BLINK_ST
 
         jsr CLS
-        lda #$FD   : sta SPRPTR     ; CLS wiped $07F8 — restore sprite pointer
+        lda #$FD   : sta SPRPTR     ; CLS wiped $07F8 — restore sprite pointers
+        lda #$FC   : sta SPRPTR+1
 
         ldx #39
 GOROW8  lda TXT_GO1,x
@@ -880,6 +911,53 @@ SPRDX
 SPROUT  rts
 
 ; =============================================================================
+; UPDATE_SPRITE1 — position robot enemy sprite from current room's robot coords
+; =============================================================================
+UPDATE_SPRITE1
+        lda CUR_ROOM : bne UPSP1R2
+        lda ROB0_X : sta TMP : lda ROB0_Y : jmp UPSP1CALC
+UPSP1R2 lda ROB1_X : sta TMP : lda ROB1_Y
+UPSP1CALC
+        ; A = rob Y tile, TMP = rob X tile
+        asl : asl : asl : asl
+        clc : adc #66 : sta VIC_SP1Y
+        ; X pixel = TMP * 24 + 28
+        lda TMP : asl : asl : asl : asl : sta TMP2   ; TMP * 16
+        lda TMP : asl : asl : asl                    ; TMP * 8
+        clc : adc TMP2 : clc : adc #28
+        sta VIC_SP1X
+        bcs UPSP1MSB
+        lda VIC_SP_MSB : and #$FD : sta VIC_SP_MSB : bcc UPSP1X
+UPSP1MSB lda VIC_SP_MSB : ora #$02 : sta VIC_SP_MSB
+UPSP1X  rts
+
+; =============================================================================
+; TICK_ROBOT — move both robots back and forth on their patrol paths
+; =============================================================================
+TICK_ROBOT
+        lda ROB_TMR : beq TROBOK
+        dec ROB_TMR : rts
+TROBOK  lda #20 : sta ROB_TMR
+
+        ; Robot 0 (room 1): patrols X=2..4 on Y=7
+        lda ROB0_DIR : bne TR0RIGHT
+        lda ROB0_X : cmp #3 : bcc TR0FLIP0   ; at/below left bound → flip
+        dec ROB0_X : jmp TROBT1
+TR0FLIP0 lda #1 : sta ROB0_DIR : jmp TROBT1
+TR0RIGHT lda ROB0_X : cmp #4 : bcc TR0FWD    ; below right bound → move
+        lda #0 : sta ROB0_DIR : jmp TROBT1
+TR0FWD  inc ROB0_X
+
+TROBT1  ; Robot 1 (room 2): patrols X=2..7 on Y=5
+        lda ROB1_DIR : bne TR1RIGHT
+        lda ROB1_X : cmp #3 : bcc TR1FLIP1
+        dec ROB1_X : rts
+TR1FLIP1 lda #1 : sta ROB1_DIR : rts
+TR1RIGHT lda ROB1_X : cmp #7 : bcc TR1FWD
+        lda #0 : sta ROB1_DIR : rts
+TR1FWD  inc ROB1_X : rts
+
+; =============================================================================
 ; DRAW_ROOM — draws CUR_ROOM to screen rows 2-23
 ; =============================================================================
 DRAW_ROOM
@@ -1008,7 +1086,36 @@ TXT_WINPRESS
         !byte $20,$20   ; pad to 40
 
 ; =============================================================================
-; Sprite data — placed directly at $3F40 (64-byte aligned, pointer $FD)
+; Sprite 1 — robot enemy, at $3F00 (pointer $FC)
+; Top-down drone: square head, wide shoulders, split legs
+; =============================================================================
+        * = $3F00
+SPR_ROBOT
+        !byte $0F,$F0,$00   ; row  0  head top
+        !byte $0F,$F0,$00   ; row  1
+        !byte $0F,$F0,$00   ; row  2
+        !byte $06,$60,$00   ; row  3  eye row
+        !byte $0F,$F0,$00   ; row  4
+        !byte $0F,$F0,$00   ; row  5  head bottom
+        !byte $3F,$FC,$00   ; row  6  shoulder
+        !byte $3F,$FC,$00   ; row  7
+        !byte $3F,$FC,$00   ; row  8  body
+        !byte $3F,$FC,$00   ; row  9
+        !byte $3F,$FC,$00   ; row 10
+        !byte $1F,$F8,$00   ; row 11  waist
+        !byte $0F,$F0,$00   ; row 12
+        !byte $0E,$E0,$00   ; row 13  legs
+        !byte $0E,$E0,$00   ; row 14
+        !byte $0E,$E0,$00   ; row 15
+        !byte $0E,$E0,$00   ; row 16
+        !byte $0E,$E0,$00   ; row 17
+        !byte $0E,$E0,$00   ; row 18
+        !byte $1E,$F0,$00   ; row 19  feet
+        !byte $1E,$F0,$00   ; row 20
+        !byte $00           ; byte 63
+
+; =============================================================================
+; Sprite 0 — player, at $3F40 (pointer $FD)
 ; Top-down person: oval head, shoulders+torso, two legs
 ; =============================================================================
         * = $3F40
@@ -1448,8 +1555,9 @@ TERM_ABORT
         lda #1 : sta GAME_STATE
         jsr DRAW_ROOM
         jsr DRAW_STATUS
-        lda #$01 : sta VIC_SPEN      ; restore sprite
+        lda #$03 : sta VIC_SPEN      ; restore player + robot sprites
         jsr UPDATE_SPRITE0
+        jsr UPDATE_SPRITE1
 
 TERM_DONE
         jmp MAIN_LOOP

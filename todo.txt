@@ -2,9 +2,9 @@ DONE: Change the terminal from a popup to something that replaces the game scree
 
 DONE: add another room to demonstrate that room managment works Add an opening in the left wall on the first room. If you move left and there's a wall it should work like now (keeping you in the room). If you move into the opening/doorway then you move into the second room. The second room has an opening in its right wall. This opening works the same way and leads back to the first room.
 
-add a map screen similar to the terminal screen (so, a new game state). It should pause the time but keep the HUD like in the terminal. The screen should show the that there are two connected rooms in the game, and highlight the room you're in
+DONE: add a map screen similar to the terminal screen (so, a new game state). It should pause the time but keep the HUD like in the terminal. The screen should show the that there are two connected rooms in the game, and highlight the room you're in
 
-add two different robot sprites. Put one robot in each room and let them move back and forth on a path just to demonstrate that it works
+DONE: add two different robot sprites. Put one robot in each room and let them move back and forth on a path just to demonstrate that it works
 
 If there is a player/robot sprite collision, then it should be game over
 
@@ -13,6 +13,8 @@ make it possible to become the other robot though the terminal
 DONE: add a winning condition and a win screen. For example, a terminal in the second room that has a "disable missile" entry. Select that, and you go to the win screen. Press any key and back to the intro screen
 
 proper detection of t key (not c)
+
+move game states to separate files (terminal.asm, intro.asm, game.asm, map.asm, gameover.asm, win.asm) and keep tritanfall.asm as the overall file (perhaps including the others). It will make maintenance easier in the future.
 
 ---
 
