@@ -10,6 +10,20 @@ add a map screen similar to the terminal window (so, a new map state). It should
 
 add a winning condition and a win screen. For example, a terminal in the second room that has a "disable missile" entry. Select that, and you go to the win screen. Press any key and back to the intro screen
 
-Add music in the intro screen, so set up when starting, close down when exiting to game morde. Use exomizer to create a combined prg with two parts - the gamecode and the music routine.
-
 proper detection of t key (not c)
+
+---
+
+Add music in the intro screen, so set up when starting, close down when exiting to game morde. Use exomizer to create a combined prg with two parts - the gamecode and the music routine. Let's use music/armalyte.prg. First "lda #0" (for the first song) and make a call to $c000 to init the music routine when setting up the intro screen. Then call $c059 from the interrupt if we're in the intro screen to play the music. There's no stop routine, so just silence the SID when leaving the intro screen
+
+---
+
+change room editor format to use vchar (if that seems to be good)
+
+Because vchar64 natively supports importing CharPad 1.8 and 2.0 project files, you can also head over to the Subchrist Software website or classic C64 forums like Lemon64 and download community-made CharPad project templates. Pulling those into vchar64 on Linux will give you immediate access to massive, professionally built game maps to dissect.  
+
+For the fastest setup on Linux, look at the releases page on GitHub for the official AppImage version. It requires no installation—just download it, make it executable, and run it:
+Bash
+
+chmod +x vchar64-linux-x86_64.AppImage
+./vchar64-linux-x86_64.AppImage
