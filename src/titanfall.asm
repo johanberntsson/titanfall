@@ -34,7 +34,7 @@ PTR2       = $16
 TMP        = $18
 TMP2       = $19
 ; New variables for state machine
-GAME_STATE = $1A   ; 0=intro  1=game  2=gameover
+GAME_STATE = $1A   ; 0=intro  1=game  2=gameover  3=terminal  4=win
 DEATH_TMR  = $1B   ; countdown after laser hit
 BLINK_TMR  = $1C   ; blink counter
 BLINK_ST   = $1D   ; 0=text visible  1=hidden
@@ -45,6 +45,7 @@ NEAR_TERM  = $21   ; non-zero when player is adjacent to terminal
 KEY_F1     = $22   ; T key flag (enter terminal)
 KEY_RET    = $23   ; Return key flag
 KEY_ESC    = $24   ; F7/Escape key flag (exit terminal)
+CUR_ROOM   = $25   ; current room index (0=room1, 1=room2)
 
 ; ---------------------------------------------------------------------------
 ; Hardware
@@ -203,7 +204,9 @@ MAIN_LOOP
         beq DO_INTRO
         cmp #1 : beq DO_GAME
         cmp #2 : beq DO_GAMEOVER
-        jmp DO_TERMINAL         ; state 3
+        cmp #3 : bne DOJMP_WIN
+        jmp DO_TERMINAL
+DOJMP_WIN jmp DO_WIN
 
 DO_INTRO
         ; Check for keypress → start game
@@ -249,6 +252,7 @@ GAME_ALIVE
         jsr TICK_REACTOR
         jsr READ_KEYS
         jsr MOVE_PLAYER
+        lda GAME_STATE : cmp #4 : beq GAME_TICK_DONE  ; win triggered this frame
         jsr UPDATE_SPRITE0
         jsr DRAW_HUD_DYNAMIC
         jsr DRAW_STATUS
@@ -310,6 +314,88 @@ GO_SHOW
 GO_DONE
         jmp MAIN_LOOP
 
+; ---------------------------------------------------------------------------
+DO_WIN
+        jsr GETIN
+        beq WIN_NOBTN
+        ; Key pressed — return to intro
+        lda #0     : sta GAME_STATE
+        lda #BLACK : sta VIC_BRDCOL : sta VIC_BGCOL
+        lda #$00   : sta VIC_SPEN
+        lda #0     : sta BLINK_TMR
+        lda #0     : sta BLINK_ST
+        jsr CLS
+        lda #$FD   : sta SPRPTR
+        ldx #39
+WINRES_T lda TXT_TITLE,x : sta SCRN+200,x
+        lda #PURPLE : sta CRAM+200,x
+        dex : bpl WINRES_T
+        lda #YELLOW : sta CRAM+213 : sta CRAM+226
+        ldx #39
+WINRES_G lda TXT_TAG,x : sta SCRN+280,x
+        lda #CYAN : sta CRAM+280,x
+        dex : bpl WINRES_G
+        ldx #39
+WINRES_D lda #CH_HBLK : sta SCRN+360,x
+        lda #BLUE : sta CRAM+360,x
+        dex : bpl WINRES_D
+        jsr BLINK_ON
+        jmp MAIN_LOOP
+
+WIN_NOBTN
+        inc BLINK_TMR
+        lda BLINK_TMR : cmp #25 : bcc WIN_DONE
+        lda #0 : sta BLINK_TMR
+        lda BLINK_ST : bne WIN_SHOW
+        jsr WIN_BLINK_OFF
+        lda #1 : sta BLINK_ST : jmp WIN_DONE
+WIN_SHOW
+        jsr WIN_BLINK_ON
+        lda #0 : sta BLINK_ST
+WIN_DONE
+        jmp MAIN_LOOP
+
+; =============================================================================
+; SETUP_WIN — draw win screen, set GAME_STATE=4. Called via jsr from MOVE_PLAYER.
+; =============================================================================
+SETUP_WIN
+        lda #4     : sta GAME_STATE
+        lda #0     : sta $C6
+        lda #0     : sta SND_TMR
+        lda #$00   : sta $D404      ; SID gate off
+        lda #$00   : sta $D418      ; SID volume off
+        lda #$00   : sta VIC_SPEN
+        lda #GREEN : sta VIC_BRDCOL
+        lda #BLACK : sta VIC_BGCOL
+        lda #0     : sta BLINK_TMR
+        lda #0     : sta BLINK_ST
+
+        jsr CLS
+        lda #$FD   : sta SPRPTR
+
+        ldx #39
+WINROW7 lda TXT_WIN1,x : sta SCRN+280,x
+        lda #LTGREEN : sta CRAM+280,x
+        dex : bpl WINROW7
+
+        ldx #39
+WINROW9 lda TXT_WIN2,x : sta SCRN+360,x
+        lda #YELLOW : sta CRAM+360,x
+        dex : bpl WINROW9
+
+        ldx #39
+WINROW11 lda TXT_WIN3,x : sta SCRN+440,x
+        lda #CYAN : sta CRAM+440,x
+        dex : bpl WINROW11
+
+        ldx #39
+WINROW13 lda #CH_HBLK : sta SCRN+520,x
+        lda #GREEN : sta CRAM+520,x
+        dex : bpl WINROW13
+
+        jsr WIN_BLINK_ON
+        rts
+
 ; =============================================================================
 ; SETUP_GAME — initialise vars and draw playfield. Called via jsr from DO_INTRO.
 ; =============================================================================
@@ -331,6 +417,7 @@ SETUP_GAME
         lda #0   : sta MOVE_TMR
         lda #0   : sta KEY_U : sta KEY_D : sta KEY_L : sta KEY_R
         lda #0   : sta DEATH_TMR
+        lda #0   : sta CUR_ROOM
         lda #0   : sta BFLASH
         lda #0   : sta SND_TMR
 
@@ -428,6 +515,19 @@ GOBLOFF lda #CH_SPC
         sta SCRN+640,x
         dex
         bpl GOBLOFF
+        rts
+
+WIN_BLINK_ON
+        ldx #39
+WINBLON lda TXT_WINPRESS,x : sta SCRN+600,x
+        lda #WHITE : sta CRAM+600,x
+        dex : bpl WINBLON
+        rts
+
+WIN_BLINK_OFF
+        ldx #39
+WINBLOFF lda #CH_SPC : sta SCRN+600,x
+        dex : bpl WINBLOFF
         rts
 
 ; =============================================================================
@@ -665,8 +765,9 @@ RKRETN
         lda #1 : sta KEY_ESC
 RKESCN
 
-        ; Check proximity to terminal: PLR_X 1-3, PLR_Y 3-5
+        ; Check proximity to terminal: PLR_X 1-3, PLR_Y 3-5 (room 1 only)
         lda #0 : sta NEAR_TERM
+        lda CUR_ROOM : bne RKDONE      ; terminal only exists in room 1
         lda PLR_X : cmp #1 : bcc RKDONE
         cmp #4 : bcs RKDONE
         lda PLR_Y : cmp #3 : bcc RKDONE
@@ -679,28 +780,54 @@ RKDONE  rts
 
 ; =============================================================================
 ; MOVE_PLAYER
+; Doorway: room1 left wall / room2 right wall open at PLR_Y 5-6.
 ; =============================================================================
 MOVE_PLAYER
         lda MOVE_TMR : beq MOVEGO
         dec MOVE_TMR : rts
 MOVEGO  lda #8 : sta MOVE_TMR
-        lda KEY_U : beq MOVD
-        lda PLR_Y : beq MOVD
+
+        ; Up
+        lda KEY_U : beq MOVTD
+        lda PLR_Y : beq MOVTD
         dec PLR_Y : rts
-MOVD    lda KEY_D : beq MOVL
-        lda PLR_Y : cmp #9 : bcs MOVL
+        ; Down
+MOVTD   lda KEY_D : beq MOVTL
+        lda PLR_Y : cmp #9 : bcc MOVTD_WALK
+        ; PLR_Y=9: check for bottom win doorway (room 2 only, PLR_X 4-6)
+        lda CUR_ROOM : beq MOVTL
+        lda PLR_X : cmp #4 : bcc MOVTL
+        cmp #7 : bcs MOVTL
+        jsr SETUP_WIN : rts
+MOVTD_WALK
         inc PLR_Y : rts
-MOVL    lda KEY_L : beq MOVR
-        lda PLR_X : beq MOVR
-        dec PLR_X : rts
-MOVR    lda KEY_R : beq MOVDONE
-        lda PLR_X : cmp #9 : bcs MOVDONE
-        clc : adc #1 : cmp #6 : bne MOVOK
-        ; laser hit
+        ; Left
+MOVTL   lda KEY_L : beq MOVTR
+        lda PLR_X : bne MOVLW          ; not at left edge — just walk
+        ; PLR_X=0: doorway check (room 1 left wall, PLR_Y 5-6)
+        lda CUR_ROOM : bne MOVTR       ; room 2 has no left door
+        lda PLR_Y : cmp #5 : bcc MOVTR
+        cmp #7 : bcs MOVTR
+        lda #1 : sta CUR_ROOM          ; enter room 2
+        lda #9 : sta PLR_X             ; appear at right edge
+        jsr DRAW_ROOM : rts
+MOVLW   dec PLR_X : rts
+        ; Right
+MOVTR   lda KEY_R : beq MOVDONE
+        lda PLR_X : cmp #9 : bcc MOVRW ; not at right edge — walk / laser check
+        ; PLR_X=9: doorway check (room 2 right wall, PLR_Y 5-6)
+        lda CUR_ROOM : beq MOVDONE     ; room 1 has no right door
+        lda PLR_Y : cmp #5 : bcc MOVDONE
+        cmp #7 : bcs MOVDONE
+        lda #0 : sta CUR_ROOM          ; enter room 1
+        lda #0 : sta PLR_X             ; appear at left edge
+        jsr DRAW_ROOM : rts
+        ; Inner right move: laser in room 1 only
+MOVRW   lda CUR_ROOM : bne MOVOK
+        lda PLR_X : clc : adc #1 : cmp #6 : bne MOVOK
         lda #RED  : sta VIC_BRDCOL
         lda #100  : sta DEATH_TMR
-        jsr SOUND_DEATH_START
-        rts
+        jsr SOUND_DEATH_START : rts
 MOVOK   inc PLR_X
 MOVDONE rts
 
@@ -726,10 +853,10 @@ SPRDX
 SPROUT  rts
 
 ; =============================================================================
-; DRAW_ROOM
+; DRAW_ROOM — draws CUR_ROOM to screen rows 2-23
 ; =============================================================================
 DRAW_ROOM
-        lda #<ROOM_DATA : sta PTR  : lda #>ROOM_DATA : sta PTR+1
+        jsr DRMSETPTR
         lda #<(SCRN+80) : sta PTR2 : lda #>(SCRN+80) : sta PTR2+1
         ldx #3 : ldy #0
 DRMPG   lda (PTR),y : sta (PTR2),y
@@ -740,7 +867,7 @@ DRMPG   lda (PTR),y : sta (PTR2),y
 DRMTAIL lda (PTR),y : sta (PTR2),y
         iny : cpy #112 : bcc DRMTAIL
 
-        lda #<ROOM_DATA : sta PTR  : lda #>ROOM_DATA : sta PTR+1
+        jsr DRMSETPTR
         lda #<(CRAM+80) : sta PTR2 : lda #>(CRAM+80) : sta PTR2+1
         ldx #3 : ldy #0
 DRMCPG  jsr COL_BYTE : iny : bne DRMCPG
@@ -749,6 +876,11 @@ DRMCPG  jsr COL_BYTE : iny : bne DRMCPG
         ldy #0
 DRMCTAIL jsr COL_BYTE : iny : cpy #112 : bcc DRMCTAIL
         rts
+
+DRMSETPTR
+        lda CUR_ROOM : beq DRMSP1
+        lda #<ROOM2_DATA : sta PTR : lda #>ROOM2_DATA : sta PTR+1 : rts
+DRMSP1  lda #<ROOM_DATA  : sta PTR : lda #>ROOM_DATA  : sta PTR+1 : rts
 
 COL_BYTE
         lda (PTR),y
@@ -784,13 +916,14 @@ DRAW_STATUS
 DSTL    lda STAT_TMPL,x : sta SCRN+960,x
         lda #DGRAY : sta CRAM+960,x
         dex : bpl DSTL
+        lda CUR_ROOM : clc : adc #(CH_0+1) : sta SCRN+962
         lda PLR_X : clc : adc #CH_0 : sta SCRN+966
         lda PLR_Y : clc : adc #CH_0 : sta SCRN+970
-        lda #LTGREEN : sta CRAM+966 : sta CRAM+970
+        lda #LTGREEN : sta CRAM+962 : sta CRAM+966 : sta CRAM+970
         rts
 
 STAT_TMPL
-        !pet "pos:x=0 y=0  chips:l1x2 l2x1  joy/crsr  "
+        !pet "r:0 x=0 y=0  chips:l1x2 l2x1  joy/crsr  "
 
 ; =============================================================================
 ; RASTER IRQ
@@ -830,6 +963,22 @@ TXT_GO3
 TXT_GOPRESS
         !pet "        press any key to retry       "
         !byte $20,$20,$20   ; pad to 40
+
+TXT_WIN1
+        !pet "          * mission complete *        "
+        !byte $20,$20   ; pad to 40
+
+TXT_WIN2
+        !pet "      launch sequence aborted!        "
+        !byte $20,$20   ; pad to 40
+
+TXT_WIN3
+        !pet "   titan complex secured. well done.  "
+        !byte $20,$20   ; pad to 40
+
+TXT_WINPRESS
+        !pet "      press any key to continue       "
+        !byte $20,$20   ; pad to 40
 
 ; =============================================================================
 ; Sprite data — placed directly at $3F40 (64-byte aligned, pointer $FD)
@@ -874,10 +1023,10 @@ ROOM_DATA
         !pet "|     |            !    [D1]          | "
         !pet "|     |            !                  | "
         !pet "+-----+            !                  | "
-        !pet "|                  !                  | "
-        !pet "|                  !     |=====|      | "
-        !pet "|                  !     |=====|      | "
-        !pet "|                  !                  | "
+        !pet "                   !                  | "
+        !pet "                   !     |=====|      | "
+        !pet "                   !     |=====|      | "
+        !pet "                   !                  | "
         !pet "|   [D2]           !                  | "
         !pet "|                  !                  | "
         !pet "|  ##              !                  | "
@@ -886,6 +1035,34 @@ ROOM_DATA
         !pet "|                  !                  | "
         !pet "|                  !                  | "
         !pet "+------------------!-------------------+"
+
+; =============================================================================
+; Room 2 data — maintenance bay, 22 rows x 40 chars
+; Right wall opens at rows 10-13 (PLR_Y 5-6 doorway back to room 1)
+; =============================================================================
+ROOM2_DATA
+        !pet "+-------------------------------------+ "
+        !pet "|                                     | "
+        !pet "|  ##   ##                            | "
+        !pet "|  ##   ##                            | "
+        !pet "|                                     | "
+        !pet "|       |=======|                     | "
+        !pet "|       |=======|                     | "
+        !pet "|       |=======|                     | "
+        !pet "|                                     | "
+        !pet "|                                     | "
+        !pet "|                                       "
+        !pet "|                                       "
+        !pet "|                                       "
+        !pet "|                                       "
+        !pet "|                                     | "
+        !pet "|                                     | "
+        !pet "|                                     | "
+        !pet "|  ####                               | "
+        !pet "|  ####                               | "
+        !pet "|                                     | "
+        !pet "|                                     | "
+        !pet "+-----------           ---------------+ "
 
 ; =============================================================================
 ; SID DEATH SOUND
