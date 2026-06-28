@@ -45,11 +45,13 @@ The SYS address in `!pet` must be kept in sync manually if the header ever chang
 | Address | Purpose |
 |---------|---------|
 | `$0801` | BASIC stub (SYS 2064) |
-| `$0810` | Entry point |
+| `$0810` | Entry point / code start (code ends ~$12B9) |
 | `$0400–$07FF` | Screen RAM (default VIC bank) |
 | `$D800–$DBFF` | Colour RAM |
 | `$07F8` | Sprite pointer table (end of screen RAM — **must be restored after every CLS call**) |
-| `$3F40` | Sprite 0 data (64-byte aligned, pointer `$FD`) — placed by assembler with `* = $3F40` |
+| `$3F00` | Sprite 1 data — robot enemy (64-byte aligned, pointer `$FC`) |
+| `$3F40` | Sprite 0 data — player (64-byte aligned, pointer `$FD`) |
+| `$3F80` | Room data (`ROOM_DATA`, `ROOM2_DATA`) and all string constants |
 
 ## Core Design Constraints
 
@@ -57,7 +59,7 @@ When implementing code, always respect these C64 hardware limits:
 
 - **CPU:** MOS 6510 (6502 derivative); assembler is **ACME** (not cc65, not KickAssembler)
 - **VIC-II sprites:** Exactly 8 hardware sprites available — the design intentionally avoids a sprite multiplexer
-- **Room layout:** 20×12 grid of 16×16 pixel meta-tiles = 240 bytes per room; rooms must fit this model
+- **Room layout:** 22 rows × 40 chars of PETSCII per room; player tile grid is 10×10 (0–9 each axis)
 - **Memory:** 64 KB total; code, data, and screen RAM must all fit within the standard C64 memory map
 - **SID chip:** 3 voices for audio
 
@@ -69,23 +71,38 @@ When implementing code, always respect these C64 hardware limits:
 |-------|-------|-------------|
 | 0 | Intro | Title screen, tagline, blinking "press any key" prompt |
 | 1 | Game | Playfield with HUD, player sprite, room map, countdown clock, reactor meter |
-| 2 | Game over | 2-second red border flash after laser hit, then game-over screen |
-| 3 | Terminal | Overlay menu for drone selection (entered by pressing T near terminal) |
+| 2 | Game over | Red border + descending-pitch sound, then game-over screen |
+| 3 | Terminal | Full-screen drone selection menu (T key near terminal; time paused; sprite hidden) |
+| 4 | Win | Mission complete screen (reached via bottom exit in room 2) |
+| 5 | Map | Sector map overlay (M key; time paused; sprite hidden; any key to return) |
 
 **Stack discipline:** The state machine uses fall-through / `jmp` between states, not `jsr`/`rts`. `MAIN_LOOP` is entered by falling through from init code, never by `jsr`. State transitions use `jmp SETUP_*` not `jsr`, so the return address on the stack is always the one from `DISPATCH`'s `jsr TICK_*`. Never `jsr` into anything that falls into `MAIN_LOOP`.
 
+**State >= 4 guard in GAME_ALIVE:** After `MOVE_PLAYER` and `READ_KEYS`, `GAME_ALIVE` checks `lda GAME_STATE : cmp #4 : bcs GAME_TICK_DONE`. This skips sprite update / HUD / status draws whenever state 4 (win) or 5 (map) was triggered mid-frame.
+
 ## Gameplay Architecture
 
-The game has two distinct active modes sharing a single 6-hour countdown timer:
+The game has two distinct active modes sharing a single countdown timer:
 
 1. **Human mode** — player explores rooms, scavenges for Access Clearance Chips (levels 1–4) and Direct Override Codes (robot serial numbers)
 2. **Robot/proxy mode** — activated at mainframe terminals; the human sprite freezes and the player controls a drone remotely
 
 Key state to track:
-- Countdown timer (real-time, starts at 6 hours; –10 min penalty per human death)
+- Countdown timer (real-time; –10 min penalty per human death)
 - Inventory: access chips and robot serial codes
-- Per-room: 240-byte tile array, active sprite positions, patrol paths
+- Per-room: tile array, active sprite positions, patrol paths
 - Active mode (human / drone) and which drone serial is linked
+
+## Rooms
+
+Two rooms are implemented. `CUR_ROOM` (`$25`) selects which room is drawn and which robot is shown.
+
+| Room | Index | Notable features |
+|------|-------|-----------------|
+| Room 1 | 0 | Terminal (T), laser wall at tile X=6, left-wall doorway at PLR_Y 5–6 |
+| Room 2 | 1 | Right-wall doorway (back to room 1) at PLR_Y 5–6; bottom-wall exit (win) at PLR_X 4–6 |
+
+Doorway transitions call `DRAW_ROOM` which dispatches on `CUR_ROOM` to blit the appropriate 22×40 char block from `ROOM_DATA` or `ROOM2_DATA`.
 
 ## Drone Types
 
@@ -93,6 +110,25 @@ Three drone classes with distinct capabilities (treat as puzzle keys, not combat
 - **Industrial Loader Bot (BOT-7741)** — immune to lasers and cryogenic hazards; can push heavy objects
 - **Maintenance Splicer (BOT-3312)** — fits through 1-tile ventilation ducts; can short-circuit junction boxes
 - **Suppressor Centurion (BOT-9901)** — armed; used only in sectors flooded with hostile rogue drones (locked — requires access chip)
+
+## Sprites
+
+| Slot | Pointer | Address | Content | Colour |
+|------|---------|---------|---------|--------|
+| 0 | `$FD` | `$3F40` | `SPR_PLAYER` — top-down human (oval head, torso, legs) | Cyan |
+| 1 | `$FC` | `$3F00` | `SPR_ROBOT` — robot enemy (square head, wide shoulders, split legs) | Orange |
+
+Both sprite pointers (`$07F8` and `$07F9`) must be restored after every `CLS` call. `VIC_SPEN` is set to `$03` (both sprites enabled) during game state, `$00` in all other states.
+
+### Robot enemy patrol
+`TICK_ROBOT` is called every game frame (shared 20-frame timer):
+- Robot 0 (room 1): patrols tile X 2–4, fixed Y=7
+- Robot 1 (room 2): patrols tile X 2–7, fixed Y=5
+
+`UPDATE_SPRITE1` uses the same coordinate formula as `UPDATE_SPRITE0`: X pixel = `ROB_X * 24 + 28`, Y pixel = `ROB_Y * 16 + 66`.
+
+### Sprite collision
+`CHECK_SPRITE_HIT` reads `VIC_SPCOLL` (`$D01E`) each frame after both sprites are positioned. Bits 0–1 non-zero means sprites 0 and 1 overlapped. Response is identical to laser death: red border, `DEATH_TMR = 100`, `SOUND_DEATH_START`. `$D01E` is cleared by the hardware on read.
 
 ## Zero Page Map
 
@@ -118,18 +154,29 @@ $14/$15  PTR      source pointer (indirect addressing)
 $16/$17  PTR2     dest pointer
 $18  TMP          scratch
 $19  TMP2         scratch / bar colour
-$1A  GAME_STATE   0=intro 1=game 2=gameover 3=terminal
-$1B  DEATH_TMR    frames remaining after laser hit
+$1A  GAME_STATE   0=intro 1=game 2=gameover 3=terminal 4=win 5=map
+$1B  DEATH_TMR    frames remaining after laser/robot hit (100 frames)
 $1C  BLINK_TMR    blink frame counter
 $1D  BLINK_ST     blink state (0=visible 1=hidden)
 $1E  SND_TMR      death sound countdown (0=silent)
-$1F  TERM_SEL     terminal selected drone row (0-2)
+$1F  TERM_SEL     terminal selected drone row (0-3)
 $20  TERM_TMR     terminal link confirmation countdown
 $21  NEAR_TERM    non-zero when player is adjacent to terminal
 $22  KEY_F1       T key flag (enter terminal)
 $23  KEY_RET      Return key flag
 $24  KEY_ESC      F7/Escape key flag
+$25  CUR_ROOM     current room (0=room1, 1=room2)
+$26  KEY_MAP      M key flag (open map)
+$27  ROB0_X       room 1 robot tile X
+$28  ROB0_Y       room 1 robot tile Y
+$29  ROB0_DIR     room 1 robot direction (0=left 1=right)
+$2A  ROB1_X       room 2 robot tile X
+$2B  ROB1_Y       room 2 robot tile Y
+$2C  ROB1_DIR     room 2 robot direction
+$2D  ROB_TMR      robot movement timer (shared, 20-frame period)
 ```
+
+Next free zero-page slot: `$2E`
 
 ## Room Map
 
@@ -162,12 +209,14 @@ The playfield (screen rows 2–23) is a PETSCII schematic top-down map, 22 rows 
 
 ## Critical Gotchas
 
-### CLS wipes the sprite pointer table
-`CLS` clears all 1024 bytes of screen RAM (`$0400–$07FF`), which includes the sprite pointer table at `$07F8`. After **every** `CLS` call, immediately restore the pointer:
+### CLS wipes both sprite pointers
+`CLS` clears all 1024 bytes of screen RAM (`$0400–$07FF`), which includes the sprite pointer table at `$07F8–$07FF`. After **every** `CLS` call, immediately restore both pointers:
 ```asm
 jsr CLS
-lda #$FD : sta SPRPTR   ; $3F40/64 = $FD — always restore after CLS
+lda #$FD : sta SPRPTR      ; spr0 → $3F40
+lda #$FC : sta SPRPTR+1    ; spr1 → $3F00
 ```
+`CLEAR_ROOM` (which clears only rows 2–23, `$0450–$07BF`) does **not** reach `$07F8` and does not need a restore.
 
 ### No anonymous or local labels
 ACME anonymous labels (`-` and `+`) scope to the entire zone, not the subroutine — with many routines in one file they resolve to wrong targets silently. Local labels (`.foo`) also caused duplicate-definition errors across routines in the same zone. **All labels are explicit global names** (e.g. `CLSP`, `HUDST1`, `TSETB1`).
@@ -175,16 +224,24 @@ ACME anonymous labels (`-` and `+`) scope to the entire zone, not the subroutine
 ### Sound must tick every frame including during death timer
 `SOUND_TICK` is called at the **top** of `DO_GAME`, before the death-timer branch, so it runs on every game frame. If called only from `GAME_ALIVE`, it never fires once the laser hit sets `DEATH_TMR`, leaving the SID gate open indefinitely.
 
-### Keyboard matrix for T key (terminal entry)
-T key: column 2 (`CIA1_PRA = $FB`), row 4 (`CIA1_PRB bit 4`, active low).
-```asm
-lda #$FB : sta CIA1_PRA
-lda CIA1_PRB : and #$10 : bne NOT_PRESSED
+### Keyboard matrix — key positions
+```
+T key (terminal): col 2 (PA=$FB), row 4 (PRB bit 4 = mask $10, active low)
+M key (map):      col 4 (PA=$EF), row 4 (PRB bit 4 = mask $10, active low)
+Return:           col 1 (PA=$FD), row 1 (PRB bit 1 = mask $02, active low)
+F7 (exit):        col 7 (PA=$7F), row 4 (PRB bit 3 = mask $08, active low)
 ```
 Terminal menu navigation uses `GETIN` (KERNAL keyboard buffer) for PETSCII codes: `$11`=cursor down, `$91`=cursor up, `$0D`=Return, `$88`=F7.
 
 ### Sprite data placement
-Sprite data is placed at a fixed 64-byte-aligned address using `* = $3F40`. No runtime copy loop. The pointer byte at `SPRPTR` (`$07F8`) must be `$3F40 / 64 = $FD`.
+Two sprites are placed at fixed 64-byte-aligned addresses before `ROOM_DATA`:
+- `* = $3F00` → `SPR_ROBOT` (sprite 1, pointer `$FC`)
+- `* = $3F40` → `SPR_PLAYER` (sprite 0, pointer `$FD`)
+
+No runtime copy loop. Both pointer bytes at `$07F8`/`$07F9` must be set at init and restored after every `CLS`.
+
+### Sprite collision register clears on read
+`VIC_SPCOLL` (`$D01E`) is cleared by the hardware the moment it is read. Read it exactly once per frame in `CHECK_SPRITE_HIT` and act on the value immediately — reading it again will always return 0.
 
 ## SID Death Sound
 
@@ -194,8 +251,7 @@ Voice 1, sawtooth wave. `SOUND_DEATH_START` gates on at ~350 Hz. `SOUND_TICK` (c
 
 - Actual drone control / robot mode (drone proxy mechanic from design doc)
 - Access chip system (chips found by searching desks/lockers)
-- Multiple rooms / sector navigation
-- Drone patrol animation on screen
-- Clock penalty on laser hit (currently just kills player)
-- Win condition (reach the launch control terminal and abort)
+- Clock penalty on death (currently DEATH_TMR just leads to game over, no time deduction)
+- Robot patrol paths drawn in room data (currently pure sprite movement, no tile-level representation)
+- More than 2 rooms / sector navigation beyond the current prototype
 - Music

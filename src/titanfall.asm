@@ -73,6 +73,7 @@ VIC_VMCSB  = $D018
 VIC_IRQ    = $D019
 VIC_IRQEN  = $D01A
 VIC_SPEN   = $D015
+VIC_SPCOLL = $D01E   ; sprite-sprite collision (read clears)
 VIC_SPCOL0 = $D027
 VIC_SP1X   = $D002
 VIC_SP1Y   = $D003
@@ -272,6 +273,7 @@ GAME_ALIVE
         lda GAME_STATE : cmp #4 : bcs GAME_TICK_DONE  ; win/map triggered this frame
         jsr UPDATE_SPRITE0
         jsr UPDATE_SPRITE1
+        jsr CHECK_SPRITE_HIT
         jsr DRAW_HUD_DYNAMIC
         jsr DRAW_STATUS
 GAME_TICK_DONE
@@ -930,6 +932,19 @@ UPSP1CALC
         lda VIC_SP_MSB : and #$FD : sta VIC_SP_MSB : bcc UPSP1X
 UPSP1MSB lda VIC_SP_MSB : ora #$02 : sta VIC_SP_MSB
 UPSP1X  rts
+
+; =============================================================================
+; CHECK_SPRITE_HIT — VIC-II hardware sprite collision detection
+; $D01E bit N set when sprite N overlapped another sprite (cleared on read).
+; Sprites 0 (player) and 1 (robot): any hit in bits 0-1 triggers death.
+; =============================================================================
+CHECK_SPRITE_HIT
+        lda DEATH_TMR : bne SPRHITOK    ; already dying, ignore
+        lda VIC_SPCOLL : and #$03 : beq SPRHITOK
+        lda #RED : sta VIC_BRDCOL
+        lda #100 : sta DEATH_TMR
+        jsr SOUND_DEATH_START
+SPRHITOK rts
 
 ; =============================================================================
 ; TICK_ROBOT — move both robots back and forth on their patrol paths
