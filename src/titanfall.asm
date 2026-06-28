@@ -1,8 +1,8 @@
 ; =============================================================================
 ; TITAN FALL  —  C64  (ACME assembler)
 ; =============================================================================
-; Build : acme -f cbm -o titanfall.prg titanfall.asm
-; Run   : x64sc titanfall.prg
+; Build : make
+; Run   : make run
 ;
 ; Built by adding one feature at a time onto the known-good base.
 ; This version adds: intro screen → game → game-over → intro loop.
@@ -128,6 +128,10 @@ SIDCLR  lda #0
         sta $D400,x
         dex
         bpl SIDCLR
+
+        ; Init music (song 1; A must be 0 before calling $C000)
+        lda #0
+        jsr $C000
 
         ; VIC init
         lda #BLACK : sta VIC_BRDCOL : sta VIC_BGCOL
@@ -1051,6 +1055,9 @@ STAT_TMPL
 RASTER_IRQ
         lda #$01 : sta VIC_IRQ
         lda #$01 : sta TICK_FLAG
+        lda SND_TMR : bne RIRQ_SKIP    ; skip music while death sound plays
+        jsr $C059                       ; Armalyte music play (50 Hz)
+RIRQ_SKIP
         jmp $EA31
 
 ; =============================================================================
