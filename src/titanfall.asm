@@ -943,19 +943,23 @@ SNDOUT  rts
 ; =============================================================================
 ; TERMINAL STATE (GAME_STATE = 3)
 ; =============================================================================
-; Screen layout (rows 4-20):
-;   row  4: ┌──────────────────────────────────────┐
-;   row  5: │  ▸ sector drone network — terminal   │
-;   row  6: │  access code verified. select unit:  │
-;   row  7: │                                      │
-;   row  8: │  [1] bot-7741  loader      available │  ← selector
-;   row  9: │  [2] bot-3312  splicer     available │
-;   row 10: │  [3] bot-9901  centurion   locked    │
-;   row 11: │                                      │
-;   row 12: │  f1/return=link  f7=abort            │
-;   row 13: └──────────────────────────────────────┘
+; Room area (rows 2-23) is blanked; HUD (rows 0-1) and footer (row 24) kept.
+; Clock does not tick in this state (TICK_CLOCK only called from GAME_ALIVE).
+; Sprite is hidden on entry and restored on exit.
 ;
-; Selector '>' highlights the chosen row.
+; Screen layout (rows 4-13 within the cleared room area):
+;   row  4: +--------------------------------------+
+;   row  5: |  * sector drone network - terminal   |
+;   row  6: |  access verified. select unit:       |
+;   row  7: |                                      |
+;   row  8: |  > [1] bot-7741  loader   available  |  ← selector
+;   row  9: |    [2] bot-3312  splicer  available  |
+;   row 10: |    [3] bot-9901  centurion locked    |
+;   row 11: |                                      |
+;   row 12: |   return=link   f7=abort    [t=open] |
+;   row 13: +--------------------------------------+
+;   row 14: (status message)
+;
 ; TERM_SEL = 0,1,2
 ; TERM_TMR > 0 = showing "link established" confirmation
 
@@ -969,15 +973,41 @@ TERM_COL2 = CRAM + 10*40
 TERM_MSGROW = SCRN + 14*40 ; row 14 = SCRN+560 — status message
 
 ; ---------------------------------------------------------------------------
-; SETUP_TERMINAL — draw terminal overlay, switch to state 3
-; Called via jsr from READ_KEYS when F1 pressed near terminal.
+; CLEAR_ROOM — blank rows 2-23 (SCRN+80..SCRN+959) with spaces / DGRAY
+; Leaves row 0 (HUD), row 1 (separator) and row 24 (footer) untouched.
+; ---------------------------------------------------------------------------
+CLEAR_ROOM
+        lda #<(SCRN+80) : sta PTR  : lda #>(SCRN+80) : sta PTR+1
+        ldx #3 : ldy #0
+CRMSPG  lda #CH_SPC : sta (PTR),y
+        iny : bne CRMSPG
+        inc PTR+1 : dex : bne CRMSPG
+        ldy #0
+CRMSTAIL lda #CH_SPC : sta (PTR),y
+        iny : cpy #112 : bcc CRMSTAIL
+        lda #<(CRAM+80) : sta PTR  : lda #>(CRAM+80) : sta PTR+1
+        ldx #3 : ldy #0
+CRMCPG  lda #DGRAY : sta (PTR),y
+        iny : bne CRMCPG
+        inc PTR+1 : dex : bne CRMCPG
+        ldy #0
+CRMCTAIL lda #DGRAY : sta (PTR),y
+        iny : cpy #112 : bcc CRMCTAIL
+        rts
+
+; ---------------------------------------------------------------------------
+; SETUP_TERMINAL — draw terminal screen, switch to state 3
+; Called via jsr from READ_KEYS when T pressed near terminal.
 ; ---------------------------------------------------------------------------
 SETUP_TERMINAL
         lda #3 : sta GAME_STATE
         lda #0 : sta TERM_SEL
         lda #0 : sta TERM_TMR
+        lda #$00 : sta VIC_SPEN      ; hide player sprite
 
-        ; Draw box rows 4-13 over the playfield
+        jsr CLEAR_ROOM               ; replace room area with blank canvas
+
+        ; Draw box rows 4-13
         ; Row 4: top border
         ldx #39
 TSETB1  lda TBOX_TOP,x : sta SCRN+160,x
@@ -1049,12 +1079,14 @@ DO_TERMINAL
         ; If link confirmation timer running, count down then return to game
         lda TERM_TMR : beq TERM_INPUT
         dec TERM_TMR
-        bne TERM_DONE
-        ; Timer expired — back to game
+        beq TEXPIRE
+        jmp MAIN_LOOP
+TEXPIRE ; Timer expired — back to game
         lda #1 : sta GAME_STATE
-        ; Redraw room to clear terminal overlay
         jsr DRAW_ROOM
         jsr DRAW_STATUS
+        lda #$01 : sta VIC_SPEN      ; restore sprite
+        jsr UPDATE_SPRITE0
         jmp MAIN_LOOP
 
 TERM_INPUT
@@ -1108,6 +1140,8 @@ TERM_ABORT
         lda #1 : sta GAME_STATE
         jsr DRAW_ROOM
         jsr DRAW_STATUS
+        lda #$01 : sta VIC_SPEN      ; restore sprite
+        jsr UPDATE_SPRITE0
 
 TERM_DONE
         jmp MAIN_LOOP
