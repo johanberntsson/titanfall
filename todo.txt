@@ -1,0 +1,15 @@
+Change the terminal from a popup to something that replaces the game screen (keep the HUD and the footer). You will need to hide the sprite when entering terminal mode, and restore it when returning to game mode. Make sure that time stops while in the terminal (don't count down the remaining time), and restore that when leaving the terminal. The best solution is to add a new terminal game state, besides the intro, gameplay and gameover states.
+
+add another room to demonstrate that room managment works Add an opening in the left wall on the first room. If you move left and there's a wall it should work like now (keeping you in the room). If you move into the door then you move into the second room. The second room has a door in its right wall. This door works the same way and leads back to the first room.
+
+add two different robot sprites. Put one robot in each room and let them move back and forth on a path
+
+If there is a player/robot sprite collision, then it should be game over
+
+add a map screen similar to the terminal window (so, a new map state). It should pause the time but keep the HUD like in the terminal. The screen should show the two rooms and highlight the room you're in
+
+add a winning condition and a win screen. For example, a terminal in the second room that has a "disable missile" entry. Select that, and you go to the win screen. Press any key and back to the intro screen
+
+Add music in the intro screen, so set up when starting, close down when exiting to game morde. Use exomizer to create a combined prg with two parts - the gamecode and the music routine.
+
+proper detection of t key (not c)

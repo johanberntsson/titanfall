@@ -1,5 +1,5 @@
-TARGET = titan
-SRC    = src/main.asm
+TARGET = titanfall
+SRC    = src/titanfall.asm
 PRG    = $(TARGET).prg
 
 ACME = acme
