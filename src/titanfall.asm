@@ -329,55 +329,106 @@ SPR_PLAYER
 ; Room data — 22 rows x 40 chars
 ; =============================================================================
 ROOM_DATA
-        !pet "+------+-----------!-----------+------+ "
-        !pet "|=====||           !           |      | "
-        !pet "|=====||           !           |      | "
-        !pet "|=====||           !           |      | "
-        !pet "|     |+-----------!-----------+      | "
-        !pet "|     | T          !                  | "
-        !pet "|     |            !                  | "
-        !pet "|     |            !    [D1]          | "
-        !pet "|     |            !                  | "
-        !pet "+-----+            !                  | "
-        !pet "                   !                  | "
-        !pet "                   !     |=====|      | "
-        !pet "                   !     |=====|      | "
-        !pet "                   !                  | "
-        !pet "|   [D2]           !                  | "
-        !pet "|                  !                  | "
-        !pet "|  ##              !                  | "
-        !pet "|  ##              !                  | "
-        !pet "|                  !                  | "
-        !pet "|                  !                  | "
-        !pet "|                  !                  | "
-        !pet "+------------------!-------------------+"
+; row 1
+        !pet "+"
+        !fill 6, G_HORIZ_BAR
+        !pet "+"
+        !fill 11, G_HORIZ_BAR
+        !pet "!"
+        !fill 11, G_HORIZ_BAR
+        !pet "+"
+        !fill 6, G_HORIZ_BAR
+        !pet "+ "
+; rows 2-4: server rack alcove
+        !pet G_VERT_BAR, "=====", G_VERT_BAR, G_VERT_BAR, "           !           ", G_VERT_BAR, "      ", G_VERT_BAR, " "
+        !pet G_VERT_BAR, "=====", G_VERT_BAR, G_VERT_BAR, "           !           ", G_VERT_BAR, "      ", G_VERT_BAR, " "
+        !pet G_VERT_BAR, "=====", G_VERT_BAR, G_VERT_BAR, "           !           ", G_VERT_BAR, "      ", G_VERT_BAR, " "
+; row 5: inner corridor top
+        !pet G_VERT_BAR, "     ", G_VERT_BAR, "+"
+        !fill 11, G_HORIZ_BAR
+        !pet "!"
+        !fill 11, G_HORIZ_BAR
+        !pet "+      ", G_VERT_BAR, " "
+; row 6: terminal
+        !pet G_VERT_BAR, "     ", G_VERT_BAR, " T          !                  ", G_VERT_BAR, " "
+; rows 7, 9: plain corridor
+        !pet G_VERT_BAR, "     ", G_VERT_BAR, "            !                  ", G_VERT_BAR, " "
+; row 8: drone 1
+        !pet G_VERT_BAR, "     ", G_VERT_BAR, "            !    [D1]          ", G_VERT_BAR, " "
+; row 9
+        !pet G_VERT_BAR, "     ", G_VERT_BAR, "            !                  ", G_VERT_BAR, " "
+; row 10: alcove bottom
+        !pet "+"
+        !fill 5, G_HORIZ_BAR
+        !pet "+            !                  ", G_VERT_BAR, " "
+; row 11
+        !pet "                   !                  ", G_VERT_BAR, " "
+; rows 12-13: sub-alcove racks
+        !pet "                   !     ", G_VERT_BAR, "=====", G_VERT_BAR, "      ", G_VERT_BAR, " "
+        !pet "                   !     ", G_VERT_BAR, "=====", G_VERT_BAR, "      ", G_VERT_BAR, " "
+; row 14
+        !pet "                   !                  ", G_VERT_BAR, " "
+; row 15: drone 2
+        !pet G_VERT_BAR, "   [D2]           !                  ", G_VERT_BAR, " "
+; row 16
+        !pet G_VERT_BAR, "                  !                  ", G_VERT_BAR, " "
+; rows 17-18: crates
+        !pet G_VERT_BAR, "  ##              !                  ", G_VERT_BAR, " "
+        !pet G_VERT_BAR, "  ##              !                  ", G_VERT_BAR, " "
+; rows 19-21
+        !pet G_VERT_BAR, "                  !                  ", G_VERT_BAR, " "
+        !pet G_VERT_BAR, "                  !                  ", G_VERT_BAR, " "
+        !pet G_VERT_BAR, "                  !                  ", G_VERT_BAR, " "
+; row 22: bottom wall
+        !pet "+"
+        !fill 18, G_HORIZ_BAR
+        !pet "!"
+        !fill 19, G_HORIZ_BAR
+        !pet "+"
 
 ; =============================================================================
 ; Room 2 data — maintenance bay, 22 rows x 40 chars
 ; Right wall opens at rows 10-13 (PLR_Y 5-6 doorway back to room 1)
 ; =============================================================================
 ROOM2_DATA
-        !pet "+-------------------------------------+ "
-        !pet "|                                     | "
-        !pet "|  ##   ##                            | "
-        !pet "|  ##   ##                            | "
-        !pet "|                                     | "
-        !pet "|       |=======|                     | "
-        !pet "|       |=======|                     | "
-        !pet "|       |=======|                     | "
-        !pet "|                                     | "
-        !pet "|                                     | "
-        !pet "|                                       "
-        !pet "|                                       "
-        !pet "|                                       "
-        !pet "|                                       "
-        !pet "|                                     | "
-        !pet "|                                     | "
-        !pet "|                                     | "
-        !pet "|  ####                               | "
-        !pet "|  ####                               | "
-        !pet "|                                     | "
-        !pet "|                                     | "
-        !pet "+-----------           ---------------+ "
+; row 1: top wall
+        !pet "+"
+        !fill 37, G_HORIZ_BAR
+        !pet "+ "
+; rows 2, 5, 9-10, 15-17, 20-21: plain walls
+        !pet G_VERT_BAR, "                                     ", G_VERT_BAR, " "
+; rows 3-4: crates
+        !pet G_VERT_BAR, "  ##   ##                            ", G_VERT_BAR, " "
+        !pet G_VERT_BAR, "  ##   ##                            ", G_VERT_BAR, " "
+; row 5
+        !pet G_VERT_BAR, "                                     ", G_VERT_BAR, " "
+; rows 6-8: server racks
+        !pet G_VERT_BAR, "       ", G_VERT_BAR, "=======", G_VERT_BAR, "                     ", G_VERT_BAR, " "
+        !pet G_VERT_BAR, "       ", G_VERT_BAR, "=======", G_VERT_BAR, "                     ", G_VERT_BAR, " "
+        !pet G_VERT_BAR, "       ", G_VERT_BAR, "=======", G_VERT_BAR, "                     ", G_VERT_BAR, " "
+; rows 9-10
+        !pet G_VERT_BAR, "                                     ", G_VERT_BAR, " "
+        !pet G_VERT_BAR, "                                     ", G_VERT_BAR, " "
+; rows 11-14: open doorway (no right wall)
+        !pet G_VERT_BAR, "                                       "
+        !pet G_VERT_BAR, "                                       "
+        !pet G_VERT_BAR, "                                       "
+        !pet G_VERT_BAR, "                                       "
+; rows 15-17
+        !pet G_VERT_BAR, "                                     ", G_VERT_BAR, " "
+        !pet G_VERT_BAR, "                                     ", G_VERT_BAR, " "
+        !pet G_VERT_BAR, "                                     ", G_VERT_BAR, " "
+; rows 18-19: crates
+        !pet G_VERT_BAR, "  ####                               ", G_VERT_BAR, " "
+        !pet G_VERT_BAR, "  ####                               ", G_VERT_BAR, " "
+; rows 20-21
+        !pet G_VERT_BAR, "                                     ", G_VERT_BAR, " "
+        !pet G_VERT_BAR, "                                     ", G_VERT_BAR, " "
+; row 22: bottom wall with doorway gap
+        !pet "+"
+        !fill 11, G_HORIZ_BAR
+        !pet "           "
+        !fill 15, G_HORIZ_BAR
+        !pet "+ "
 
         !eof

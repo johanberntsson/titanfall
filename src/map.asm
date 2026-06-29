@@ -118,11 +118,29 @@ SMHL2_13 lda #LTGREEN : sta CRAM+13*40+20,x : dex : bpl SMHL2_13
 ; Map strings — all exactly 40 bytes
 ; =============================================================================
 MAP_R8   !pet "      * sector map *                    "
-MAP_R9   !pet "  +----------+      +----------+        "
-MAP_R10  !pet "  |  room 1  |      |  room 2  |        "
-MAP_R11  !pet "  |          +------+          |        "
-MAP_R12  !pet "  |          +------+          |        "
-MAP_R13  !pet "  +----------+      +----  ----+        "
-MAP_R14  !pet "                         ||             "
+MAP_R9
+        !pet "  +"
+        !fill 10, G_HORIZ_BAR
+        !pet "+      +"
+        !fill 10, G_HORIZ_BAR
+        !pet "+        "
+MAP_R10  !pet "  ", G_VERT_BAR, "  room 1  ", G_VERT_BAR, "      ", G_VERT_BAR, "  room 2  ", G_VERT_BAR, "        "
+MAP_R11
+        !pet "  ", G_VERT_BAR, "          +"
+        !fill 6, G_HORIZ_BAR
+        !pet "+          ", G_VERT_BAR, "        "
+MAP_R12
+        !pet "  ", G_VERT_BAR, "          +"
+        !fill 6, G_HORIZ_BAR
+        !pet "+          ", G_VERT_BAR, "        "
+MAP_R13
+        !pet "  +"
+        !fill 10, G_HORIZ_BAR
+        !pet "+      +"
+        !fill 4, G_HORIZ_BAR
+        !pet "  "
+        !fill 4, G_HORIZ_BAR
+        !pet "+        "
+MAP_R14  !pet "                         ", G_VERT_BAR, G_VERT_BAR, "             "
 MAP_R15  !pet "                        exit            "
 MAP_R17  !pet "     press any key to return            "

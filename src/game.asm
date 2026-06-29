@@ -447,9 +447,9 @@ DRMSP1  lda #<ROOM_DATA  : sta PTR : lda #>ROOM_DATA  : sta PTR+1 : rts
 COL_BYTE
         lda (PTR),y
         cmp #CH_SPC  : beq COLFL
-        cmp #CH_PLUS : beq COLWA
-        cmp #CH_DASH : beq COLWA
-        cmp #CH_BAR  : beq COLWA
+        cmp #CH_PLUS     : beq COLWA
+        cmp #G_HORIZ_BAR : beq COLWA
+        cmp #G_VERT_BAR  : beq COLWA
         cmp #CH_EQ   : beq COLRA
         cmp #CH_HASH : beq COLCR
         cmp #CH_BANG : beq COLLA

@@ -129,9 +129,9 @@ WINBLOFF lda #CH_SPC : sta SCRN+600,x
 ; =============================================================================
 ; Win strings — all exactly 40 bytes
 ; =============================================================================
-WIN_TITLE   !pet G_VERT_BAR,"  * * *  mission complete  * * *      ",G_VERT_BAR,"
-WIN_M1      !pet G_VERT_BAR,"  launch sequence aborted!            ",G_VERT_BAR,"
-WIN_M2      !pet G_VERT_BAR,"  titan complex secured               ",G_VERT_BAR,"
-WIN_M3      !pet G_VERT_BAR,"  well done, operative                ",G_VERT_BAR,"
+WIN_TITLE   !pet G_VERT_BAR,"  * * *  mission complete  * * *      ",G_VERT_BAR
+WIN_M1      !pet G_VERT_BAR,"  launch sequence aborted!            ",G_VERT_BAR
+WIN_M2      !pet G_VERT_BAR,"  titan complex secured               ",G_VERT_BAR
+WIN_M3      !pet G_VERT_BAR,"  well done, operative                ",G_VERT_BAR
 
 TXT_WINPRESS !pet "      press any key to continue         "
