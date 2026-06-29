@@ -34,17 +34,17 @@ INTRO_DONE
 ; =============================================================================
 DRAW_INTRO_SCREEN
         ldx #39    ; row 3: top border (DGRAY)
-DIRS03  lda SCR_BORDER,x : sta SCRN+120,x
+DIRS03  lda SCR_BORDER_TOP,x : jsr PET2SCREEN : sta SCRN+120,x
         lda #DGRAY : sta CRAM+120,x
         dex : bpl DIRS03
 
         ldx #39    ; row 4: blank (DGRAY)
-DIRS04  lda SCR_BLANK,x : sta SCRN+160,x
+DIRS04  lda SCR_BLANK,x : jsr PET2SCREEN : sta SCRN+160,x
         lda #DGRAY : sta CRAM+160,x
         dex : bpl DIRS04
 
         ldx #39    ; row 5: title (PURPLE), * chars in YELLOW
-DIRS05  lda ITR_TITLE,x : sta SCRN+200,x
+DIRS05  lda ITR_TITLE,x : jsr PET2SCREEN : sta SCRN+200,x
         lda #PURPLE : sta CRAM+200,x
         dex : bpl DIRS05
         lda #YELLOW
@@ -52,42 +52,42 @@ DIRS05  lda ITR_TITLE,x : sta SCRN+200,x
         sta CRAM+224 : sta CRAM+226 : sta CRAM+228
 
         ldx #39    ; row 6: tagline (CYAN)
-DIRS06  lda ITR_TAG,x : sta SCRN+240,x
+DIRS06  lda ITR_TAG,x : jsr PET2SCREEN : sta SCRN+240,x
         lda #CYAN : sta CRAM+240,x
         dex : bpl DIRS06
 
         ldx #39    ; row 7: separator (BLUE)
-DIRS07  lda ITR_SEP,x : sta SCRN+280,x
+DIRS07  lda ITR_SEP,x : jsr PET2SCREEN : sta SCRN+280,x
         lda #BLUE : sta CRAM+280,x
         dex : bpl DIRS07
 
         ldx #39    ; row 8: blank (DGRAY)
-DIRS08  lda SCR_BLANK,x : sta SCRN+320,x
+DIRS08  lda SCR_BLANK,x : jsr PET2SCREEN : sta SCRN+320,x
         lda #DGRAY : sta CRAM+320,x
         dex : bpl DIRS08
 
         ldx #39    ; row 9: mission line 1 (MGRAY)
-DIRS09  lda ITR_M1,x : sta SCRN+360,x
+DIRS09  lda ITR_M1,x : jsr PET2SCREEN : sta SCRN+360,x
         lda #MGRAY : sta CRAM+360,x
         dex : bpl DIRS09
 
         ldx #39    ; row 10: mission line 2 (MGRAY)
-DIRS10  lda ITR_M2,x : sta SCRN+400,x
+DIRS10  lda ITR_M2,x : jsr PET2SCREEN : sta SCRN+400,x
         lda #MGRAY : sta CRAM+400,x
         dex : bpl DIRS10
 
         ldx #39    ; row 11: warning (LTRED)
-DIRS11  lda ITR_M3,x : sta SCRN+440,x
+DIRS11  lda ITR_M3,x : jsr PET2SCREEN : sta SCRN+440,x
         lda #LTRED : sta CRAM+440,x
         dex : bpl DIRS11
 
         ldx #39    ; row 12: blank (DGRAY)
-DIRS12  lda SCR_BLANK,x : sta SCRN+480,x
+DIRS12  lda SCR_BLANK,x : jsr PET2SCREEN : sta SCRN+480,x
         lda #DGRAY : sta CRAM+480,x
         dex : bpl DIRS12
 
         ldx #39    ; row 13: bottom border (DGRAY)
-DIRS13  lda SCR_BORDER,x : sta SCRN+520,x
+DIRS13  lda SCR_BORDER_BOTTOM,x : jsr PET2SCREEN : sta SCRN+520,x
         lda #DGRAY : sta CRAM+520,x
         dex : bpl DIRS13
 
@@ -100,6 +100,7 @@ DIRS13  lda SCR_BORDER,x : sta SCRN+520,x
 BLINK_ON
         ldx #39
 BLON    lda TXT_PRESS,x
+        jsr PET2SCREEN
         sta SCRN+800,x
         lda #WHITE : sta CRAM+800,x
         dex
@@ -117,10 +118,10 @@ BLOFF   lda #CH_SPC
 ; =============================================================================
 ; Intro strings — all exactly 40 bytes
 ; =============================================================================
-ITR_TITLE   !pet "|    * * *  titan fall  * * *          |"
-ITR_TAG     !pet "|  infiltrate. subvert. stop launch.   |"
-ITR_M1      !pet "|  mission: abort launch sequence      |"
-ITR_M2      !pet "|  location: titan missile complex     |"
-ITR_M3      !pet "|  warning: launch in t-minus 5 hours  |"
+ITR_TITLE   !pet G_VERT_BAR, "    * * *  titan fall  * * *          ", G_VERT_BAR
+ITR_TAG     !pet G_VERT_BAR, "  infiltrate. subvert. stop launch.   ", G_VERT_BAR
+ITR_M1      !pet G_VERT_BAR, "  mission: abort launch sequence      ", G_VERT_BAR
+ITR_M2      !pet G_VERT_BAR, "  location: titan missile complex     ", G_VERT_BAR
+ITR_M3      !pet G_VERT_BAR, "  warning: launch in t-minus 5 hours  ", G_VERT_BAR
 
 TXT_PRESS   !pet "        press any key to start          "

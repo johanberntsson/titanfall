@@ -54,17 +54,17 @@ SETUP_GAMEOVER
         lda #$FC   : sta SPRPTR+1
 
         ldx #39    ; row 3: top border (RED)
-GOROW03 lda SCR_BORDER,x : sta SCRN+120,x
+GOROW03 lda SCR_BORDER_TOP,x : jsr PET2SCREEN : sta SCRN+120,x
         lda #RED : sta CRAM+120,x
         dex : bpl GOROW03
 
         ldx #39    ; row 4: blank (RED)
-GOROW04 lda SCR_BLANK,x : sta SCRN+160,x
+GOROW04 lda SCR_BLANK,x : jsr PET2SCREEN : sta SCRN+160,x
         lda #RED : sta CRAM+160,x
         dex : bpl GOROW04
 
         ldx #39    ; row 5: title (LTRED)
-GOROW05 lda GO_TITLE,x : sta SCRN+200,x
+GOROW05 lda GO_TITLE,x : jsr PET2SCREEN : sta SCRN+200,x
         lda #LTRED : sta CRAM+200,x
         dex : bpl GOROW05
         lda #YELLOW
@@ -72,42 +72,42 @@ GOROW05 lda GO_TITLE,x : sta SCRN+200,x
         sta CRAM+227 : sta CRAM+229 : sta CRAM+231
 
         ldx #39    ; row 6: blank (RED)
-GOROW06 lda SCR_BLANK,x : sta SCRN+240,x
+GOROW06 lda SCR_BLANK,x : jsr PET2SCREEN : sta SCRN+240,x
         lda #RED : sta CRAM+240,x
         dex : bpl GOROW06
 
         ldx #39    ; row 7: separator (DGRAY)
-GOROW07 lda ITR_SEP,x : sta SCRN+280,x
+GOROW07 lda ITR_SEP,x : jsr PET2SCREEN : sta SCRN+280,x
         lda #DGRAY : sta CRAM+280,x
         dex : bpl GOROW07
 
         ldx #39    ; row 8: operative terminated (WHITE)
-GOROW08 lda GO_M1,x : sta SCRN+320,x
+GOROW08 lda GO_M1,x : jsr PET2SCREEN : sta SCRN+320,x
         lda #WHITE : sta CRAM+320,x
         dex : bpl GOROW08
 
         ldx #39    ; row 9: launch continues (LTRED)
-GOROW09 lda GO_M2,x : sta SCRN+360,x
+GOROW09 lda GO_M2,x : jsr PET2SCREEN : sta SCRN+360,x
         lda #LTRED : sta CRAM+360,x
         dex : bpl GOROW09
 
         ldx #39    ; row 10: blank (RED)
-GOROW10 lda SCR_BLANK,x : sta SCRN+400,x
+GOROW10 lda SCR_BLANK,x : jsr PET2SCREEN : sta SCRN+400,x
         lda #RED : sta CRAM+400,x
         dex : bpl GOROW10
 
         ldx #39    ; row 11: mission failed (YELLOW)
-GOROW11 lda GO_M3,x : sta SCRN+440,x
+GOROW11 lda GO_M3,x : jsr PET2SCREEN : sta SCRN+440,x
         lda #YELLOW : sta CRAM+440,x
         dex : bpl GOROW11
 
         ldx #39    ; row 12: blank (RED)
-GOROW12 lda SCR_BLANK,x : sta SCRN+480,x
+GOROW12 lda SCR_BLANK,x : jsr PET2SCREEN : sta SCRN+480,x
         lda #RED : sta CRAM+480,x
         dex : bpl GOROW12
 
         ldx #39    ; row 13: bottom border (RED)
-GOROW13 lda SCR_BORDER,x : sta SCRN+520,x
+GOROW13 lda SCR_BORDER_BOTTOM,x : jsr PET2SCREEN : sta SCRN+520,x
         lda #RED : sta CRAM+520,x
         dex : bpl GOROW13
 
@@ -120,6 +120,7 @@ GOROW13 lda SCR_BORDER,x : sta SCRN+520,x
 GO_BLINK_ON
         ldx #39
 GOBLON  lda TXT_GOPRESS,x
+        jsr PET2SCREEN
         sta SCRN+640,x
         lda #YELLOW : sta CRAM+640,x
         dex
@@ -137,9 +138,9 @@ GOBLOFF lda #CH_SPC
 ; =============================================================================
 ; Game over strings — all exactly 40 bytes
 ; =============================================================================
-GO_TITLE    !pet "|  * * *  security breach  * * *       |"
-GO_M1       !pet "|  operative terminated                |"
-GO_M2       !pet "|  titan launch sequence continues...  |"
-GO_M3       !pet "|  your mission has failed             |"
+GO_TITLE    !pet G_VERT_BAR,"  * * *  security breach  * * *       ",G_VERT_BAR
+GO_M1       !pet G_VERT_BAR,"  operative terminated                ",G_VERT_BAR
+GO_M2       !pet G_VERT_BAR,"  titan launch sequence continues...  ",G_VERT_BAR
+GO_M3       !pet G_VERT_BAR,"  your mission has failed             ",G_VERT_BAR
 
 TXT_GOPRESS !pet "        press any key to retry          "

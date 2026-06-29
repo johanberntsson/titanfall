@@ -1,4 +1,4 @@
-; =============================================================================
+
 ; TITAN FALL  —  C64  (ACME assembler)
 ; =============================================================================
 ; Build : make
@@ -99,6 +99,12 @@ CH_LBRK = $5B
 CH_RBRK = $5D
 CH_HBLK = $A0
 
+
+; =============================================================================
+; Include PETSCII constants
+; =============================================================================
+        !source "src/petscii.asm"
+
 ; =============================================================================
 ; BASIC stub
 ; =============================================================================
@@ -130,7 +136,7 @@ SIDCLR  lda #0
 
         ; VIC init
         lda #BLACK : sta VIC_BRDCOL : sta VIC_BGCOL
-        lda #$16 : sta VIC_VMCSB        ; screen $0400, chars $1800 (lowercase)
+        ;lda #$16 : sta VIC_VMCSB        ; screen $0400, chars $1800 (lowercase)
         lda #$0E : sta $0291            ; stop KERNAL IRQ resetting charset
 
         ; Sprite pointers and config
@@ -212,6 +218,24 @@ CLSP    lda #CH_SPC : sta (PTR),y
         rts
 
 ; =============================================================================
+; PET2SCREEN — convert PETSCII (A) to C64 screen code (A)
+; $20-$3F → same  |  $40-$5F → -$40  |  $60-$7F → -$20
+; $A0-$BF → -$40  |  $C0-$FF → -$80  |  others  → unchanged
+; =============================================================================
+PET2SCREEN
+        cmp #$40 : bcc P2S_OUT      ; $00-$3F: identity
+        cmp #$60 : bcc P2S_SUB40    ; $40-$5F: A-Z, brackets
+        cmp #$80 : bcc P2S_SUB20    ; $60-$7F: a-z, |
+        cmp #$A0 : bcc P2S_OUT      ; $80-$9F: control — pass through
+        cmp #$C0 : bcc P2S_SUB40    ; $A0-$BF: graphics
+        sec : sbc #$80 : rts        ; $C0-$FF: graphics
+P2S_SUB40
+        sec : sbc #$40 : rts
+P2S_SUB20
+        sec : sbc #$20 : rts
+P2S_OUT rts
+
+; =============================================================================
 ; RASTER IRQ — fires at line 50, ~50 Hz PAL
 ; =============================================================================
 RASTER_IRQ
@@ -225,9 +249,13 @@ RIRQ_SKIP
 ; =============================================================================
 ; Shared box strings — used by intro, gameover, and win screens
 ; =============================================================================
-SCR_BORDER  !pet "+--------------------------------------+"
-SCR_BLANK   !pet "|                                      |"
-ITR_SEP     !pet "|  ==================================  |"
+;SCR_BORDER  !pet "+--------------------------------------+"
+;SCR_BLANK   !pet "G_VERT_BAR                                      G_VERT_BAR
+;ITR_SEP     !pet "G_VERT_BAR  ==================================  G_VERT_BAR
+SCR_BORDER_TOP  !pet G_RD_UL, G_HORIZ_BAR, G_HORIZ_BAR, G_HORIZ_BAR, G_HORIZ_BAR, G_HORIZ_BAR, G_HORIZ_BAR, G_HORIZ_BAR, G_HORIZ_BAR, G_HORIZ_BAR, G_HORIZ_BAR, G_HORIZ_BAR, G_HORIZ_BAR, G_HORIZ_BAR, G_HORIZ_BAR, G_HORIZ_BAR, G_HORIZ_BAR, G_HORIZ_BAR, G_HORIZ_BAR, G_HORIZ_BAR, G_HORIZ_BAR, G_HORIZ_BAR, G_HORIZ_BAR, G_HORIZ_BAR, G_HORIZ_BAR, G_HORIZ_BAR, G_HORIZ_BAR, G_HORIZ_BAR, G_HORIZ_BAR, G_HORIZ_BAR, G_HORIZ_BAR, G_HORIZ_BAR, G_HORIZ_BAR, G_HORIZ_BAR, G_HORIZ_BAR, G_HORIZ_BAR, G_HORIZ_BAR, G_HORIZ_BAR, G_HORIZ_BAR, G_RD_UR
+SCR_BLANK   !pet G_VERT_BAR, "                                      ", G_VERT_BAR
+ITR_SEP    !pet G_VERT_BAR, "  ==================================  " , G_VERT_BAR
+SCR_BORDER_BOTTOM  !pet G_RD_LL, G_HORIZ_BAR, G_HORIZ_BAR, G_HORIZ_BAR, G_HORIZ_BAR, G_HORIZ_BAR, G_HORIZ_BAR, G_HORIZ_BAR, G_HORIZ_BAR, G_HORIZ_BAR, G_HORIZ_BAR, G_HORIZ_BAR, G_HORIZ_BAR, G_HORIZ_BAR, G_HORIZ_BAR, G_HORIZ_BAR, G_HORIZ_BAR, G_HORIZ_BAR, G_HORIZ_BAR, G_HORIZ_BAR, G_HORIZ_BAR, G_HORIZ_BAR, G_HORIZ_BAR, G_HORIZ_BAR, G_HORIZ_BAR, G_HORIZ_BAR, G_HORIZ_BAR, G_HORIZ_BAR, G_HORIZ_BAR, G_HORIZ_BAR, G_HORIZ_BAR, G_HORIZ_BAR, G_HORIZ_BAR, G_HORIZ_BAR, G_HORIZ_BAR, G_HORIZ_BAR, G_HORIZ_BAR, G_HORIZ_BAR, G_HORIZ_BAR, G_RD_LR
 
 ; =============================================================================
 ; State modules

@@ -50,17 +50,17 @@ SETUP_WIN
         lda #$FC   : sta SPRPTR+1
 
         ldx #39    ; row 3: top border (GREEN)
-WROW03  lda SCR_BORDER,x : sta SCRN+120,x
+WROW03  lda SCR_BORDER_TOP,x : jsr PET2SCREEN : sta SCRN+120,x
         lda #GREEN : sta CRAM+120,x
         dex : bpl WROW03
 
         ldx #39    ; row 4: blank (GREEN)
-WROW04  lda SCR_BLANK,x : sta SCRN+160,x
+WROW04  lda SCR_BLANK,x : jsr PET2SCREEN : sta SCRN+160,x
         lda #GREEN : sta CRAM+160,x
         dex : bpl WROW04
 
         ldx #39    ; row 5: title (LTGREEN)
-WROW05  lda WIN_TITLE,x : sta SCRN+200,x
+WROW05  lda WIN_TITLE,x : jsr PET2SCREEN : sta SCRN+200,x
         lda #LTGREEN : sta CRAM+200,x
         dex : bpl WROW05
         lda #YELLOW
@@ -68,42 +68,42 @@ WROW05  lda WIN_TITLE,x : sta SCRN+200,x
         sta CRAM+228 : sta CRAM+230 : sta CRAM+232
 
         ldx #39    ; row 6: blank (GREEN)
-WROW06  lda SCR_BLANK,x : sta SCRN+240,x
+WROW06  lda SCR_BLANK,x : jsr PET2SCREEN : sta SCRN+240,x
         lda #GREEN : sta CRAM+240,x
         dex : bpl WROW06
 
         ldx #39    ; row 7: separator (BLUE)
-WROW07  lda ITR_SEP,x : sta SCRN+280,x
+WROW07  lda ITR_SEP,x : jsr PET2SCREEN : sta SCRN+280,x
         lda #BLUE : sta CRAM+280,x
         dex : bpl WROW07
 
         ldx #39    ; row 8: launch aborted (YELLOW)
-WROW08  lda WIN_M1,x : sta SCRN+320,x
+WROW08  lda WIN_M1,x : jsr PET2SCREEN : sta SCRN+320,x
         lda #YELLOW : sta CRAM+320,x
         dex : bpl WROW08
 
         ldx #39    ; row 9: secured (WHITE)
-WROW09  lda WIN_M2,x : sta SCRN+360,x
+WROW09  lda WIN_M2,x : jsr PET2SCREEN : sta SCRN+360,x
         lda #WHITE : sta CRAM+360,x
         dex : bpl WROW09
 
         ldx #39    ; row 10: blank (GREEN)
-WROW10  lda SCR_BLANK,x : sta SCRN+400,x
+WROW10  lda SCR_BLANK,x : jsr PET2SCREEN : sta SCRN+400,x
         lda #GREEN : sta CRAM+400,x
         dex : bpl WROW10
 
         ldx #39    ; row 11: well done (CYAN)
-WROW11  lda WIN_M3,x : sta SCRN+440,x
+WROW11  lda WIN_M3,x : jsr PET2SCREEN : sta SCRN+440,x
         lda #CYAN : sta CRAM+440,x
         dex : bpl WROW11
 
         ldx #39    ; row 12: blank (GREEN)
-WROW12  lda SCR_BLANK,x : sta SCRN+480,x
+WROW12  lda SCR_BLANK,x : jsr PET2SCREEN : sta SCRN+480,x
         lda #GREEN : sta CRAM+480,x
         dex : bpl WROW12
 
         ldx #39    ; row 13: bottom border (GREEN)
-WROW13  lda SCR_BORDER,x : sta SCRN+520,x
+WROW13  lda SCR_BORDER_BOTTOM,x : jsr PET2SCREEN : sta SCRN+520,x
         lda #GREEN : sta CRAM+520,x
         dex : bpl WROW13
 
@@ -115,7 +115,7 @@ WROW13  lda SCR_BORDER,x : sta SCRN+520,x
 ; =============================================================================
 WIN_BLINK_ON
         ldx #39
-WINBLON lda TXT_WINPRESS,x : sta SCRN+600,x
+WINBLON lda TXT_WINPRESS,x : jsr PET2SCREEN : sta SCRN+600,x
         lda #WHITE : sta CRAM+600,x
         dex : bpl WINBLON
         rts
@@ -129,9 +129,9 @@ WINBLOFF lda #CH_SPC : sta SCRN+600,x
 ; =============================================================================
 ; Win strings — all exactly 40 bytes
 ; =============================================================================
-WIN_TITLE   !pet "|  * * *  mission complete  * * *      |"
-WIN_M1      !pet "|  launch sequence aborted!            |"
-WIN_M2      !pet "|  titan complex secured               |"
-WIN_M3      !pet "|  well done, operative                |"
+WIN_TITLE   !pet G_VERT_BAR,"  * * *  mission complete  * * *      ",G_VERT_BAR,"
+WIN_M1      !pet G_VERT_BAR,"  launch sequence aborted!            ",G_VERT_BAR,"
+WIN_M2      !pet G_VERT_BAR,"  titan complex secured               ",G_VERT_BAR,"
+WIN_M3      !pet G_VERT_BAR,"  well done, operative                ",G_VERT_BAR,"
 
 TXT_WINPRESS !pet "      press any key to continue         "

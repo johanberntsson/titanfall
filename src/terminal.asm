@@ -48,69 +48,69 @@ SETUP_TERMINAL
 
         ; Row 4: top border
         ldx #39
-TSETB1  lda TBOX_TOP,x : sta SCRN+160,x
+TSETB1  lda TBOX_TOP,x : jsr PET2SCREEN : sta SCRN+160,x
         lda #LTGREEN : sta CRAM+160,x
         dex : bpl TSETB1
 
         ; Row 5: title
         ldx #39
-TSETB2  lda TBOX_TTL,x : sta SCRN+200,x
+TSETB2  lda TBOX_TTL,x : jsr PET2SCREEN : sta SCRN+200,x
         lda #LTGREEN : sta CRAM+200,x
         dex : bpl TSETB2
 
         ; Row 6: subtitle
         ldx #39
-TSETB3  lda TBOX_SUB,x : sta SCRN+240,x
+TSETB3  lda TBOX_SUB,x : jsr PET2SCREEN : sta SCRN+240,x
         lda #GREEN : sta CRAM+240,x
         dex : bpl TSETB3
 
         ; Row 7: blank interior
         ldx #39
-TSETB4  lda TBOX_BLK,x : sta SCRN+280,x
+TSETB4  lda TBOX_BLK,x : jsr PET2SCREEN : sta SCRN+280,x
         lda #GREEN : sta CRAM+280,x
         dex : bpl TSETB4
 
         ; Rows 8-10: drone entries
         ldx #39
-TSETD0  lda TBOX_D0,x : sta TERM_ROW0,x
+TSETD0  lda TBOX_D0,x : jsr PET2SCREEN : sta TERM_ROW0,x
         lda #GREEN : sta TERM_COL0,x
         dex : bpl TSETD0
         ldx #39
-TSETD1  lda TBOX_D1,x : sta TERM_ROW1,x
+TSETD1  lda TBOX_D1,x : jsr PET2SCREEN : sta TERM_ROW1,x
         lda #GREEN : sta TERM_COL1,x
         dex : bpl TSETD1
         ldx #39
-TSETD2  lda TBOX_D2,x : sta TERM_ROW2,x
+TSETD2  lda TBOX_D2,x : jsr PET2SCREEN : sta TERM_ROW2,x
         lda #DGRAY : sta TERM_COL2,x
         dex : bpl TSETD2
 
         ; Row 11: blank
         ldx #39
-TSETB5  lda TBOX_BLK,x : sta SCRN+440,x
+TSETB5  lda TBOX_BLK,x : jsr PET2SCREEN : sta SCRN+440,x
         lda #GREEN : sta CRAM+440,x
         dex : bpl TSETB5
 
         ; Row 12: logoff entry
         ldx #39
-TSETD3  lda TBOX_D3,x : sta TERM_ROW3,x
+TSETD3  lda TBOX_D3,x : jsr PET2SCREEN : sta TERM_ROW3,x
         lda #GREEN : sta TERM_COL3,x
         dex : bpl TSETD3
 
         ; Row 13: blank
         ldx #39
-TSETB6  lda TBOX_BLK,x : sta SCRN+520,x
+TSETB6  lda TBOX_BLK,x : jsr PET2SCREEN : sta SCRN+520,x
         lda #GREEN : sta CRAM+520,x
         dex : bpl TSETB6
 
         ; Row 14: key hint
         ldx #39
-TSETB7  lda TBOX_HNT,x : sta SCRN+560,x
+TSETB7  lda TBOX_HNT,x : jsr PET2SCREEN : sta SCRN+560,x
         lda #DGRAY : sta CRAM+560,x
         dex : bpl TSETB7
 
         ; Row 15: bottom border
         ldx #39
-TSETB8  lda TBOX_BOT,x : sta SCRN+600,x
+TSETB8  lda TBOX_BOT,x : jsr PET2SCREEN : sta SCRN+600,x
         lda #LTGREEN : sta CRAM+600,x
         dex : bpl TSETB8
 
@@ -152,14 +152,14 @@ TERM_LINK
         lda TERM_SEL : cmp #3 : beq TERM_LOGOFF
         cmp #2 : beq TERM_LOCKED
         ldx #39
-TLINK1  lda TMSG_OK,x : sta TERM_MSGROW,x
+TLINK1  lda TMSG_OK,x : jsr PET2SCREEN : sta TERM_MSGROW,x
         lda #LTGREEN : sta CRAM+(16*40),x
         dex : bpl TLINK1
         bne TERM_DONE
 
 TERM_LOCKED
         ldx #39
-TLOCK1  lda TMSG_LCK,x : sta TERM_MSGROW,x
+TLOCK1  lda TMSG_LCK,x : jsr PET2SCREEN : sta TERM_MSGROW,x
         lda #LTRED : sta CRAM+(16*40),x
         dex : bpl TLOCK1
         bne TERM_DONE

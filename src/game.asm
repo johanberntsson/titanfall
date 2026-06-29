@@ -80,7 +80,7 @@ SETUP_GAME
 ; =============================================================================
 DRAW_HUD_STATIC
         ldx #39
-HUDST1  lda HUD_TMPL,x : sta SCRN,x
+HUDST1  lda HUD_TMPL,x : jsr PET2SCREEN : sta SCRN,x
         lda #CYAN : sta CRAM,x
         dex
         bpl HUDST1
@@ -115,7 +115,7 @@ HUDCC   ldx #7
 HUDCCL  sta CRAM,x : dex : bpl HUDCCL
 
         ldx #4
-HUDML   lda LMODE_H,x : sta SCRN+9,x
+HUDML   lda LMODE_H,x : jsr PET2SCREEN : sta SCRN+9,x
         lda #CYAN : sta CRAM+9,x
         dex
         bpl HUDML
@@ -421,12 +421,12 @@ DRAW_ROOM
         jsr DRMSETPTR
         lda #<(SCRN+80) : sta PTR2 : lda #>(SCRN+80) : sta PTR2+1
         ldx #3 : ldy #0
-DRMPG   lda (PTR),y : sta (PTR2),y
+DRMPG   lda (PTR),y : jsr PET2SCREEN : sta (PTR2),y
         iny : bne DRMPG
         inc PTR+1 : inc PTR2+1
         dex : bne DRMPG
         ldy #0
-DRMTAIL lda (PTR),y : sta (PTR2),y
+DRMTAIL lda (PTR),y : jsr PET2SCREEN : sta (PTR2),y
         iny : cpy #112 : bcc DRMTAIL
 
         jsr DRMSETPTR
@@ -475,7 +475,7 @@ COLST   sta (PTR2),y
 ; =============================================================================
 DRAW_STATUS
         ldx #39
-DSTL    lda STAT_TMPL,x : sta SCRN+960,x
+DSTL    lda STAT_TMPL,x : jsr PET2SCREEN : sta SCRN+960,x
         lda #DGRAY : sta CRAM+960,x
         dex : bpl DSTL
         lda CUR_ROOM : clc : adc #(CH_0+1) : sta SCRN+962
