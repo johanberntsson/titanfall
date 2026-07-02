@@ -244,7 +244,7 @@ RASTER_IRQ
         lda #$01 : sta VIC_IRQ
         lda #$01 : sta TICK_FLAG
         lda SND_TMR : bne RIRQ_SKIP    ; skip music while death sound plays
-        jsr $C059                       ; Armalyte music play
+        jsr $C127                      ; music play
 RIRQ_SKIP
         jmp $EA31
 

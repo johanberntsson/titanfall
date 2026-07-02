@@ -11,7 +11,7 @@ all: $(PRG)
 
 $(PRG): $(SRC)
 	$(ACME) -f cbm -o $(BIN) $(SRC)
-	$(EXOMIZER) sfx sys,0x0801 $(BIN) music/armalyte.prg -o $(PRG)
+	$(EXOMIZER) sfx sys,0x0801 $(BIN) music/Licence_to_Kill.prg -o $(PRG)
 
 run: $(PRG)
 	$(VICE) $(PRG)
