@@ -228,25 +228,30 @@ RKJ1    lda TMP : and #$02 : bne RKJ2 : lda #1 : sta KEY_D
 RKJ2    lda TMP : and #$04 : bne RKJ3 : lda #1 : sta KEY_L
 RKJ3    lda TMP : and #$08 : bne RKJ4 : lda #1 : sta KEY_R
 RKJ4
-        lda #$FE : sta CIA1_PRA
-        lda CIA1_PRB : sta TMP
-        lda TMP : and #$80 : bne RKCUD
+        ; W (up): col 1 (PA=$FD), row 1 (PB bit 1, active low)
         lda #$FD : sta CIA1_PRA
-        lda CIA1_PRB : and #$80 : bne RKCDN
-        lda #1 : sta KEY_U : !byte $2C
-RKCDN   lda #1 : sta KEY_D
-RKCUD
-        lda #$FE : sta CIA1_PRA
-        lda CIA1_PRB : and #$04 : bne RKCRT
+        lda CIA1_PRB : and #$02 : bne RKWN
+        lda #1 : sta KEY_U
+RKWN
+        ; S (down): col 1 (PA=$FD), row 5 (PB bit 5, active low)
         lda #$FD : sta CIA1_PRA
-        lda CIA1_PRB : and #$80 : bne RKCRIGHT
-        lda #1 : sta KEY_L : !byte $2C
-RKCRIGHT lda #1 : sta KEY_R
-RKCRT
-
-        ; T key: col 2 (PA=$FB), row 4 (PB bit 4, active low)
+        lda CIA1_PRB : and #$20 : bne RKSN
+        lda #1 : sta KEY_D
+RKSN
+        ; A (left): col 1 (PA=$FD), row 2 (PB bit 2, active low)
+        lda #$FD : sta CIA1_PRA
+        lda CIA1_PRB : and #$04 : bne RKAN
+        lda #1 : sta KEY_L
+RKAN
+        ; D (right): col 2 (PA=$FB), row 2 (PB bit 2, active low)
         lda #$FB : sta CIA1_PRA
-        lda CIA1_PRB : and #$10 : bne RKF1N
+        lda CIA1_PRB : and #$04 : bne RKDN
+        lda #1 : sta KEY_R
+RKDN
+
+        ; T key: col 2 (PA=$FB), row 6 (PB bit 6, active low)
+        lda #$FB : sta CIA1_PRA
+        lda CIA1_PRB : and #$40 : bne RKF1N
         lda #1 : sta KEY_F1
 RKF1N
 
@@ -421,12 +426,12 @@ DRAW_ROOM
         jsr DRMSETPTR
         lda #<(SCRN+80) : sta PTR2 : lda #>(SCRN+80) : sta PTR2+1
         ldx #3 : ldy #0
-DRMPG   lda (PTR),y : jsr PET2SCREEN : sta (PTR2),y
+DRMPG   lda (PTR),y : sta (PTR2),y
         iny : bne DRMPG
         inc PTR+1 : inc PTR2+1
         dex : bne DRMPG
         ldy #0
-DRMTAIL lda (PTR),y : jsr PET2SCREEN : sta (PTR2),y
+DRMTAIL lda (PTR),y : sta (PTR2),y
         iny : cpy #112 : bcc DRMTAIL
 
         jsr DRMSETPTR
@@ -444,30 +449,16 @@ DRMSETPTR
         lda #<ROOM2_DATA : sta PTR : lda #>ROOM2_DATA : sta PTR+1 : rts
 DRMSP1  lda #<ROOM_DATA  : sta PTR : lda #>ROOM_DATA  : sta PTR+1 : rts
 
+; COL_BYTE — colour RAM byte is looked up from TILE_COLORS, indexed by the
+; screen code of the tile being drawn (see src/charset.asm).
+; X is the caller's page counter (DRMCPG) and must survive this call.
 COL_BYTE
+        txa : pha
         lda (PTR),y
-        cmp #CH_SPC  : beq COLFL
-        cmp #CH_PLUS     : beq COLWA
-        cmp #G_HORIZ_BAR : beq COLWA
-        cmp #G_VERT_BAR  : beq COLWA
-        cmp #CH_EQ   : beq COLRA
-        cmp #CH_HASH : beq COLCR
-        cmp #CH_BANG : beq COLLA
-        cmp #$54     : beq COLTE
-        cmp #$44     : beq COLDR
-        cmp #CH_LBRK : beq COLDR
-        cmp #CH_RBRK : beq COLDR
-        cmp #$31     : beq COLDR
-        cmp #$32     : beq COLDR
-        lda #MGRAY   : !byte $2C
-COLFL   lda #DGRAY   : !byte $2C
-COLWA   lda #BLUE    : !byte $2C
-COLRA   lda #YELLOW  : !byte $2C
-COLCR   lda #ORANGE  : !byte $2C
-COLLA   lda #LTRED   : !byte $2C
-COLTE   lda #LTGREEN : !byte $2C
-COLDR   lda #LTGREEN
-COLST   sta (PTR2),y
+        tax
+        lda TILE_COLORS,x
+        sta (PTR2),y
+        pla : tax
         rts
 
 ; =============================================================================
@@ -485,7 +476,7 @@ DSTL    lda STAT_TMPL,x : jsr PET2SCREEN : sta SCRN+960,x
         rts
 
 STAT_TMPL
-        !pet "r:0 x=0 y=0  chips:l1x2 l2x1  joy/crsr  "
+        !pet "r:0 x=0 y=0  chips:l1x2 l2x1  joy/wasd  "
 
 ; =============================================================================
 ; SID DEATH SOUND

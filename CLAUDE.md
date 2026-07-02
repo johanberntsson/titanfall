@@ -22,7 +22,7 @@ Emulator: **x64sc** (Vice). Do not run `acme` directly; always use `make`.
 
 ## Code Layout
 
-The source is split into one orchestrator and six state modules, all `!source`d into a single ACME assembly pass:
+The source is split into one orchestrator and seven state/data modules, all `!source`d into a single ACME assembly pass:
 
 | File | Contents |
 |------|----------|
@@ -33,8 +33,10 @@ The source is split into one orchestrator and six state modules, all `!source`d 
 | `src/win.asm` | `DO_WIN`, `SETUP_WIN`, `WIN_BLINK` helpers, strings |
 | `src/terminal.asm` | `SETUP_TERMINAL`, `DO_TERMINAL`, `TERM_DRAW_SEL`, `CLEAR_ROOM`, strings |
 | `src/map.asm` | `DO_MAP`, `SETUP_MAP`, map strings |
+| `src/charset.asm` | `TILE_COLORS` (256-byte tile→colour table) and `CHARSET` (custom 2K charset at `$2000`), generated from `graphics/*.s` — see "Custom Charset / Screen Art" |
 
 Other files:
+- `graphics/` — vchar64 project files (`.vchar64proj`) and their raw ASM exports (`.s`); source of truth for room art, edited in vchar64 and re-exported, not hand-edited
 - `game.prg` — intermediate assembled output (not committed)
 - `titanfall.prg` — final self-extracting packed output (not committed)
 - `music/armalyte.prg` — stripped Armalyte SID music binary (load address `$C000`)
@@ -66,8 +68,9 @@ The SYS address in `!pet` must be kept in sync manually if the header ever chang
 | Address | Purpose |
 |---------|---------|
 | `$0801` | BASIC stub (SYS 2064) |
-| `$0810` | Entry point / code start (code + strings end before `$3F00`) |
+| `$0810` | Entry point / code start (code + `TILE_COLORS` end before `$2000`) |
 | `$0400–$07FF` | Screen RAM (default VIC bank) |
+| `$2000–$27FF` | `CHARSET` — custom 2K room-art charset (see below) |
 | `$D800–$DBFF` | Colour RAM |
 | `$07F8` | Sprite pointer table (end of screen RAM — **must be restored after every CLS call**) |
 | `$3F00` | Sprite 1 data — robot enemy (64-byte aligned, pointer `$FC`) |
@@ -81,7 +84,7 @@ When implementing code, always respect these C64 hardware limits:
 
 - **CPU:** MOS 6510 (6502 derivative); assembler is **ACME** (not cc65, not KickAssembler)
 - **VIC-II sprites:** Exactly 8 hardware sprites available — the design intentionally avoids a sprite multiplexer
-- **Room layout:** 22 rows × 40 chars of PETSCII per room; player tile grid is 10×10 (0–9 each axis)
+- **Room layout:** 22 rows × 40 chars (custom charset, screen codes) per room; player tile grid is 10×10 (0–9 each axis)
 - **Memory:** 64 KB total; code, data, and screen RAM must all fit within the standard C64 memory map
 - **SID chip:** 3 voices for audio
 
@@ -204,16 +207,16 @@ Next free zero-page slot: `$2E`
 
 ## Room Map
 
-The playfield (screen rows 2–23) is a PETSCII schematic top-down map, 22 rows × 40 chars. Player tile grid is 10×10 (X: 0–9, Y: 0–9).
+The playfield (screen rows 2–23) is a custom-charset top-down map, 22 rows × 40 chars, authored in vchar64 (see `graphics/` and `src/charset.asm`). Player tile grid is 10×10 (X: 0–9, Y: 0–9). Tile colours come from `TILE_COLORS` (indexed by screen code), not a hand-written switch.
 
-| Char | Meaning | Colour |
-|------|---------|--------|
-| `+` `G_HORIZ_BAR` `G_VERT_BAR` | Walls | Blue |
-| `=` | Server racks | Yellow |
-| `#` | Crates | Orange |
-| `!` | Laser wall (column 18, tile X=6 — kills player on contact) | Lt Red |
-| `T` | Terminal (press T nearby to access; proximity: PLR_X 1–3, PLR_Y 3–5) | Lt Green |
-| `[D1]` `[D2]` | Drone positions | Lt Green |
+Room art is purely visual — walls, the laser, doorways, and the terminal are **not** detected by inspecting tile bytes. They're hardcoded to fixed tile coordinates instead:
+
+| Feature | Logic | Colour |
+|---------|-------|--------|
+| Laser wall | tile X=6 (room 1 only) — kills player on contact | Lt Red (visual) |
+| Terminal | proximity: PLR_X 1–3, PLR_Y 3–5 (room 1 only); press T | Lt Green (visual) |
+| Room 1 ↔ room 2 doorway | PLR_Y 5–6 at room 1's left wall / room 2's right wall | — |
+| Win exit | room 2 bottom wall, PLR_X 4–6 | — |
 
 ## HUD Layout (row 0, 40 chars)
 
@@ -229,17 +232,19 @@ The playfield (screen rows 2–23) is a PETSCII schematic top-down map, 22 rows 
 - VIC-II hardware sprite priority flag used for depth: sprite priority flips when the player walks "behind" tall tiles
 - Color palette: C64 dark registers (dark grays, muted blues, deep browns) with high-contrast multi-color tiles
 - Flip-screen room transitions (no scrolling); screen RAM blasted per transition
-- Charset: default uppercase/graphics set (`$D018` left at KERNAL default `$14`, charset at `$1000`); `$0291 = $0E` written at init
+- Charset: custom vchar64-authored charset at `$2000` (`$D018 = $18`); `$0291 = $0E` written at init
 
-## Custom Charset / Screen Art (planned, not yet wired in)
+## Custom Charset / Screen Art
 
-Room/HUD art is being redone with **vchar64** (charset + screen + colour editor), replacing the current hand-authored PETSCII strings in `ROOM_DATA`/`ROOM2_DATA`. Nothing below is integrated yet — this documents the agreed plan.
+Room/HUD art is authored with **vchar64** (charset + screen + colour editor). `graphics/` holds the vchar64 project files (`.vchar64proj`) plus their ASM exports (`-charset.s`, `-colors.s`, `-map.s` per room); `src/charset.asm` is the ACME-ready version wired into the build (`!source`d from `titanfall.asm` after `map.asm`).
 
-- **Export format: ASM**, not BIN/PRG. Fits the existing convention (sprites/room data are already inline `!byte`/`!pet` literals in source); avoids managing binary blobs, load-header stripping, or Makefile/Exomizer changes for extra files.
-- vchar64 labels its ASM export "ACME-compatible" but it isn't: it emits `.byte` (64tass/KickAssembler syntax), which ACME rejects. **Every export needs `s/^\.byte/!byte/` before inclusion**, plus a `* = $ADDR` origin line (vchar64 doesn't emit one). Verified: after that fix, a 2048-byte charset export assembles to the expected 2050-byte prg.
-- **Free memory for the charset:** code currently ends around `$1DB9`; sprites/room data start at `$3F00`. That leaves `$1E00–$3EFF` (~8 KB) open. Planned charset origin: `$2800` (2K-aligned, clear of both ends). `$D018` would become `$18` (screen at `$0400`, charset bank at `$2800`).
-- **Screen/colour canvases are authored at 25 rows** in vchar64 but only 22 are needed at runtime (2 HUD rows + 1 status row are drawn by game code, not part of the room art) — crop to 22 rows in vchar64 before exporting rather than trimming bytes at build time.
-- **Tile-code collision hazard:** `game.asm` (~line 449-459) switches on specific PETSCII byte values to decide wall/rack/crate/laser/door behavior (space, `+`, `G_HORIZ_BAR`, `G_VERT_BAR`, `=`, `#`, `!`, `[`, `]`). If the new charset draws these elements using different byte codes, that switch table must be updated to match, or the visuals will no longer collide correctly. Confirm code-to-meaning mapping before wiring in real room art.
+- **Export format: ASM**, not BIN/PRG. Fits the existing convention (sprites/room data are already inline `!byte` literals in source); avoids managing binary blobs, load-header stripping, or Makefile/Exomizer changes for extra files.
+- vchar64 labels its ASM export "ACME-compatible" but it isn't: it emits `.byte` (64tass/KickAssembler syntax), which ACME rejects. Every export needs `s/^\.byte/!byte/` before inclusion. `src/charset.asm` is the already-fixed, checked-in version — regenerate it from `graphics/*.s` with the same substitution if the art changes.
+- **Charset lives at `$2000`** (2K-aligned, in the `$1E00–$3EFF` gap between end-of-code and the sprite data at `$3F00`). `$D018 = $18` selects screen `$0400` / charset `$2000`. A-Z, digits, and the box-drawing glyphs (`G_HORIZ_BAR`, `G_VERT_BAR`, rounded corners, etc.) used by the intro/gameover/win screens keep their default-ROM-charset code points and shapes — only unused graphics-character slots were repurposed for room-art tiles, so those three screens needed no changes.
+- **`TILE_COLORS`** (in `src/charset.asm`, right before the `CHARSET` data) is a 256-byte table indexed by screen code, giving the default colour RAM value for each tile. `COL_BYTE` in `game.asm` does a straight `lda (PTR),y : tax : lda TILE_COLORS,x` lookup instead of switching on individual byte values — **`X` is the caller's page counter in `DRMCPG` and must be saved/restored across the call** (`txa:pha` / `pla:tax`), since `COL_BYTE` needs `X` itself to index the table.
+- **Room data is raw screen codes, not PETSCII.** `ROOM_DATA`/`ROOM2_DATA` are blitted straight from `(PTR),y` to `(PTR2),y` in `DRAW_ROOM` with no `PET2SCREEN` conversion (the vchar64 export already emits screen codes). Don't add a `PET2SCREEN` call back in if editing this path.
+- **Room/tile collision is not byte-driven.** Walls, the laser (tile X=6), doorways, and the terminal proximity check are all hardcoded to fixed `PLR_X`/`PLR_Y` tile coordinates in `game.asm` (`MOVE_PLAYER`, `READ_KEYS`) — they never inspect `ROOM_DATA` contents. Redrawing a room with new tile art is purely visual and doesn't need any collision-table updates, but it also means the art and the hardcoded coordinates can silently drift out of visual sync; check new room art against the hardcoded tile ranges before relying on it.
+- Screen/colour canvases are authored at 22 rows in vchar64 (matching the runtime playfield — 2 HUD rows + 1 status row are drawn by game code, not part of the room art).
 
 ## Critical Gotchas
 
@@ -259,12 +264,19 @@ ACME anonymous labels (`-` and `+`) scope to the entire zone, not the subroutine
 `SOUND_TICK` is called at the **top** of `DO_GAME`, before the death-timer branch, so it runs on every game frame. If called only from `GAME_ALIVE`, it never fires once the laser hit sets `DEATH_TMR`, leaving the SID gate open indefinitely.
 
 ### Keyboard matrix — key positions
+Convention used throughout `READ_KEYS`: "col N" = CIA1 `$DC00` (PRA) written with bit N cleared (selects that column); "row N" = CIA1 `$DC01` (PRB) bit N, active low (0 = pressed).
 ```
-T key (terminal): col 2 (PA=$FB), row 4 (PRB bit 4 = mask $10, active low)
-M key (map):      col 4 (PA=$EF), row 4 (PRB bit 4 = mask $10, active low)
-Return:           col 1 (PA=$FD), row 1 (PRB bit 1 = mask $02, active low)
-F7 (exit):        col 7 (PA=$7F), row 4 (PRB bit 3 = mask $08, active low)
+W (up):            col 1 (PA=$FD), row 1 (PRB bit 1 = mask $02, active low)
+A (left):          col 1 (PA=$FD), row 2 (PRB bit 2 = mask $04, active low)
+S (down):          col 1 (PA=$FD), row 5 (PRB bit 5 = mask $20, active low)
+D (right):         col 2 (PA=$FB), row 2 (PRB bit 2 = mask $04, active low)
+T key (terminal):  col 2 (PA=$FB), row 6 (PRB bit 6 = mask $40, active low)
+M key (map):       col 4 (PA=$EF), row 4 (PRB bit 4 = mask $10, active low)
+Return:            col 1 (PA=$FD), row 1 (PRB bit 1 = mask $02, active low)
+F7 (exit):         col 7 (PA=$7F), row 4 (PRB bit 3 = mask $08, active low)
 ```
+Movement is WASD, not cursor keys (joystick port 2 also still works — `READ_KEYS` ORs both into the same `KEY_U/D/L/R` flags). **The T key was previously mismapped to row 4 (`$10`), which is actually the `C` key** — fixed to row 6 (`$40`). If a key seems to trigger the wrong action, re-derive its column/row from the matrix table rather than guessing; `col`/`row` values that look adjacent (e.g. row 4 vs row 6) are an easy transcription error.
+
 Terminal menu navigation uses `GETIN` (KERNAL keyboard buffer) for PETSCII codes: `$11`=cursor down, `$91`=cursor up, `$0D`=Return, `$88`=F7.
 
 ### Sprite data placement
