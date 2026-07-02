@@ -1,0 +1,29 @@
+|  SIDPLAYFP - Music Player and C64 SID Chip Emulator  |
+|       Sidplayfp V2.15.0, Libsidplayfp V2.15.0        |
++------------------------------------------------------+
+| Title        : Wizardry                              |
+| Author       : Graham Jarvis & Rob Hartshorne        |
+| Released     : 1985 The Edge                         |
++------------------------------------------------------+
+| File format  : PlaySID one-file format (PSID)        |
+| Filename(s)  : Wizardry.sid                          |
+| Condition    : No errors                             |
+| Playlist     : 1/8 (tune 1/8[1])                     |
+| Song Speed   : PAL                                   |
+| Song Length  : NO SLDB                               |
++------------------------------------------------------+
+| Addresses    : DRIVER = $2000-$20FF, INIT = $B200    |
+|              : LOAD   = $A000-$CE4B, PLAY = $AFC0    |
+| SID Details  : Model = MOS6581                       |
++------------------------------------------------------+
+| Play speed   : 50 Hz VBI (PAL)                       |
+| Play mode    : Mono                                  |
+| SID Filter   : Yes                                   |
+| DigiBoost    : No                                    |
+| SID Model    : from tune, default = MOS6581          |
++------------------------------------------------------+
+| Kernal ROM   : None - Some tunes may not play!       |
+| BASIC ROM    : None - Basic tunes will not play!     |
+| Chargen ROM  : None                                  |
++------------------------------------------------------+
+
