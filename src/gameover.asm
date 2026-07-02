@@ -43,7 +43,6 @@ SETUP_GAMEOVER
         lda #0     : sta $C6
         lda #0     : sta SND_TMR
         lda #$00   : sta $D404
-        lda #$00   : sta $D418
         lda #$00   : sta VIC_SPEN
         lda #RED   : sta VIC_BRDCOL
         lda #BLACK : sta VIC_BGCOL

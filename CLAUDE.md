@@ -208,7 +208,7 @@ The playfield (screen rows 2–23) is a PETSCII schematic top-down map, 22 rows 
 
 | Char | Meaning | Colour |
 |------|---------|--------|
-| `+ - \|` | Walls | Blue |
+| `+` `G_HORIZ_BAR` `G_VERT_BAR` | Walls | Blue |
 | `=` | Server racks | Yellow |
 | `#` | Crates | Orange |
 | `!` | Laser wall (column 18, tile X=6 — kills player on contact) | Lt Red |
@@ -229,7 +229,17 @@ The playfield (screen rows 2–23) is a PETSCII schematic top-down map, 22 rows 
 - VIC-II hardware sprite priority flag used for depth: sprite priority flips when the player walks "behind" tall tiles
 - Color palette: C64 dark registers (dark grays, muted blues, deep browns) with high-contrast multi-color tiles
 - Flip-screen room transitions (no scrolling); screen RAM blasted per transition
-- Charset: VIC set to lowercase (`$D018 = $16`, charset at `$1800`); KERNAL flag `$0291 = $0E` prevents IRQ handler from resetting it
+- Charset: default uppercase/graphics set (`$D018` left at KERNAL default `$14`, charset at `$1000`); `$0291 = $0E` written at init
+
+## Custom Charset / Screen Art (planned, not yet wired in)
+
+Room/HUD art is being redone with **vchar64** (charset + screen + colour editor), replacing the current hand-authored PETSCII strings in `ROOM_DATA`/`ROOM2_DATA`. Nothing below is integrated yet — this documents the agreed plan.
+
+- **Export format: ASM**, not BIN/PRG. Fits the existing convention (sprites/room data are already inline `!byte`/`!pet` literals in source); avoids managing binary blobs, load-header stripping, or Makefile/Exomizer changes for extra files.
+- vchar64 labels its ASM export "ACME-compatible" but it isn't: it emits `.byte` (64tass/KickAssembler syntax), which ACME rejects. **Every export needs `s/^\.byte/!byte/` before inclusion**, plus a `* = $ADDR` origin line (vchar64 doesn't emit one). Verified: after that fix, a 2048-byte charset export assembles to the expected 2050-byte prg.
+- **Free memory for the charset:** code currently ends around `$1DB9`; sprites/room data start at `$3F00`. That leaves `$1E00–$3EFF` (~8 KB) open. Planned charset origin: `$2800` (2K-aligned, clear of both ends). `$D018` would become `$18` (screen at `$0400`, charset bank at `$2800`).
+- **Screen/colour canvases are authored at 25 rows** in vchar64 but only 22 are needed at runtime (2 HUD rows + 1 status row are drawn by game code, not part of the room art) — crop to 22 rows in vchar64 before exporting rather than trimming bytes at build time.
+- **Tile-code collision hazard:** `game.asm` (~line 449-459) switches on specific PETSCII byte values to decide wall/rack/crate/laser/door behavior (space, `+`, `G_HORIZ_BAR`, `G_VERT_BAR`, `=`, `#`, `!`, `[`, `]`). If the new charset draws these elements using different byte codes, that switch table must be updated to match, or the visuals will no longer collide correctly. Confirm code-to-meaning mapping before wiring in real room art.
 
 ## Critical Gotchas
 
@@ -272,21 +282,33 @@ No runtime copy loop. Both pointer bytes at `$07F8`/`$07F9` must be set at init 
 ### Background music
 `music/armalyte.prg` is the Armalyte SID tune (Martin Walker, 1988 Thalamus), stripped to load at `$C000–$CF81`.
 
-- **Init:** `lda #0 : jsr $C000` — called once during startup (after SID clear, before `cli`). `A` must be 0 to select song 1.
+- **Init:** `lda #0 : jsr $C000` — called once during startup (after SID clear, before `cli`). `A` must be 0 to select song 1. Sets `$D418 = $0F` (full volume) internally.
 - **Play:** `jsr $C059` — called from `RASTER_IRQ` every frame (50 Hz PAL).
 - **Death sound interlock:** `RASTER_IRQ` skips the `$C059` call while `SND_TMR > 0`, giving the death sound exclusive SID control for its ~1 second sweep. Music resumes automatically when `SND_TMR` reaches 0.
 
+### Armalyte player does NOT manage $D418
+**Critical:** In normal play mode (`$C057 = $FF`, `$C058 = $FF`), the `$C059` routine skips all volume code and jumps directly to `$C089` (the main SID register update loop). It never touches `$D418`. The master volume is set once by `$C000` init to `$0F` and must be maintained by our code.
+
+**Rule:** Never write `$00` to `$D418` without immediately restoring it to `$0F`. Any write of `$D418 = 0` permanently silences music until `$C000` is called again (which only happens on cold start).
+
+- `SNDOFF` restores `$D418 = $0F` after gating off voice 1 — do not zero it here
+- `SETUP_GAMEOVER` and `SETUP_WIN` must not write to `$D418` — let music continue
+- `SND_TMR` is zeroed explicitly in the init before `cli` — the KERNAL may leave `$1E` non-zero, which would permanently block music in intro
+
 ### Death sound effect
-Voice 1, sawtooth wave. `SOUND_DEATH_START` gates on at ~350 Hz. `SOUND_TICK` (called every game frame from the top of `DO_GAME`) sweeps frequency downward over 50 frames, then gates off.
+Voice 1, sawtooth wave. `SOUND_DEATH_START` gates on at ~350 Hz and sets `$D418 = $0F`. `SOUND_TICK` (called every game frame from the top of `DO_GAME`) sweeps frequency downward over 50 frames, then gates off and restores `$D418 = $0F`.
 
 ## Screen Art
 
 Non-game screens (intro, game over, win) use a PETSCII box design: rows 3–13 form a bordered panel drawn at 50 Hz by the relevant setup routine. All three share the subroutine `DRAW_INTRO_SCREEN` for the intro layout (called from `SHOW_INTRO`, the `DO_GAMEOVER` restart path, and the `DO_WIN` restart path).
 
 ### Shared string labels (each exactly 40 bytes)
-- `SCR_BORDER` — `+---...---+` box top/bottom
-- `SCR_BLANK` — `| ... |` empty interior row
-- `ITR_SEP` — `| ==...== |` separator (reused by all three screens)
+- `SCR_BORDER_TOP` — rounded top border (`G_RD_UL` + 38 × `G_HORIZ_BAR` + `G_RD_UR`)
+- `SCR_BORDER_BOTTOM` — rounded bottom border (`G_RD_LL` + 38 × `G_HORIZ_BAR` + `G_RD_LR`)
+- `SCR_BLANK` — `G_VERT_BAR` + 38 spaces + `G_VERT_BAR` empty interior row
+- `ITR_SEP` — `G_VERT_BAR  ==...==  G_VERT_BAR` separator (reused by all three screens)
+
+All string-copy loops call `jsr PET2SCREEN` to convert PETSCII to screen codes before writing to screen RAM. `PET2SCREEN` is defined in `src/titanfall.asm` after `CLS`.
 - `ITR_TITLE`, `ITR_TAG`, `ITR_M1`–`ITR_M3` — intro panel content
 - `GO_TITLE`, `GO_M1`–`GO_M3` — game over panel content
 - `WIN_TITLE`, `WIN_M1`–`WIN_M3` — win panel content

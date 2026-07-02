@@ -155,6 +155,8 @@ SIDCLR  lda #0
         lda #$01    : sta VIC_IRQEN
         lda #$FF    : sta VIC_IRQ
 
+        lda #0      : sta SND_TMR       ; ensure music plays from first IRQ
+
         cli
 
         ; ---- fall into INTRO state ----

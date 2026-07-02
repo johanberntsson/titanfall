@@ -521,5 +521,5 @@ SOUND_TICK
         bne SNDOUT
 
 SNDOFF  lda #$20 : sta $D404
-        lda #$00 : sta $D418
+        lda #$0F : sta $D418
 SNDOUT  rts
