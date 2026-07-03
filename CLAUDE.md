@@ -257,6 +257,14 @@ lda #$FC : sta SPRPTR+1    ; spr1 → $3F00
 ```
 `CLEAR_ROOM` (which clears only rows 2–23, `$0450–$07BF`) does **not** reach `$07F8` and does not need a restore.
 
+### CIA1's Timer A IRQ must be disabled before installing the raster IRQ
+`$0314`/`$0315` is the general IRQ vector — it fires for **any** IRQ source, not just the VIC raster compare. The KERNAL leaves CIA1 Timer A (the jiffy clock) running at ~60Hz from boot. `RASTER_IRQ` doesn't check which source triggered it, so if CIA1's IRQ isn't disabled, the handler runs on both sources combined (~50Hz raster + ~60Hz CIA ≈ 110Hz) instead of just 50Hz — this manifested as music and the countdown clock both running at ~2x speed. Fixed by disabling CIA1's IRQ sources during init, before `cli`:
+```asm
+lda #$7F : sta CIA1_ICR   ; disable all CIA1 IRQ sources
+lda CIA1_ICR                ; ack any pending CIA1 IRQ
+```
+This doesn't break keyboard input — `READ_KEYS` polls the CIA1 matrix registers directly, and `RASTER_IRQ`'s `jmp $EA31` tail only needs to run once per raster tick, not to be triggered by a CIA interrupt.
+
 ### No anonymous or local labels
 ACME anonymous labels (`-` and `+`) scope to the entire zone, not the subroutine — with many routines in one file they resolve to wrong targets silently. Local labels (`.foo`) also caused duplicate-definition errors across routines in the same zone. **All labels are explicit global names** (e.g. `CLSP`, `HUDST1`, `TSETB1`).
 

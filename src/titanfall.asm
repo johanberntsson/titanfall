@@ -80,6 +80,7 @@ VIC_BGCOL  = $D021
 CIA1_PRA   = $DC00
 CIA1_PRB   = $DC01
 CIA1_DDRA  = $DC02
+CIA1_ICR   = $DC0D
 
 GETIN      = $FFE4
 
@@ -122,6 +123,13 @@ CH_HBLK = $A0
         * = $0810
 
         sei
+
+        ; Disable CIA1's Timer A IRQ (KERNAL jiffy clock). Left running, it
+        ; keeps firing (~60Hz) through the same $0314 vector as our raster
+        ; IRQ, so RASTER_IRQ runs on both sources combined (~110Hz) instead
+        ; of just the raster's 50Hz — doubling music tempo and clock speed.
+        lda #$7F   : sta CIA1_ICR        ; disable all CIA1 IRQ sources
+        lda CIA1_ICR                     ; ack any pending CIA1 IRQ
 
         ; Silence SID
         ldx #$18
