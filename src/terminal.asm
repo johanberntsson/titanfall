@@ -128,34 +128,55 @@ TSETM   lda #CH_SPC : sta TERM_MSGROW,x
 DO_TERMINAL
         ; GETIN returns PETSCII: F7=$88, Return=$0D, cursor up=$91, dn=$11
         jsr GETIN
-        beq TERM_DONE
-        cmp #$88 : beq TERM_ABORT
-        cmp #$0D : beq TERM_LINK
+        bne DTGOT
+        jmp TERM_DONE
+DTGOT   cmp #$88 : bne DTNOTF7
+        jmp TERM_ABORT
+DTNOTF7 cmp #$0D : beq TERM_LINK
         cmp #$85 : beq TERM_LINK
         cmp #$91 : beq TERM_UP
         cmp #$11 : beq TERM_DOWN
-        bne TERM_DONE
+        jmp TERM_DONE
 
 TERM_UP
-        lda TERM_SEL : beq TERM_DONE
+        lda TERM_SEL : bne TERM_UP_GO
+        jmp TERM_DONE
+TERM_UP_GO
         dec TERM_SEL
         jsr TERM_DRAW_SEL
-        bne TERM_DONE
+        jmp TERM_DONE
 
 TERM_DOWN
-        lda TERM_SEL : cmp #3 : bcs TERM_DONE
+        lda TERM_SEL : cmp #3 : bcc TERM_DOWN_GO
+        jmp TERM_DONE
+TERM_DOWN_GO
         inc TERM_SEL
         jsr TERM_DRAW_SEL
-        bne TERM_DONE
+        jmp TERM_DONE
 
 TERM_LINK
         lda TERM_SEL : cmp #3 : beq TERM_LOGOFF
         cmp #2 : beq TERM_LOCKED
+        cmp #1 : beq TERM_LINK_SPLICER
         ldx #39
 TLINK1  lda TMSG_OK,x : jsr PET2SCREEN : sta TERM_MSGROW,x
         lda #LTGREEN : sta CRAM+(16*40),x
         dex : bpl TLINK1
         bne TERM_DONE
+
+; bot-3312 splicer: link the player into the room 1 splicer robot (sprite 2)
+; and drop straight back into gameplay, now piloting it — unless it's already
+; been destroyed by the laser (ROB2_ALIVE=0), in which case show TMSG_DEAD.
+TERM_LINK_SPLICER
+        lda ROB2_ALIVE : bne TERM_LINK_SPLICER_OK
+        ldx #39
+TLSD1   lda TMSG_DEAD,x : jsr PET2SCREEN : sta TERM_MSGROW,x
+        lda #LTRED : sta CRAM+(16*40),x
+        dex : bpl TLSD1
+        bne TERM_DONE
+TERM_LINK_SPLICER_OK
+        lda #1 : sta PLAYER_MODE
+        jmp TERM_ABORT
 
 TERM_LOCKED
         ldx #39
@@ -165,13 +186,15 @@ TLOCK1  lda TMSG_LCK,x : jsr PET2SCREEN : sta TERM_MSGROW,x
         bne TERM_DONE
 
 TERM_LOGOFF
+        lda #0 : sta PLAYER_MODE
 TERM_ABORT
         lda #1 : sta GAME_STATE
         jsr DRAW_ROOM
         jsr DRAW_STATUS
-        lda #$03 : sta VIC_SPEN
+        lda #$07 : sta VIC_SPEN
         jsr UPDATE_SPRITE0
         jsr UPDATE_SPRITE1
+        jsr UPDATE_SPRITE2
 
 TERM_DONE
         jmp MAIN_LOOP
@@ -232,3 +255,4 @@ TBOX_HNT  !pet "|   return=select   f7=exit            |"
 TBOX_BOT  !pet "+--------------------------------------+"
 TMSG_OK   !pet "  proxy link established. unit active   "
 TMSG_LCK  !pet "  access denied. unit locked by titan.  "
+TMSG_DEAD !pet "  unit destroyed. link unavailable.     "

@@ -1,36 +1,48 @@
-DONE: Change the terminal from a popup to something that replaces the game screen (keep the HUD and the footer). You will need to hide the sprite when entering terminal mode, and restore it when returning to game mode. Make sure that time stops while in the terminal (don't count down the remaining time), and restore that when leaving the terminal. The best solution is to add a new terminal game state, besides the intro, gameplay and gameover states.
+# ------------------------
+#           OPEN
+# ------------------------
 
-DONE: add another room to demonstrate that room managment works Add an opening in the left wall on the first room. If you move left and there's a wall it should work like now (keeping you in the room). If you move into the opening/doorway then you move into the second room. The second room has an opening in its right wall. This opening works the same way and leads back to the first room.
+Make sure that all sprites can go to the right side of the screen
 
-DONE: add a map screen similar to the terminal screen (so, a new game state). It should pause the time but keep the HUD like in the terminal. The screen should show the that there are two connected rooms in the game, and highlight the room you're in
+Make the death like in Impossible Mission. Currently you can die by touching a robot or the laser, and the game goes to the Game Over screen. Change this to that if you die you lose 30 minutes of time, and the room is restored (and the player and robots moved back to their starting positions). The game only goes to the Game Over screen when the time is zero. Also make sure that time never goes negative.
 
-DONE: add two different robot sprites. Put one robot in each room and let them move back and forth on a path just to demonstrate that it works
+Add access cards. Push "s" to search, and in certain locations you find stuff. For now, room 1, x=9, y=5 will find a "red access card". If found, show a pop up with "red acccess card" and wait until any key. Pause time and robots while the popup is active. Try to add info in the HUD or status line if a card is found, something like "CARD: RED"
 
-DONE: If there is a player/robot sprite collision, then it should be game over
+Make the door closed or open, and openable by access cards
 
-DONE: add a winning condition and a win screen. For example, a terminal in the second room that has a "disable missile" entry. Select that, and you go to the win screen. Press any key and back to the intro screen
+Change from cursor keys to WASD + space, and also add joystick support as an alternative.
 
-DONE: move game states to separate files (terminal.asm, intro.asm, game.asm, map.asm, gameover.asm, win.asm) and keep tritanfall.asm as the overall file (perhaps including the others). It will make maintenance easier in the future.
+No keyboard presses needed for map mode. Terminal option?
+
+How to check inventory? Terminal option?
+
+Stop making everything hardcoded. Define robots, doors etc in the maps
+
+# ------------------------
+#           DONE
+# ------------------------
+
+Change the terminal from a popup to something that replaces the game screen (keep the HUD and the footer). You will need to hide the sprite when entering terminal mode, and restore it when returning to game mode. Make sure that time stops while in the terminal (don't count down the remaining time), and restore that when leaving the terminal. The best solution is to add a new terminal game state, besides the intro, gameplay and gameover states.
+
+add another room to demonstrate that room managment works Add an opening in the left wall on the first room. If you move left and there's a wall it should work like now (keeping you in the room). If you move into the opening/doorway then you move into the second room. The second room has an opening in its right wall. This opening works the same way and leads back to the first room.
+
+add a map screen similar to the terminal screen (so, a new game state). It should pause the time but keep the HUD like in the terminal. The screen should show the that there are two connected rooms in the game, and highlight the room you're in
+
+add two different robot sprites. Put one robot in each room and let them move back and forth on a path just to demonstrate that it works
+
+If there is a player/robot sprite collision, then it should be game over
+
+add a winning condition and a win screen. For example, a terminal in the second room that has a "disable missile" entry. Select that, and you go to the win screen. Press any key and back to the intro screen
+
+move game states to separate files (terminal.asm, intro.asm, game.asm, map.asm, gameover.asm, win.asm) and keep tritanfall.asm as the overall file (perhaps including the others). It will make maintenance easier in the future.
 
 proper detection of t key (not c). 
 
-Change from cursor keys to WASD and also add joystick support as an alternative
 
 make it possible to become the other robot though the terminal
 
 
----
-
-DONE: Add music in the intro screen, so set up when starting, close down when exiting to game morde. Use exomizer to create a combined prg with two parts - the gamecode and the music routine. Let's use music/armalyte.prg. First "lda #0" (for the first song) and make a call to $c000 to init the music routine when setting up the intro screen. Then call $c059 from the interrupt if we're in the intro screen to play the music. There's no stop routine, so just silence the SID when leaving the intro screen
-
----
+Add music in the intro screen, so set up when starting, close down when exiting to game morde. Use exomizer to create a combined prg with two parts - the gamecode and the music routine. Let's use music/armalyte.prg. First "lda #0" (for the first song) and make a call to $c000 to init the music routine when setting up the intro screen. Then call $c059 from the interrupt if we're in the intro screen to play the music. There's no stop routine, so just silence the SID when leaving the intro screen
 
 change room editor format to use vchar (if that seems to be good)
 
-Because vchar64 natively supports importing CharPad 1.8 and 2.0 project files, you can also head over to the Subchrist Software website or classic C64 forums like Lemon64 and download community-made CharPad project templates. Pulling those into vchar64 on Linux will give you immediate access to massive, professionally built game maps to dissect.  
-
-For the fastest setup on Linux, look at the releases page on GitHub for the official AppImage version. It requires no installation—just download it, make it executable, and run it:
-Bash
-
-chmod +x vchar64-linux-x86_64.AppImage
-./vchar64-linux-x86_64.AppImage

@@ -12,9 +12,10 @@ DO_MAP
         lda #0 : sta $C6
         jsr DRAW_ROOM
         jsr DRAW_STATUS
-        lda #$03 : sta VIC_SPEN
+        lda #$07 : sta VIC_SPEN
         jsr UPDATE_SPRITE0
         jsr UPDATE_SPRITE1
+        jsr UPDATE_SPRITE2
 MAPDONE jmp MAIN_LOOP
 
 ; ---------------------------------------------------------------------------

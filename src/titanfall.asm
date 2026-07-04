@@ -50,6 +50,13 @@ ROB1_X     = $2A   ; room 2 robot tile X
 ROB1_Y     = $2B   ; room 2 robot tile Y
 ROB1_DIR   = $2C   ; room 2 robot direction
 ROB_TMR    = $2D   ; robot movement timer
+ROB2_X     = $2E   ; room 1 splicer robot tile X (right of laser)
+ROB2_Y     = $2F   ; room 1 splicer robot tile Y
+ROB2_DIR   = $30   ; room 1 splicer robot direction
+PLAYER_MODE = $31  ; 0=human (control PLR_X/Y)  1=robot proxy (control ROB2_X/Y)
+KEY_X      = $32   ; X key flag (exit robot proxy mode)
+LASER_OFF  = $33   ; 0=laser active  1=laser destroyed (room 1, tile X=6)
+ROB2_ALIVE = $34   ; 0=splicer destroyed (hidden, patrol/control disabled)
 
 ; ---------------------------------------------------------------------------
 ; Hardware
@@ -59,6 +66,7 @@ CRAM       = $D800
 SPRPTR     = $07F8
 SPRDAT0    = $3F40   ; 64-byte aligned — $3F40/64=$FD
 SPRDAT1    = $3F00   ; 64-byte aligned — $3F00/64=$FC
+SPRDAT2    = $3F80   ; 64-byte aligned — $3F80/64=$FE
 
 VIC_SP0X   = $D000
 VIC_SP0Y   = $D001
@@ -71,9 +79,12 @@ VIC_IRQEN  = $D01A
 VIC_SPEN   = $D015
 VIC_SPCOLL = $D01E   ; sprite-sprite collision (read clears)
 VIC_SPCOL0 = $D027
+VIC_SPCOL2 = $D029
 VIC_SP1X   = $D002
 VIC_SP1Y   = $D003
 VIC_SPCOL1 = $D028
+VIC_SP2X   = $D004
+VIC_SP2Y   = $D005
 VIC_BRDCOL = $D020
 VIC_BGCOL  = $D021
 
@@ -144,13 +155,15 @@ SIDCLR  lda #0
 
         ; VIC init
         lda #BLACK : sta VIC_BRDCOL : sta VIC_BGCOL
-        lda #$18 : sta VIC_VMCSB        ; screen $0400, custom charset $2000
+        lda #$1A : sta VIC_VMCSB        ; screen $0400, custom charset $2800
         lda #$0E : sta $0291            ; stop KERNAL IRQ resetting charset
 
         ; Sprite pointers and config
         lda #$FD   : sta SPRPTR         ; spr0 → $3F40
         lda #$FC   : sta SPRPTR+1       ; spr1 → $3F00
+        lda #$FE   : sta SPRPTR+2       ; spr2 → $3F80
         lda #CYAN  : sta VIC_SPCOL0
+        lda #GREEN : sta VIC_SPCOL2
         lda #$00   : sta $D01C
         lda #$00   : sta $D01D
         lda #$00   : sta $D017
@@ -184,6 +197,7 @@ SHOW_INTRO
         jsr CLS
         lda #$FD   : sta SPRPTR
         lda #$FC   : sta SPRPTR+1
+        lda #$FE   : sta SPRPTR+2
         jsr DRAW_INTRO_SCREEN
 
         ; ---- fall into MAIN_LOOP ----
@@ -334,6 +348,36 @@ SPR_PLAYER
         !byte $07,$9E,$00   ; row 18
         !byte $07,$9E,$00   ; row 19
         !byte $07,$9E,$00   ; row 20  feet
+        !byte $00           ; byte 63
+
+; =============================================================================
+; Sprite 2 — splicer robot, at $3F80 (pointer $FE)
+; Maintenance Splicer drone: diamond sensor head, hex torso, single tapering
+; tail/tread — visually distinct from the square-headed SPR_ROBOT.
+; =============================================================================
+        * = $3F80
+SPR_ROBOT2
+        !byte $00,$F0,$00   ; row  0  head tip
+        !byte $03,$FC,$00   ; row  1
+        !byte $0F,$FF,$00   ; row  2  widest
+        !byte $0F,$FF,$00   ; row  3
+        !byte $03,$FC,$00   ; row  4
+        !byte $00,$84,$00   ; row  5  sensor slit
+        !byte $00,$F0,$00   ; row  6  neck
+        !byte $01,$FC,$00   ; row  7  torso shoulder
+        !byte $03,$FE,$00   ; row  8  torso
+        !byte $02,$64,$00   ; row  9  torso vents
+        !byte $03,$FE,$00   ; row 10  torso
+        !byte $03,$FE,$00   ; row 11  torso
+        !byte $01,$FC,$00   ; row 12  torso taper
+        !byte $00,$7C,$00   ; row 13  waist
+        !byte $00,$38,$00   ; row 14  tail
+        !byte $00,$38,$00   ; row 15
+        !byte $00,$10,$00   ; row 16
+        !byte $00,$38,$00   ; row 17
+        !byte $00,$10,$00   ; row 18
+        !byte $00,$38,$00   ; row 19
+        !byte $00,$7C,$00   ; row 20  foot/tread
         !byte $00           ; byte 63
 
 ; =============================================================================

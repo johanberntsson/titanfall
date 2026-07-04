@@ -15,6 +15,7 @@ DO_WIN
         jsr CLS
         lda #$FD   : sta SPRPTR
         lda #$FC   : sta SPRPTR+1
+        lda #$FE   : sta SPRPTR+2
         jsr DRAW_INTRO_SCREEN
         jmp MAIN_LOOP
 
@@ -47,6 +48,7 @@ SETUP_WIN
         jsr CLS
         lda #$FD   : sta SPRPTR
         lda #$FC   : sta SPRPTR+1
+        lda #$FE   : sta SPRPTR+2
 
         ldx #39    ; row 3: top border (GREEN)
 WROW03  lda SCR_BORDER_TOP,x : jsr PET2SCREEN : sta SCRN+120,x
