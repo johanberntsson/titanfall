@@ -176,6 +176,15 @@ All three sprite pointers (`$07F8`–`$07FA`) must be restored after every `CLS`
 ### Sprite collision
 `CHECK_SPRITE_HIT` reads `VIC_SPCOLL` (`$D01E`) each frame after all three sprites are positioned. Bit 0 (sprite 0 / player) non-zero means the player overlapped any other enabled sprite. Response is identical to laser death: red border, `DEATH_TMR = 100`, `SOUND_DEATH_START`. `$D01E` is cleared by the hardware on read. (With only 2 sprites the old code checked `bits 0-1`; with 3 sprites a robot-vs-robot collision could set bit 1 or 2 without the player involved, so only bit 0 is checked now.)
 
+### Death & Respawn (Impossible Mission style)
+Dying (laser or sprite collision, `DEATH_TMR` counting down to 0 in `DO_GAME`) no longer ends the game outright — it costs time and respawns you:
+- `APPLY_DEATH_PENALTY` (`game.asm`) subtracts 30 minutes from `CLK_H:CLK_M:CLK_S`, clamped at `0:00:00` (borrows an hour into `CLK_M` when `CLK_M<30`; if `CLK_H` is also `0`, clamps straight to zero rather than going negative).
+- If the clock is still nonzero after that, it calls `RESET_ROUND` to respawn: player/robot positions, `CUR_ROOM`, `PLAYER_MODE`, `LASER_OFF`, `ROB2_ALIVE`, the reactor gauge, and the room/HUD redraw all reset to their fresh-game starting values — **except** the clock, which keeps the post-penalty value. Gameplay resumes immediately (`GAME_STATE` stays/returns to 1).
+- If the penalty brings the clock to exactly zero, it goes to `SETUP_GAMEOVER` instead of respawning.
+- `RESET_ROUND` is also what `SETUP_GAME` calls (after separately setting the starting clock) to avoid duplicating all the per-round init — see the comment there for the shared/not-shared split.
+- The game can now also reach Game Over purely by the clock running out with no death in between: `GAME_ALIVE` checks `CLK_H|CLK_M|CLK_S` right after `TICK_CLOCK` every frame.
+- `TICK_CLOCK` itself now clamps at `0:00:00` (early-returns if already zero) — without this, decrementing past zero would underflow `CLK_S`/`CLK_M` to 59 while leaving `CLK_H` at 0, i.e. the clock would visibly jump *up* to `0:59:59` instead of staying at zero.
+
 ## Zero Page Map
 
 ```
@@ -201,7 +210,7 @@ $16/$17  PTR2     dest pointer
 $18  TMP          scratch
 $19  TMP2         scratch / bar colour
 $1A  GAME_STATE   0=intro 1=game 2=gameover 3=terminal 4=win 5=map
-$1B  DEATH_TMR    frames remaining after laser/robot hit (100 frames)
+$1B  DEATH_TMR    frames remaining after laser/robot hit (100 frames); on expiry, APPLY_DEATH_PENALTY runs (see Death & Respawn)
 $1C  BLINK_TMR    blink frame counter
 $1D  BLINK_ST     blink state (0=visible 1=hidden)
 $1E  SND_TMR      death sound countdown (0=silent)
@@ -379,6 +388,5 @@ Star characters (`*`) in each title are recoloured to YELLOW after the row loop 
 
 - Drone control for bot-7741 (loader) and bot-9901 (centurion) — only bot-3312 (splicer, `ROB2`/`SPR_ROBOT2`) is a real controllable proxy so far; selecting the other two in the terminal is currently cosmetic (loader) or blocked (centurion, locked)
 - Access chip system (chips found by searching desks/lockers)
-- Clock penalty on death (currently DEATH_TMR just leads to game over, no time deduction)
 - Robot patrol paths drawn in room data (currently pure sprite movement, no tile-level representation)
 - More than 2 rooms / sector navigation beyond the current prototype

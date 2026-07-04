@@ -12,11 +12,17 @@ DO_GAME
         beq GAME_ALIVE
         dec DEATH_TMR
         bne GAME_TICK_DONE
-        jsr SETUP_GAMEOVER
+        jsr APPLY_DEATH_PENALTY
         jmp MAIN_LOOP
 
 GAME_ALIVE
         jsr TICK_CLOCK
+        ; Countdown hit 0:00:00 (either just now, or from APPLY_DEATH_PENALTY
+        ; clamping it there) — mission's out of time, game over.
+        lda CLK_H : ora CLK_M : ora CLK_S : bne GA_CLOCKOK
+        jsr SETUP_GAMEOVER
+        jmp MAIN_LOOP
+GA_CLOCKOK
         jsr TICK_REACTOR
         jsr TICK_ROBOT
         jsr READ_KEYS
@@ -32,19 +38,31 @@ GAME_TICK_DONE
         jmp MAIN_LOOP
 
 ; =============================================================================
-; SETUP_GAME — initialise vars and draw playfield. Called via jsr from DO_INTRO.
+; SETUP_GAME — initialise a fresh game (clock included) and draw the
+; playfield. Called via jsr from DO_INTRO. Sets the starting clock, then
+; tail-jumps into RESET_ROUND for everything else.
 ; =============================================================================
 SETUP_GAME
+        lda #5   : sta CLK_H
+        lda #47  : sta CLK_M
+        lda #33  : sta CLK_S
+        lda #0   : sta CLK_TICK
+        jmp RESET_ROUND
+
+; =============================================================================
+; RESET_ROUND — reset all per-round world state (player, reactor, robots,
+; room, sprites) to their starting values and redraw the playfield. Does
+; NOT touch the countdown clock (CLK_H/M/S/CLK_TICK) — shared by SETUP_GAME
+; (fresh game, clock set separately above) and APPLY_DEATH_PENALTY (respawn
+; after death, which keeps the already-penalized clock).
+; =============================================================================
+RESET_ROUND
         lda #1   : sta GAME_STATE
         lda #0   : sta $C6
         lda #BLACK : sta VIC_BRDCOL : sta VIC_BGCOL
 
         lda #4   : sta PLR_X
         lda #4   : sta PLR_Y
-        lda #5   : sta CLK_H
-        lda #47  : sta CLK_M
-        lda #33  : sta CLK_S
-        lda #0   : sta CLK_TICK
         lda #23  : sta REACT_TEMP
         lda #0   : sta REACT_CNT
         lda #0   : sta REACT_JIT
@@ -84,6 +102,33 @@ SETUP_GAME
         jsr UPDATE_SPRITE1
         jsr UPDATE_SPRITE2
         rts
+
+; =============================================================================
+; APPLY_DEATH_PENALTY — Impossible Mission style: laser/robot death no longer
+; ends the game outright. Subtract 30 minutes from the countdown clock
+; (clamped at 0:00:00, never negative), then either respawn (RESET_ROUND,
+; keeping the penalized clock) or, if that exhausts the remaining time, go
+; straight to the Game Over screen — the game now only reaches Game Over
+; when the clock hits zero (here, or via GAME_ALIVE's own check if time
+; simply runs out without a death in between).
+; =============================================================================
+APPLY_DEATH_PENALTY
+        lda CLK_M : cmp #30 : bcs ADPSUB30    ; M>=30: just subtract 30 from M
+        lda CLK_H : bne ADPBORROW             ; M<30, H>0: borrow an hour
+        lda #0 : sta CLK_H : sta CLK_M : sta CLK_S  ; not enough time left: clamp to 0
+        jmp ADPCHECK
+ADPBORROW
+        dec CLK_H
+        lda CLK_M : clc : adc #30 : sta CLK_M ; M was <30, so M+30 <60: no overflow
+        jmp ADPCHECK
+ADPSUB30
+        lda CLK_M : sec : sbc #30 : sta CLK_M
+ADPCHECK
+        lda CLK_H : ora CLK_M : ora CLK_S : bne ADPRESPAWN
+        jsr SETUP_GAMEOVER
+        rts
+ADPRESPAWN
+        jmp RESET_ROUND
 
 ; =============================================================================
 ; DRAW_HUD_STATIC
@@ -201,6 +246,7 @@ DEC3T   lda #CH_SPC : sta DEC3BUF+0
 ; TICK_CLOCK
 ; =============================================================================
 TICK_CLOCK
+        lda CLK_H : ora CLK_M : ora CLK_S : beq TCKOUT   ; already 0:00:00 — clamp, never go negative
         inc CLK_TICK
         lda CLK_TICK : cmp #50 : bcc TCKOUT
         lda #0 : sta CLK_TICK

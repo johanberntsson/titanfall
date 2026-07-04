@@ -2,13 +2,11 @@
 #           OPEN
 # ------------------------
 
-Make sure that all sprites can go to the right side of the screen
-
 Make the death like in Impossible Mission. Currently you can die by touching a robot or the laser, and the game goes to the Game Over screen. Change this to that if you die you lose 30 minutes of time, and the room is restored (and the player and robots moved back to their starting positions). The game only goes to the Game Over screen when the time is zero. Also make sure that time never goes negative.
 
 Add access cards. Push "s" to search, and in certain locations you find stuff. For now, room 1, x=9, y=5 will find a "red access card". If found, show a pop up with "red acccess card" and wait until any key. Pause time and robots while the popup is active. Try to add info in the HUD or status line if a card is found, something like "CARD: RED"
 
-Make the door closed or open, and openable by access cards
+Make the final door closed by default, and openable by access cards
 
 Change from cursor keys to WASD + space, and also add joystick support as an alternative.
 
@@ -16,11 +14,31 @@ No keyboard presses needed for map mode. Terminal option?
 
 How to check inventory? Terminal option?
 
-Stop making everything hardcoded. Define robots, doors etc in the maps
+Stop making everything hardcoded. 
+
+- Define robots, doors etc in the maps
+  * two "a" in the maps are waypoints for robot type "a". Same for "b" etc.
+  * the "-" character is a door. The "=" is a closed door.
+  * the "!" character is a laser
+  * 
+
+- Hidden items (like access cards) should have some properties
+  * room and position
+  * type (and from the type we can get a text string like "red access card")
+  * status: hidden, carried or used
+ 
+- The player and robots are basically the same, and should have a shared, generic data structure:
+  * type (will determine sprite and colour)
+  * computer or human controlled (at the moment)
+  * start x,y position
+  * current x,y position
+  * way points for movement: x1, y1, x2, y2
 
 # ------------------------
 #           DONE
 # ------------------------
+
+Make sure that all sprites can go to the right side of the screen
 
 Change the terminal from a popup to something that replaces the game screen (keep the HUD and the footer). You will need to hide the sprite when entering terminal mode, and restore it when returning to game mode. Make sure that time stops while in the terminal (don't count down the remaining time), and restore that when leaving the terminal. The best solution is to add a new terminal game state, besides the intro, gameplay and gameover states.
 
