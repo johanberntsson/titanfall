@@ -164,18 +164,19 @@ TLINK1  lda TMSG_OK,x : jsr PET2SCREEN : sta TERM_MSGROW,x
         dex : bpl TLINK1
         bne TERM_DONE
 
-; bot-3312 splicer: link the player into the room 1 splicer robot (sprite 2)
-; and drop straight back into gameplay, now piloting it — unless it's already
-; been destroyed by the laser (ROB2_ALIVE=0), in which case show TMSG_DEAD.
+; bot-3312 splicer: link the player into the splicer actor (ACTOR_BOT3312,
+; from titan.yaml via world.asm) and drop straight back into gameplay, now
+; piloting it — unless it's already been destroyed by the laser
+; (ACT_ALIVE=0), in which case show TMSG_DEAD.
 TERM_LINK_SPLICER
-        lda ROB2_ALIVE : bne TERM_LINK_SPLICER_OK
+        lda ACT_ALIVE+ACTOR_BOT3312 : bne TERM_LINK_SPLICER_OK
         ldx #39
 TLSD1   lda TMSG_DEAD,x : jsr PET2SCREEN : sta TERM_MSGROW,x
         lda #LTRED : sta CRAM+(16*40),x
         dex : bpl TLSD1
         bne TERM_DONE
 TERM_LINK_SPLICER_OK
-        lda #1 : sta PLAYER_MODE
+        lda #ACTOR_BOT3312+1 : sta PLAYER_MODE
         jmp TERM_ABORT
 
 TERM_LOCKED
@@ -193,8 +194,7 @@ TERM_ABORT
         jsr DRAW_STATUS
         lda #$07 : sta VIC_SPEN
         jsr UPDATE_SPRITE0
-        jsr UPDATE_SPRITE1
-        jsr UPDATE_SPRITE2
+        jsr UPDATE_ROBOT_SPRITES
 
 TERM_DONE
         jmp MAIN_LOOP

@@ -2,41 +2,39 @@
 #           OPEN
 # ------------------------
 
-Make the death like in Impossible Mission. Currently you can die by touching a robot or the laser, and the game goes to the Game Over screen. Change this to that if you die you lose 30 minutes of time, and the room is restored (and the player and robots moved back to their starting positions). The game only goes to the Game Over screen when the time is zero. Also make sure that time never goes negative.
-
-Add access cards. Push "s" to search, and in certain locations you find stuff. For now, room 1, x=9, y=5 will find a "red access card". If found, show a pop up with "red acccess card" and wait until any key. Pause time and robots while the popup is active. Try to add info in the HUD or status line if a card is found, something like "CARD: RED"
-
-Make the final door closed by default, and openable by access cards
-
 Change from cursor keys to WASD + space, and also add joystick support as an alternative.
-
-No keyboard presses needed for map mode. Terminal option?
-
-How to check inventory? Terminal option?
-
-Stop making everything hardcoded. 
-
-- Define robots, doors etc in the maps
-  * two "a" in the maps are waypoints for robot type "a". Same for "b" etc.
-  * the "-" character is a door. The "=" is a closed door.
-  * the "!" character is a laser
-  * 
-
-- Hidden items (like access cards) should have some properties
-  * room and position
-  * type (and from the type we can get a text string like "red access card")
-  * status: hidden, carried or used
- 
-- The player and robots are basically the same, and should have a shared, generic data structure:
-  * type (will determine sprite and colour)
-  * computer or human controlled (at the moment)
-  * start x,y position
-  * current x,y position
-  * way points for movement: x1, y1, x2, y2
+  - space for terminal mode instead of "t"
+  - No keyboard presses needed for map mode. Terminal option?
+  - How to check inventory? Terminal option?
 
 # ------------------------
 #           DONE
 # ------------------------
+
+Major refactor: world data is now generated from a config file. titan.yaml
+defines rooms (bounds, player start, vchar64 map, map-view box), robots
+(type, start, patrol waypoints), hidden items (label, found-text, position),
+doors (rectangle, destination, arrival position, optional key item), lasers
+and terminal zones, plus the start clock and death penalty.
+tools/genworld.py validates it and generates src/world.asm (data tables +
+room maps + runtime state arrays) as part of make. Game code is fully
+table-driven: generic actor patrol AI, door/laser/bounds checks, item
+search/inventory, sprite slot assignment per room. Adding rooms/robots/
+items/doors/lasers needs no code changes (except sector-map art in map.asm
+and, for a new robot type, its sprite data).
+
+Fixed along the way: terminal/search are human-mode only (space no longer
+re-opens the terminal while driving a robot); popups now stay until a fresh
+space press (the opening keypress used to close them instantly via the
+KERNAL buffer); locked-door popup border alignment; the laser now also kills
+when approached from the right.
+
+
+Add access cards. Push "space" to search, and in certain locations you find stuff. For now, room 1, x=9, y=5 will find a "red access card". If found, show a pop up with "red acccess card" and wait until any key. Pause time and robots while the popup is active. Try to add info in the HUD or status line if a card is found, something like "CARD: RED"
+
+Make the final door (in room 2) closed by default. If you try to pass without the red access card, you get a pop up with "locked", and you can't go through (it will act like a wall). If you have the red access card and go through the door you come to the You Win" screen, like before. The pop up is similar to the search pop up (pausing time and robots) should you could probably reuse the same code.
+
+Make the death like in Impossible Mission. Currently you can die by touching a robot or the laser, and the game goes to the Game Over screen. Change this to that if you die you lose 30 minutes of time, and the room is restored (and the player and robots moved back to their starting positions). The game only goes to the Game Over screen when the time is zero. Also make sure that time never goes negative.
 
 Make sure that all sprites can go to the right side of the screen
 

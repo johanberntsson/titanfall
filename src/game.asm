@@ -29,8 +29,7 @@ GA_CLOCKOK
         jsr MOVE_PLAYER
         lda GAME_STATE : cmp #4 : bcs GAME_TICK_DONE  ; win/map triggered this frame
         jsr UPDATE_SPRITE0
-        jsr UPDATE_SPRITE1
-        jsr UPDATE_SPRITE2
+        jsr UPDATE_ROBOT_SPRITES
         jsr CHECK_SPRITE_HIT
         jsr DRAW_HUD_DYNAMIC
         jsr DRAW_STATUS
@@ -43,11 +42,17 @@ GAME_TICK_DONE
 ; tail-jumps into RESET_ROUND for everything else.
 ; =============================================================================
 SETUP_GAME
-        lda #5   : sta CLK_H
-        lda #47  : sta CLK_M
-        lda #33  : sta CLK_S
+        lda #CFG_CLK_H : sta CLK_H
+        lda #CFG_CLK_M : sta CLK_M
+        lda #CFG_CLK_S : sta CLK_S
         lda #0   : sta CLK_TICK
-        jmp RESET_ROUND
+        ; all items back to hidden — inventory only resets on a fresh game,
+        ; not on death/respawn (RESET_ROUND leaves ITEM_STATE alone)
+        ldx #0
+SGITEM  cpx #NUM_ITEMS : bcs SGITEMD
+        lda #0 : sta ITEM_STATE,x
+        inx : bne SGITEM
+SGITEMD jmp RESET_ROUND
 
 ; =============================================================================
 ; RESET_ROUND — reset all per-round world state (player, reactor, robots,
@@ -61,8 +66,9 @@ RESET_ROUND
         lda #0   : sta $C6
         lda #BLACK : sta VIC_BRDCOL : sta VIC_BGCOL
 
-        lda #4   : sta PLR_X
-        lda #4   : sta PLR_Y
+        lda #START_ROOM : sta CUR_ROOM
+        lda ROOM_PSX+START_ROOM : sta PLR_X
+        lda ROOM_PSY+START_ROOM : sta PLR_Y
         lda #23  : sta REACT_TEMP
         lda #0   : sta REACT_CNT
         lda #0   : sta REACT_JIT
@@ -70,37 +76,37 @@ RESET_ROUND
         lda #0   : sta MOVE_TMR
         lda #0   : sta KEY_U : sta KEY_D : sta KEY_L : sta KEY_R
         lda #0   : sta DEATH_TMR
-        lda #0   : sta CUR_ROOM
         lda #0   : sta BFLASH
         lda #0   : sta SND_TMR
         lda #0   : sta PLAYER_MODE
-        lda #0   : sta LASER_OFF
-        lda #1   : sta ROB2_ALIVE
 
-        lda #2   : sta ROB0_X
-        lda #7   : sta ROB0_Y
-        lda #1   : sta ROB0_DIR
-        lda #2   : sta ROB1_X
-        lda #5   : sta ROB1_Y
-        lda #1   : sta ROB1_DIR
-        lda #7   : sta ROB2_X
-        lda #3   : sta ROB2_Y
-        lda #1   : sta ROB2_DIR
+        ; all actors back at their start positions, alive, heading for
+        ; patrol waypoint 1; all lasers back on
+        ldx #0
+RSRACT  cpx #NUM_ACTORS : bcs RSRACTD
+        lda ACT_SX,x : sta ACT_X,x
+        lda ACT_SY,x : sta ACT_Y,x
+        lda #1 : sta ACT_TGT,x
+        lda #1 : sta ACT_ALIVE,x
+        inx : bne RSRACT
+RSRACTD
+        ldx #0
+RSRLSR  cpx #NUM_LASERS : bcs RSRLSRD
+        lda #0 : sta LASER_STATE,x
+        inx : bne RSRLSR
+RSRLSRD
         lda #20  : sta ROB_TMR
 
         jsr CLS
         lda #$FD   : sta SPRPTR
         lda #$FC   : sta SPRPTR+1
         lda #$FE   : sta SPRPTR+2
-        lda #ORANGE : sta VIC_SPCOL1
-        lda #GREEN  : sta VIC_SPCOL2
         jsr DRAW_HUD_STATIC
         jsr DRAW_ROOM
 
         lda #$07 : sta VIC_SPEN
         jsr UPDATE_SPRITE0
-        jsr UPDATE_SPRITE1
-        jsr UPDATE_SPRITE2
+        jsr UPDATE_ROBOT_SPRITES
         rts
 
 ; =============================================================================
@@ -113,16 +119,16 @@ RESET_ROUND
 ; simply runs out without a death in between).
 ; =============================================================================
 APPLY_DEATH_PENALTY
-        lda CLK_M : cmp #30 : bcs ADPSUB30    ; M>=30: just subtract 30 from M
-        lda CLK_H : bne ADPBORROW             ; M<30, H>0: borrow an hour
+        lda CLK_M : cmp #CFG_PENALTY_M : bcs ADPSUB30 ; M>=penalty: subtract from M
+        lda CLK_H : bne ADPBORROW             ; M<penalty, H>0: borrow an hour
         lda #0 : sta CLK_H : sta CLK_M : sta CLK_S  ; not enough time left: clamp to 0
         jmp ADPCHECK
 ADPBORROW
         dec CLK_H
-        lda CLK_M : clc : adc #30 : sta CLK_M ; M was <30, so M+30 <60: no overflow
+        lda CLK_M : clc : adc #60-CFG_PENALTY_M : sta CLK_M ; M<penalty, so no overflow
         jmp ADPCHECK
 ADPSUB30
-        lda CLK_M : sec : sbc #30 : sta CLK_M
+        lda CLK_M : sec : sbc #CFG_PENALTY_M : sta CLK_M
 ADPCHECK
         lda CLK_H : ora CLK_M : ora CLK_S : bne ADPRESPAWN
         jsr SETUP_GAMEOVER
@@ -284,8 +290,9 @@ RCTOUT  rts
 ; =============================================================================
 READ_KEYS
         lda #0 : sta KEY_U : sta KEY_D : sta KEY_L : sta KEY_R
-        lda #0 : sta KEY_F1 : sta KEY_RET : sta KEY_ESC : sta KEY_MAP
+        lda #0 : sta KEY_RET : sta KEY_ESC : sta KEY_MAP
         lda #0 : sta KEY_X
+        lda #0 : sta KEY_SPC
 
         lda #$FF : sta CIA1_DDRA : sta CIA1_PRA
         lda CIA1_PRB : sta TMP
@@ -315,12 +322,6 @@ RKAN
         lda #1 : sta KEY_R
 RKDN
 
-        ; T key: col 2 (PA=$FB), row 6 (PB bit 6, active low)
-        lda #$FB : sta CIA1_PRA
-        lda CIA1_PRB : and #$40 : bne RKF1N
-        lda #1 : sta KEY_F1
-RKF1N
-
         ; Return: col 1 (PA=$FD), row 1 (PB bit 1, active low)
         lda #$FD : sta CIA1_PRA
         lda CIA1_PRB : and #$02 : bne RKRETN
@@ -345,21 +346,49 @@ RKMN
         lda #1 : sta KEY_X
 RKXN
 
-        ; Check proximity to terminal: PLR_X 1-3, PLR_Y 3-5 (room 1 only)
+        ; Space (search): col 7 (PA=$7F), row 4 (PB bit 4, active low)
+        lda #$7F : sta CIA1_PRA
+        lda CIA1_PRB : and #$10 : bne RKSPCN
+        lda #1 : sta KEY_SPC
+RKSPCN
+
+        ; Check proximity to a terminal zone (TERMZ_* tables) in this room.
+        ; Human mode only: while proxying a robot the human sprite still
+        ; stands in the zone, and space must not bounce back into the
+        ; terminal (the X key / logoff are the ways out of proxy mode).
         lda #0 : sta NEAR_TERM
-        lda CUR_ROOM : bne RKMAPCHK
-        lda PLR_X : cmp #1 : bcc RKMAPCHK
-        cmp #4 : bcs RKMAPCHK
-        lda PLR_Y : cmp #3 : bcc RKMAPCHK
-        cmp #6 : bcs RKMAPCHK
+        lda PLAYER_MODE : bne RKMAPCHK
+        ldx #0
+RKTL    cpx #NUM_TERMZONES : bcs RKMAPCHK
+        lda TERMZ_ROOM,x : cmp CUR_ROOM : bne RKTN
+        lda PLR_X : cmp TERMZ_X1,x : bcc RKTN
+        lda TERMZ_X2,x : cmp PLR_X : bcc RKTN
+        lda PLR_Y : cmp TERMZ_Y1,x : bcc RKTN
+        lda TERMZ_Y2,x : cmp PLR_Y : bcc RKTN
         lda #1 : sta NEAR_TERM
-        lda KEY_F1 : beq RKMAPCHK
+        lda KEY_SPC : beq RKMAPCHK
         jsr SETUP_TERMINAL
         rts
+RKTN    inx : bne RKTL
 RKMAPCHK
-        lda KEY_MAP : beq RKXCHK
+        lda KEY_MAP : beq RKSEARCHCHK
         jsr SETUP_MAP
         rts
+RKSEARCHCHK
+        ; Search (space): human mode only — a player-driven robot can't use
+        ; equipment or search. Looks for a still-hidden item at the player's
+        ; exact tile in this room (ITEM_* tables).
+        lda KEY_SPC : beq RKXCHK
+        lda PLAYER_MODE : bne RKXCHK
+        ldx #0
+RKSL    cpx #NUM_ITEMS : bcs RKXCHK
+        lda ITEM_STATE,x : bne RKSRN          ; already found/used
+        lda ITEM_ROOM,x : cmp CUR_ROOM : bne RKSRN
+        lda ITEM_X,x : cmp PLR_X : bne RKSRN
+        lda ITEM_Y,x : cmp PLR_Y : bne RKSRN
+        jsr SETUP_SEARCH                     ; X = item index
+        rts
+RKSRN   inx : bne RKSL
 RKXCHK
         lda PLAYER_MODE : beq RKDONE
         lda KEY_X : beq RKDONE
@@ -367,8 +396,12 @@ RKXCHK
 RKDONE  rts
 
 ; =============================================================================
-; MOVE_PLAYER
-; Doorway: room1 left wall / room2 right wall open at PLR_Y 5-6.
+; MOVE_PLAYER — fully table-driven (world.asm): room bounds from ROOM_MAXX/Y,
+; doorways from the DOOR_* tables, lasers from the LASER_* tables. A door is
+; a rectangle just outside the walkable range; attempting to move into it
+; triggers the transition (or the locked popup / win screen).
+; Directions are tried in U,D,L,R order; a wall-blocked direction falls
+; through to the next pressed one, anything else ends the move.
 ; =============================================================================
 MOVE_PLAYER
         lda MOVE_TMR : beq MOVEGO
@@ -376,113 +409,154 @@ MOVE_PLAYER
 MOVEGO  lda #8 : sta MOVE_TMR
 
         lda PLAYER_MODE : beq MOVEHUM
-        jmp MOVE_ROBOT2
+        jmp MOVE_ACTOR
 MOVEHUM
-        ; Up
-        lda KEY_U : beq MOVTD
-        lda PLR_Y : beq MOVTD
-        dec PLR_Y : rts
-        ; Down
-MOVTD   lda KEY_D : beq MOVTL
-        lda PLR_Y : cmp #9 : bcc MOVTD_WALK
-        ; PLR_Y=9: check for bottom win doorway (room 2 only, PLR_X 4-6)
-        lda CUR_ROOM : beq MOVTL
-        lda PLR_X : cmp #4 : bcc MOVTL
-        cmp #7 : bcs MOVTL
-        jsr SETUP_WIN : rts
-MOVTD_WALK
-        inc PLR_Y : rts
-        ; Left
-MOVTL   lda KEY_L : beq MOVTR
-        lda PLR_X : bne MOVLW
-        ; PLR_X=0: doorway check (room 1 left wall, PLR_Y 5-6)
-        lda CUR_ROOM : bne MOVTR
-        lda PLR_Y : cmp #5 : bcc MOVTR
-        cmp #7 : bcs MOVTR
-        lda #1 : sta CUR_ROOM
-        lda #9 : sta PLR_X
-        jsr DRAW_ROOM : rts
-MOVLW   dec PLR_X : rts
-        ; Right
-MOVTR   lda KEY_R : beq MOVDONE
-        lda CUR_ROOM : bne MOVTR_R2
-        ; Room 1: right wall is at tile 12, not 9 (see TILE_TO_PIXEL_X — the
-        ; room is 320px wide, wider than tile 9's ~244px reach at the shared
-        ; 24px/tile pitch).
-        lda PLR_X : cmp #12 : bcs MOVDONE
-        jmp MOVRW
-MOVTR_R2
-        ; Room 2: PLR_X=9 doorway check (right wall, PLR_Y 5-6, back to room 1)
-        lda PLR_X : cmp #9 : bcc MOVRW
-        lda PLR_Y : cmp #5 : bcc MOVDONE
-        cmp #7 : bcs MOVDONE
-        lda #0 : sta CUR_ROOM
-        lda #0 : sta PLR_X
-        jsr DRAW_ROOM : rts
-        ; Inner right move: laser in room 1 only (unless already destroyed)
-MOVRW   lda CUR_ROOM : bne MOVOK
-        lda PLR_X : clc : adc #1 : cmp #6 : bne MOVOK
-        lda LASER_OFF : bne MOVOK
+        lda KEY_U : beq MPD
+        jsr MPSET : dec NEWY
+        jsr TRY_MOVE : bcs MPDONE
+MPD     lda KEY_D : beq MPL
+        jsr MPSET : inc NEWY
+        jsr TRY_MOVE : bcs MPDONE
+MPL     lda KEY_L : beq MPR
+        jsr MPSET : dec NEWX
+        jsr TRY_MOVE : bcs MPDONE
+MPR     lda KEY_R : beq MPDONE
+        jsr MPSET : inc NEWX
+        jsr TRY_MOVE
+MPDONE  rts
+
+MPSET   lda PLR_X : sta NEWX
+        lda PLR_Y : sta NEWY
+        rts
+
+; ---------------------------------------------------------------------------
+; TRY_MOVE — attempt to move the human to NEWX/NEWY. Returns carry set if the
+; move was handled (committed, laser death, door taken, popup or win shown);
+; carry clear if a plain wall blocked it (caller tries the next direction).
+; ---------------------------------------------------------------------------
+TRY_MOVE
+        ldx CUR_ROOM
+        lda NEWX : cmp ROOM_MAXX,x : bcc TMXOK : beq TMXOK
+        jmp TRY_DOOR                 ; outside walkable range: door or wall
+TMXOK   lda NEWY : cmp ROOM_MAXY,x : bcc TMYOK : beq TMYOK
+        jmp TRY_DOOR
+TMYOK   jsr LASER_AT : bcc TMCOMMIT
+        ; stepped into an active laser — death, move not committed
         lda #RED  : sta VIC_BRDCOL
         lda #100  : sta DEATH_TMR
-        jsr SOUND_DEATH_START : rts
-MOVOK   inc PLR_X
-MOVDONE rts
-
-; =============================================================================
-; MOVE_ROBOT2 — move the splicer robot (room 1 only) while PLAYER_MODE=1.
-; No laser/doorway checks. Y is confined to the 0-9 tile grid, but X goes up
-; to 12: the room is 320px (40 chars) wide while the shared PLR/ROB tile pitch
-; (24px, see UPDATE_SPRITE2) only spans ~244px over 0-9, well short of the
-; right wall. Tiles 10-12 push the sprite X pixel value past 255, which is
-; why UPDATE_SPRITE2 already tracks the carry out of the pixel-X add and sets
-; VIC_SP_MSB bit 2 (the 9th/extended X bit) for sprite 2 — that logic was
-; simply never exercised while X topped out at 9.
-; =============================================================================
-MOVE_ROBOT2
-        lda KEY_U : beq MR2D
-        lda ROB2_Y : beq MR2D
-        dec ROB2_Y : rts
-MR2D    lda KEY_D : beq MR2L
-        lda ROB2_Y : cmp #9 : bcs MR2L
-        inc ROB2_Y : rts
-MR2L    lda KEY_L : beq MR2R
-        lda ROB2_X : beq MR2R
-        dec ROB2_X
-        lda ROB2_X : jsr LASER_HIT_CHECK : bcc MR2DONE
-        jsr ROB2_LASER_DEATH : rts
-MR2R    lda KEY_R : beq MR2DONE
-        lda ROB2_X : cmp #12 : bcs MR2DONE
-        inc ROB2_X
-        lda ROB2_X : jsr LASER_HIT_CHECK : bcc MR2DONE
-        jsr ROB2_LASER_DEATH
-MR2DONE rts
-
-; =============================================================================
-; LASER_HIT_CHECK — A=robot tile X. Returns carry set if this is a live laser
-; hit: room 1, tile X=6, and the laser hasn't already been destroyed.
-; =============================================================================
-LASER_HIT_CHECK
-        cmp #6 : bne LHCNO
-        lda CUR_ROOM : bne LHCNO
-        lda LASER_OFF : bne LHCNO
+        jsr SOUND_DEATH_START
         sec : rts
-LHCNO   clc : rts
+TMCOMMIT
+        lda NEWX : sta PLR_X
+        lda NEWY : sta PLR_Y
+        sec : rts
+
+; ---------------------------------------------------------------------------
+; TRY_DOOR — NEWX/NEWY is outside the walkable range: scan this room's doors.
+; Carry set if a door handled it, clear if it's just a wall.
+; ---------------------------------------------------------------------------
+TRY_DOOR
+        ldx #0
+TDL     cpx #NUM_DOORS : bcs TDNONE
+        lda DOOR_ROOM,x : cmp CUR_ROOM : bne TDN
+        lda NEWX : cmp DOOR_X1,x : bcc TDN
+        lda DOOR_X2,x : cmp NEWX : bcc TDN
+        lda NEWY : cmp DOOR_Y1,x : bcc TDN
+        lda DOOR_Y2,x : cmp NEWY : bcc TDN
+        jmp DOOR_ENTER
+TDN     inx : bne TDL
+TDNONE  clc : rts
+
+; ---------------------------------------------------------------------------
+; DOOR_ENTER — X = door index. Locked check, then win exit or room change.
+; ---------------------------------------------------------------------------
+DOOR_ENTER
+        lda DOOR_KEY,x : beq DENOPEN
+        tay : dey                    ; key is item index + 1
+        lda ITEM_STATE,y : bne DENOPEN   ; carried or used: unlocked
+        jsr SETUP_DOOR_LOCKED
+        sec : rts
+DENOPEN lda DOOR_DEST,x : cmp #$FF : bne DENGO
+        jsr SETUP_WIN                ; $FF = mission exit
+        sec : rts
+DENGO   sta CUR_ROOM
+        lda DOOR_AX,x : cmp #$FF : beq DENAY   ; $FF = keep current coord
+        sta PLR_X
+DENAY   lda DOOR_AY,x : cmp #$FF : beq DENDRW
+        sta PLR_Y
+DENDRW  jsr DRAW_ROOM
+        sec : rts
 
 ; =============================================================================
-; ROB2_LASER_DEATH — the splicer walked into the laser: it disappears for
-; good and the laser itself burns out (LASER_OFF=1), so it can no longer
-; hurt the human either. If the player was piloting it, control snaps back
-; to human immediately.
+; MOVE_ACTOR — proxy mode: WASD/joystick drive actor PLAYER_MODE-1 instead of
+; the human (who stays frozen at the terminal). Bounds come from the actor's
+; own room; no doorway checks (robots can't leave their room). Driving into
+; an active laser destroys both the laser and the robot (ROBOT_LASER_DEATH).
 ; =============================================================================
-ROB2_LASER_DEATH
-        lda #0   : sta ROB2_ALIVE
-        lda #1   : sta LASER_OFF
+MOVE_ACTOR
+        ldx PLAYER_MODE : dex
+        lda KEY_U : beq MAD
+        jsr MASET : dec NEWY
+        jsr TRY_ACT : bcs MADONE
+MAD     lda KEY_D : beq MAL
+        jsr MASET : inc NEWY
+        jsr TRY_ACT : bcs MADONE
+MAL     lda KEY_L : beq MAR
+        jsr MASET : dec NEWX
+        jsr TRY_ACT : bcs MADONE
+MAR     lda KEY_R : beq MADONE
+        jsr MASET : inc NEWX
+        jsr TRY_ACT
+MADONE  rts
+
+MASET   lda ACT_X,x : sta NEWX
+        lda ACT_Y,x : sta NEWY
+        rts
+
+; TRY_ACT — X = actor index. Carry set = handled, clear = blocked by wall.
+; The move commits first, then the laser check runs on the new position (the
+; robot lands on the laser tile as it dies), matching the old splicer code.
+TRY_ACT
+        ldy ACT_ROOM,x
+        lda NEWX : cmp ROOM_MAXX,y : bcc TAXOK : beq TAXOK
+        clc : rts
+TAXOK   lda NEWY : cmp ROOM_MAXY,y : bcc TAYOK : beq TAYOK
+        clc : rts
+TAYOK   lda NEWX : sta ACT_X,x
+        lda NEWY : sta ACT_Y,x
+        jsr LASER_AT : bcc TAOK
+        jsr ROBOT_LASER_DEATH
+TAOK    sec : rts
+
+; =============================================================================
+; LASER_AT — carry set if NEWX/NEWY is inside an active laser rectangle of
+; the current room; Y = that laser's index. Preserves X.
+; =============================================================================
+LASER_AT
+        ldy #0
+LAL     cpy #NUM_LASERS : bcs LANONE
+        lda LASER_STATE,y : bne LAN
+        lda LASER_ROOM,y : cmp CUR_ROOM : bne LAN
+        lda NEWX : cmp LASER_X1,y : bcc LAN
+        lda LASER_X2,y : cmp NEWX : bcc LAN
+        lda NEWY : cmp LASER_Y1,y : bcc LAN
+        lda LASER_Y2,y : cmp NEWY : bcc LAN
+        sec : rts
+LAN     iny : bne LAL
+LANONE  clc : rts
+
+; =============================================================================
+; ROBOT_LASER_DEATH — X = actor, Y = laser (from LASER_AT). The robot is
+; destroyed for good and the laser burns out with it, so it no longer hurts
+; the human either. Control snaps back to human immediately.
+; =============================================================================
+ROBOT_LASER_DEATH
+        lda #0   : sta ACT_ALIVE,x
+        lda #1   : sta LASER_STATE,y
         lda #YELLOW : sta VIC_BRDCOL
         lda #15  : sta BFLASH
-        lda PLAYER_MODE : beq RB2LDONE
         lda #0   : sta PLAYER_MODE
-RB2LDONE rts
+        rts
 
 ; =============================================================================
 ; UPDATE_SPRITE0
@@ -503,21 +577,65 @@ SPRDX
 SPROUT  rts
 
 ; =============================================================================
-; UPDATE_SPRITE1 — position robot sprite from current room's robot coords
+; ASSIGN_SPRITES — map this room's actors onto hardware sprites 1-2. Called
+; from DRAW_ROOM, so every room change / room redraw refreshes the mapping.
+; Fills SPR_SLOT_ACT (2 bytes: actor index or $FF) and sets each used slot's
+; sprite pointer and colour from the actor's type (TYPE_SPRPTR/TYPE_COLOR).
+; Dead actors still claim a slot (UPDATE_ROBOT_SPRITES keeps them hidden);
+; genworld.py enforces max 2 robots per room, so nothing gets crowded out.
 ; =============================================================================
-UPDATE_SPRITE1
-        lda CUR_ROOM : bne UPSP1R2
-        lda ROB0_X : sta TMP : lda ROB0_Y : jmp UPSP1CALC
-UPSP1R2 lda ROB1_X : sta TMP : lda ROB1_Y
-UPSP1CALC
-        asl : asl : asl : asl
-        clc : adc #66 : sta VIC_SP1Y
-        lda TMP : jsr TILE_TO_PIXEL_X
-        sta VIC_SP1X
-        bcs UPSP1MSB
-        lda VIC_SP_MSB : and #$FD : sta VIC_SP_MSB : bcc UPSP1X
-UPSP1MSB lda VIC_SP_MSB : ora #$02 : sta VIC_SP_MSB
-UPSP1X  rts
+ASSIGN_SPRITES
+        lda #$FF : sta SPR_SLOT_ACT : sta SPR_SLOT_ACT+1
+        ldy #0                       ; next free slot
+        ldx #0                       ; actor index
+ASGL    cpx #NUM_ACTORS : bcs ASGDONE
+        lda ACT_ROOM,x : cmp CUR_ROOM : bne ASGN
+        txa : sta SPR_SLOT_ACT,y
+        stx TMP
+        lda ACT_TYPE,x : tax
+        lda TYPE_SPRPTR,x : sta SPRPTR+1,y
+        lda TYPE_COLOR,x  : sta VIC_SPCOL1,y
+        ldx TMP
+        iny : cpy #2 : bcs ASGDONE
+ASGN    inx : bne ASGL
+ASGDONE rts
+
+; =============================================================================
+; UPDATE_ROBOT_SPRITES — position/enable hardware sprites 1-2 from their
+; assigned actors (SPR_SLOT_ACT). A slot with no actor, a dead actor, or an
+; actor outside the current room is disabled (VIC_SPEN bit cleared) — callers
+; that re-enter game state can just set VIC_SPEN=$07 and let this fix it up.
+; =============================================================================
+SLOT_ORBIT  !byte $02,$04           ; VIC bit for hw sprite 1/2
+SLOT_ANDBIT !byte $FD,$FB
+SLOT_REGOFF !byte 0,2               ; VIC_SP1X/VIC_SP2X register offset
+
+UPDATE_ROBOT_SPRITES
+        ldy #0
+        jsr UPD_SLOT
+        ldy #1
+        ; fall through for slot 1
+; UPD_SLOT — Y = slot (0/1). Y survives; X/A/TMP/TMP2/NEWX/NEWY are scratch.
+UPD_SLOT
+        ldx SPR_SLOT_ACT,y
+        cpx #$FF : beq UPDSOFF
+        lda ACT_ALIVE,x : beq UPDSOFF
+        lda ACT_ROOM,x : cmp CUR_ROOM : bne UPDSOFF
+        lda ACT_X,x : sta NEWX
+        lda ACT_Y,x : sta NEWY
+        lda VIC_SPEN : ora SLOT_ORBIT,y : sta VIC_SPEN
+        lda NEWX : jsr TILE_TO_PIXEL_X   ; (preserves Y, clobbers TMP/TMP2)
+        ldx SLOT_REGOFF,y
+        sta VIC_SP1X,x
+        bcs UPDSMSB
+        lda VIC_SP_MSB : and SLOT_ANDBIT,y : sta VIC_SP_MSB
+        jmp UPDSY
+UPDSMSB lda VIC_SP_MSB : ora SLOT_ORBIT,y : sta VIC_SP_MSB
+UPDSY   lda NEWY : asl : asl : asl : asl
+        clc : adc #66 : sta VIC_SP1Y,x
+        rts
+UPDSOFF lda VIC_SPEN : and SLOT_ANDBIT,y : sta VIC_SPEN
+        rts
 
 ; =============================================================================
 ; TILE_TO_PIXEL_X — A=tile number. Returns pixel X low byte in A (store to
@@ -547,29 +665,6 @@ TILE_TO_PIXEL_X
         rts
 
 ; =============================================================================
-; UPDATE_SPRITE2 — position splicer robot (room 1 only, right of the laser).
-; Sprite is enabled only while CUR_ROOM=0 and ROB2_ALIVE=1; hidden (VIC_SPEN
-; bit 2 cleared) otherwise — either because there's no room 2 counterpart, or
-; because the splicer was destroyed by the laser (see ROB2_LASER_DEATH).
-; =============================================================================
-UPDATE_SPRITE2
-        lda ROB2_ALIVE : beq UPSP2OFF
-        lda CUR_ROOM : beq UPSP2ON
-UPSP2OFF lda VIC_SPEN : and #$FB : sta VIC_SPEN
-        rts
-UPSP2ON lda VIC_SPEN : ora #$04 : sta VIC_SPEN
-
-        lda ROB2_Y : asl : asl : asl : asl
-        clc : adc #66 : sta VIC_SP2Y
-
-        lda ROB2_X : jsr TILE_TO_PIXEL_X
-        sta VIC_SP2X
-        bcs UPSP2MSB
-        lda VIC_SP_MSB : and #$FB : sta VIC_SP_MSB : rts
-UPSP2MSB lda VIC_SP_MSB : ora #$04 : sta VIC_SP_MSB
-        rts
-
-; =============================================================================
 ; CHECK_SPRITE_HIT — read $D01E once (every frame, to keep the latch clear);
 ; bit 0 = player (sprite 0) collided with any other enabled sprite. Ignored
 ; while PLAYER_MODE=1: the human sprite is frozen at the terminal and cannot
@@ -586,44 +681,45 @@ CHECK_SPRITE_HIT
 SPRHITOK rts
 
 ; =============================================================================
-; TICK_ROBOT — move both robots on their patrol paths
+; TICK_ROBOT — run every actor's patrol AI (shared 20-frame timer). An actor
+; is skipped while dead (ACT_ALIVE=0) or player-driven (PLAYER_MODE=index+1).
+; Actors in other rooms keep patrolling off-screen, as before.
 ; =============================================================================
 TICK_ROBOT
         lda ROB_TMR : beq TROBOK
         dec ROB_TMR : rts
 TROBOK  lda #20 : sta ROB_TMR
+        ldx #0
+TROBL   cpx #NUM_ACTORS : bcs TROBD
+        lda ACT_ALIVE,x : beq TROBN
+        txa : clc : adc #1 : cmp PLAYER_MODE : beq TROBN
+        jsr ACTOR_PATROL_STEP
+TROBN   inx : bne TROBL
+TROBD   rts
 
-        ; Robot 0 (room 1): patrols X=2..4 on Y=7
-        lda ROB0_DIR : bne TR0RIGHT
-        lda ROB0_X : cmp #3 : bcc TR0FLIP0
-        dec ROB0_X : jmp TROBT1
-TR0FLIP0 lda #1 : sta ROB0_DIR : jmp TROBT1
-TR0RIGHT lda ROB0_X : cmp #4 : bcc TR0FWD
-        lda #0 : sta ROB0_DIR : jmp TROBT1
-TR0FWD  inc ROB0_X
-
-TROBT1  ; Robot 1 (room 2): patrols X=2..7 on Y=5
-        lda ROB1_DIR : bne TR1RIGHT
-        lda ROB1_X : cmp #3 : bcc TR1FLIP1
-        dec ROB1_X : jmp TROBT2
-TR1FLIP1 lda #1 : sta ROB1_DIR : jmp TROBT2
-TR1RIGHT lda ROB1_X : cmp #7 : bcc TR1FWD
-        lda #0 : sta ROB1_DIR : jmp TROBT2
-TR1FWD  inc ROB1_X
-
-TROBT2  ; Robot 2 (room 1, splicer): patrols X=7..9 on Y=3, right of the laser.
-        ; Suspended while PLAYER_MODE=1 (player is driving it via MOVE_ROBOT2)
-        ; or ROB2_ALIVE=0 (destroyed by the laser — stays put forever).
-        lda ROB2_ALIVE : beq TR2SKIP
-        lda PLAYER_MODE : bne TR2SKIP
-        lda ROB2_DIR : bne TR2RIGHT
-        lda ROB2_X : cmp #8 : bcc TR2FLIP2
-        dec ROB2_X : rts
-TR2FLIP2 lda #1 : sta ROB2_DIR : rts
-TR2RIGHT lda ROB2_X : cmp #9 : bcc TR2FWD
-        lda #0 : sta ROB2_DIR : rts
-TR2FWD  inc ROB2_X : rts
-TR2SKIP rts
+; ---------------------------------------------------------------------------
+; ACTOR_PATROL_STEP — X = actor. One step toward the current target waypoint
+; (ACT_TGT selects ACT_WX0/WY0 or ACT_WX1/WY1), X axis first, then Y; on
+; arrival the target flips, so the actor shuttles between the two waypoints.
+; No laser/collision checks — patrol paths are authored not to cross hazards.
+; ---------------------------------------------------------------------------
+ACTOR_PATROL_STEP
+        lda ACT_TGT,x : beq APSW0
+        lda ACT_WX1,x : sta NEWX
+        lda ACT_WY1,x : sta NEWY
+        jmp APSGO
+APSW0   lda ACT_WX0,x : sta NEWX
+        lda ACT_WY0,x : sta NEWY
+APSGO   lda ACT_X,x : cmp NEWX : beq APSY
+        bcs APSXL
+        inc ACT_X,x : rts
+APSXL   dec ACT_X,x : rts
+APSY    lda ACT_Y,x : cmp NEWY : beq APSFLIP
+        bcs APSYU
+        inc ACT_Y,x : rts
+APSYU   dec ACT_Y,x : rts
+APSFLIP lda ACT_TGT,x : eor #1 : sta ACT_TGT,x
+        rts
 
 ; =============================================================================
 ; DRAW_ROOM — draws CUR_ROOM to screen rows 2-23
@@ -648,12 +744,13 @@ DRMCPG  jsr COL_BYTE : iny : bne DRMCPG
         dex : bne DRMCPG
         ldy #0
 DRMCTAIL jsr COL_BYTE : iny : cpy #112 : bcc DRMCTAIL
-        rts
+        jmp ASSIGN_SPRITES           ; room changed: remap actors -> sprites
 
 DRMSETPTR
-        lda CUR_ROOM : beq DRMSP1
-        lda #<ROOM2_DATA : sta PTR : lda #>ROOM2_DATA : sta PTR+1 : rts
-DRMSP1  lda #<ROOM_DATA  : sta PTR : lda #>ROOM_DATA  : sta PTR+1 : rts
+        ldx CUR_ROOM
+        lda ROOM_MAP_LO,x : sta PTR
+        lda ROOM_MAP_HI,x : sta PTR+1
+        rts
 
 ; COL_BYTE — colour RAM byte is looked up from TILE_COLORS, indexed by the
 ; screen code of the tile being drawn (see src/charset.asm).
@@ -676,22 +773,35 @@ DSTL    lda STAT_TMPL,x : jsr PET2SCREEN : sta SCRN+960,x
         lda #DGRAY : sta CRAM+960,x
         dex : bpl DSTL
         lda CUR_ROOM : clc : adc #(CH_0+1) : sta SCRN+962
-        lda PLAYER_MODE : bne DSTROBX
-        lda PLR_X : jmp DSTXGO
-DSTROBX lda ROB2_X
-        ; X can reach 12 (see MOVTR/MOVE_ROBOT2), so it needs 2 digits, unlike
-        ; the single-digit 0-9 room/Y fields.
-DSTXGO  jsr DEC2
+        ; position of whoever the player is driving (human or proxy actor)
+        ldx PLAYER_MODE : beq DSTHUM
+        dex
+        lda ACT_Y,x : sta NEWY       ; stash: DEC2 clobbers X and TMP/TMP2
+        lda ACT_X,x : jsr DEC2       ; X can reach 12 — 2 digits
         lda TMP : sta SCRN+966 : lda TMP2 : sta SCRN+967
-        lda PLAYER_MODE : bne DSTROBY
-        lda PLR_Y : jmp DSTYGO
-DSTROBY lda ROB2_Y
+        lda NEWY
+        jmp DSTYGO
+DSTHUM  lda PLR_X : jsr DEC2
+        lda TMP : sta SCRN+966 : lda TMP2 : sta SCRN+967
+        lda PLR_Y
 DSTYGO  clc : adc #CH_0 : sta SCRN+971
         lda #LTGREEN : sta CRAM+962 : sta CRAM+966 : sta CRAM+967 : sta CRAM+971
-        rts
+
+        ; item field: label of the first non-hidden item (12 chars, world.asm)
+        ldx #0
+DSTIL   cpx #NUM_ITEMS : bcs DSTOUT
+        lda ITEM_STATE,x : bne DSTIF
+        inx : bne DSTIL
+DSTIF   lda ITEM_LABEL_LO,x : sta PTR
+        lda ITEM_LABEL_HI,x : sta PTR+1
+        ldy #11
+DSTLL   lda (PTR),y : jsr PET2SCREEN : sta SCRN+978,y
+        lda #LTRED : sta CRAM+978,y
+        dey : bpl DSTLL
+DSTOUT  rts
 
 STAT_TMPL
-        !pet "r:0 x=00 y=0 chips:l1x2 l2x1  joy/wasd  "
+        !pet "r:0 x=00 y=0 item:            joy/wasd  "
 
 ; =============================================================================
 ; SID DEATH SOUND

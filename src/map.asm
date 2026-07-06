@@ -14,8 +14,7 @@ DO_MAP
         jsr DRAW_STATUS
         lda #$07 : sta VIC_SPEN
         jsr UPDATE_SPRITE0
-        jsr UPDATE_SPRITE1
-        jsr UPDATE_SPRITE2
+        jsr UPDATE_ROBOT_SPRITES
 MAPDONE jmp MAIN_LOOP
 
 ; ---------------------------------------------------------------------------
@@ -88,31 +87,21 @@ SMCN11  lda #CYAN : sta CRAM+11*40+13,x : dex : bpl SMCN11
         ldx #7
 SMCN12  lda #CYAN : sta CRAM+12*40+13,x : dex : bpl SMCN12
 
-        ; Highlight current room box in LTGREEN
-        lda CUR_ROOM : bne SMHLR2
-
-        ; Room 1 (cols 2-13, rows 9-12)
-        ldx #11
-SMHL1_9  lda #LTGREEN : sta CRAM+9*40+2,x  : dex : bpl SMHL1_9
-        ldx #11
-SMHL1_10 lda #LTGREEN : sta CRAM+10*40+2,x : dex : bpl SMHL1_10
-        ldx #11
-SMHL1_11 lda #LTGREEN : sta CRAM+11*40+2,x : dex : bpl SMHL1_11
-        ldx #11
-SMHL1_12 lda #LTGREEN : sta CRAM+12*40+2,x : dex : bpl SMHL1_12
-        rts
-
-SMHLR2  ; Room 2 (cols 20-31, rows 9-13)
-        ldx #11
-SMHL2_9  lda #LTGREEN : sta CRAM+9*40+20,x  : dex : bpl SMHL2_9
-        ldx #11
-SMHL2_10 lda #LTGREEN : sta CRAM+10*40+20,x : dex : bpl SMHL2_10
-        ldx #11
-SMHL2_11 lda #LTGREEN : sta CRAM+11*40+20,x : dex : bpl SMHL2_11
-        ldx #11
-SMHL2_12 lda #LTGREEN : sta CRAM+12*40+20,x : dex : bpl SMHL2_12
-        ldx #11
-SMHL2_13 lda #LTGREEN : sta CRAM+13*40+20,x : dex : bpl SMHL2_13
+        ; Highlight the current room's box in LTGREEN. The box position/size
+        ; comes from the MAPHL_* tables (map_view in titan.yaml) — the map
+        ; background art above is still hand-drawn, so a new room needs both
+        ; a map_view entry and matching art in the MAP_R* strings.
+        ldx CUR_ROOM
+        lda MAPHL_LO,x : sta PTR
+        lda MAPHL_HI,x : sta PTR+1
+        lda MAPHL_H,x : sta TMP
+SMHLROW ldy MAPHL_W,x
+        dey
+SMHLCOL lda #LTGREEN : sta (PTR),y
+        dey : bpl SMHLCOL
+        lda PTR : clc : adc #40 : sta PTR
+        lda PTR+1 : adc #0 : sta PTR+1
+        dec TMP : bne SMHLROW
         rts
 
 ; =============================================================================

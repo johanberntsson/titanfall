@@ -9,29 +9,46 @@
 ; =============================================================================
 
 ; ---------------------------------------------------------------------------
-; DO_POPUP — called each frame in state 6
+; DO_POPUP — called each frame in state 6. The popup stays up until a *fresh*
+; space press: POPUP_ST tracks 0 = opening space still held, 1 = released
+; (armed), 2 = new press seen; the popup closes when that press is released,
+; so the closing space can't leak into READ_KEYS (terminal/search) either.
+; Polls the CIA matrix directly — GETIN would see the opening keypress in
+; the KERNAL buffer (filled by the raster IRQ's $EA31 tail) and close the
+; popup on the very next frame.
 ; ---------------------------------------------------------------------------
 DO_POPUP
-        jsr GETIN
-        beq POPUPDONE
+        lda #$FF : sta CIA1_DDRA
+        lda #$7F : sta CIA1_PRA        ; space: col 7 (PA=$7F), row 4
+        lda CIA1_PRB : and #$10        ; 0 = pressed (active low)
+        beq DPDOWN
+        ; space is up
+        lda POPUP_ST : cmp #2 : beq DPCLOSE   ; full press+release done
+        lda #1 : sta POPUP_ST          ; opening press released — armed
+        jmp POPUPDONE
+DPDOWN  ; space is down
+        lda POPUP_ST : cmp #1 : bne POPUPDONE
+        lda #2 : sta POPUP_ST          ; fresh press registered
+        jmp POPUPDONE
+DPCLOSE ; close the popup and resume the game
+        lda #0 : sta $C6               ; drop buffered keypresses
         lda #1 : sta GAME_STATE
         jsr DRAW_ROOM
         jsr DRAW_STATUS
         lda #$07 : sta VIC_SPEN
         jsr UPDATE_SPRITE0
-        jsr UPDATE_SPRITE1
-        jsr UPDATE_SPRITE2
+        jsr UPDATE_ROBOT_SPRITES
 POPUPDONE jmp MAIN_LOOP
 
 ; ---------------------------------------------------------------------------
-; SETUP_SEARCH — "found item" popup. Called via jsr from READ_KEYS when
-; searching at a spot with something to find. Caller has already checked
-; position/CARD_RED; this just marks the card found and shows the popup.
+; SETUP_SEARCH — "found item" popup. Called via jsr from READ_KEYS with
+; X = item index; the caller has already checked position and ITEM_STATE.
+; Marks the item carried and shows its generated found-message (world.asm).
 ; ---------------------------------------------------------------------------
 SETUP_SEARCH
-        lda #1 : sta CARD_RED
-        lda #<SBOX_MSG_FOUND : sta PTR
-        lda #>SBOX_MSG_FOUND : sta PTR+1
+        lda #1 : sta ITEM_STATE,x
+        lda ITEM_MSG_LO,x : sta PTR
+        lda ITEM_MSG_HI,x : sta PTR+1
         jmp SHOW_POPUP
 
 ; ---------------------------------------------------------------------------
@@ -49,6 +66,7 @@ SETUP_DOOR_LOCKED
 ; ---------------------------------------------------------------------------
 SHOW_POPUP
         lda #6 : sta GAME_STATE
+        lda #0 : sta POPUP_ST          ; opening space is still held down
         lda #$00 : sta VIC_SPEN
 
         ldx #39
@@ -87,7 +105,6 @@ SPROW13 lda SBOX_BOT,x : jsr PET2SCREEN : sta SCRN+13*40,x
 ; =============================================================================
 SBOX_TOP        !pet "    +------------------------------+    "
 SBOX_BLK        !pet "    |                              |    "
-SBOX_MSG_FOUND  !pet "    |    red access card found!    |    "
-SBOX_MSG_LOCKED !pet "    |         door locked!          |    "
-SBOX_HNT        !pet "    |        press any key         |    "
+SBOX_MSG_LOCKED !pet "    |         door locked!         |    "
+SBOX_HNT        !pet "    |         press space          |    "
 SBOX_BOT        !pet "    +------------------------------+    "
