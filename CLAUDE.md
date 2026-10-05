@@ -255,10 +255,12 @@ $2D  ROB_TMR      robot movement timer (shared by all actors, 20-frame period)
 $31  PLAYER_MODE  0=human (PLR_X/Y)  else actor index+1 (proxy mode, ACT_X/Y)
 $32  KEY_X        X key flag (exit robot proxy mode)
 $33  POPUP_ST     popup close edge-detector (0=opener held, 1=armed, 2=pressed)
+$34  JOY_PREV     joystick 2 bits held last frame (1=pressed; 0 U 1 D 2 L 3 R 4 fire)
 $35  KEY_SPC      space key flag (search, and enter terminal — see Keyboard matrix gotcha)
+$36  JOY_NEW      joystick 2 bits newly pressed this frame (set in MAIN_LOOP)
 ```
 
-Free zero-page slots: `$29-$2C`, `$2E-$30`, `$34`, `$36`, `$37+`. Per-robot positions, laser/item state etc. moved to RAM arrays at the end of `src/world.asm` (`ACT_X/Y/TGT/ALIVE`, `ITEM_STATE`, `LASER_STATE`, `SPR_SLOT_ACT`) — indexed with `,x`, sized by the config.
+Free zero-page slots: `$29-$2C`, `$2E-$30`, `$37+`. Per-robot positions, laser/item state etc. moved to RAM arrays at the end of `src/world.asm` (`ACT_X/Y/TGT/ALIVE`, `ITEM_STATE`, `LASER_STATE`, `SPR_SLOT_ACT`) — indexed with `,x`, sized by the config.
 
 ## Room Map
 
@@ -349,7 +351,7 @@ Space (search/terminal): col 7 (PA=$7F), row 4 (PRB bit 4 = mask $10, active low
 Return:            col 1 (PA=$FD), row 1 (PRB bit 1 = mask $02, active low)
 F7 (exit):         col 7 (PA=$7F), row 4 (PRB bit 3 = mask $08, active low)
 ```
-Movement is WASD, not cursor keys (joystick port 2 also still works — `READ_KEYS` ORs both into the same `KEY_U/D/L/R` flags). Space does double duty: it enters the terminal inside a terminal zone (`TERMZ_*` tables) and searches on an item spot (`ITEM_*` tables) — keep these zones non-overlapping in `titan.yaml`, since the terminal check wins (it runs first in `READ_KEYS`). There used to be a dedicated T key for the terminal; it was removed in favor of reusing Space. If a key seems to trigger the wrong action, re-derive its column/row from the matrix table rather than guessing; `col`/`row` values that look adjacent (e.g. row 4 vs row 6) are an easy transcription error.
+Movement is WASD, not cursor keys. Joystick port 2 works alongside the keyboard: `READ_KEYS` first reads `CIA1_PRA` (`$DC00`) with `PRA=$FF` (no keyboard column selected; bits 0-4 = up/down/left/right/fire, active low) and ORs the directions into the same `KEY_U/D/L/R` flags (held = move). Fire is Space, but only on a *fresh* press: `MAIN_LOOP` polls port 2 once per frame into `JOY_PREV` (held bits) and `JOY_NEW` (bits newly pressed this frame, 1=pressed), and `READ_KEYS` sets `KEY_SPC` from `JOY_NEW` — otherwise fire still held from the terminal's logoff would re-enter the terminal on the next frame. (Port 1 would be `$DC01`, which collides with keyboard rows; it isn't read.) The `GETIN`-driven screens also take `JOY_NEW`: fire = "press any key" on intro/game over/win/map, and in the terminal menu fire = Return, up/down = cursor up/down. `DO_POPUP` polls fire directly with its own edge detector, alongside Space. Space does double duty: it enters the terminal inside a terminal zone (`TERMZ_*` tables) and searches on an item spot (`ITEM_*` tables) — keep these zones non-overlapping in `titan.yaml`, since the terminal check wins (it runs first in `READ_KEYS`). There used to be a dedicated T key for the terminal; it was removed in favor of reusing Space. If a key seems to trigger the wrong action, re-derive its column/row from the matrix table rather than guessing; `col`/`row` values that look adjacent (e.g. row 4 vs row 6) are an easy transcription error.
 
 Terminal menu navigation uses `GETIN` (KERNAL keyboard buffer) for PETSCII codes: `$11`=cursor down, `$91`=cursor up, `$0D`=Return, `$88`=F7.
 

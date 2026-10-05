@@ -126,6 +126,13 @@ TSETM   lda #CH_SPC : sta TERM_MSGROW,x
 ; DO_TERMINAL — called each frame in state 3
 ; ---------------------------------------------------------------------------
 DO_TERMINAL
+        ; Joystick 2 first (fresh presses only): fire = Return, up/down =
+        ; cursor. Checked before GETIN so a character sitting in the KERNAL
+        ; buffer (e.g. an emulator fire key that also types a key) can't
+        ; route the frame into the keyboard branch and swallow the fire.
+        lda JOY_NEW : and #$10 : bne TERM_LINK
+        lda JOY_NEW : and #$01 : bne TERM_UP
+        lda JOY_NEW : and #$02 : bne TERM_DOWN
         ; GETIN returns PETSCII: F7=$88, Return=$0D, cursor up=$91, dn=$11
         jsr GETIN
         bne DTGOT

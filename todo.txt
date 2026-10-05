@@ -2,6 +2,11 @@
 #           OPEN
 # ------------------------
 
+Need better sprites and in-between frames for animation
+
+Need smoother sprite movement. It's fine that they are defined in character resolution, but
+they should move between character postions in pixel steps so it looks better
+
 Change from cursor keys to WASD + space, and also add joystick support as an alternative.
   - space for terminal mode instead of "t"
   - No keyboard presses needed for map mode. Terminal option?

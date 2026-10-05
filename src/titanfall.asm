@@ -48,8 +48,10 @@ ROB_TMR    = $2D   ; robot movement timer (shared by all actors)
 PLAYER_MODE = $31  ; 0=human (control PLR_X/Y)  else actor index+1 (proxy mode)
 KEY_X      = $32   ; X key flag (exit robot proxy mode)
 POPUP_ST   = $33   ; popup: 0=waiting for opening space to be released, 1=armed
+JOY_PREV   = $34   ; joystick 2 bits held last frame (1=pressed, bits 0-4)
 KEY_SPC    = $35   ; space key flag (search / enter terminal)
-; free zero-page slots: $29-$2C, $2E-$30, $34, $36
+JOY_NEW    = $36   ; joystick 2 bits newly pressed this frame (U/D/L/R/fire)
+; free zero-page slots: $29-$2C, $2E-$30
 ; Robot positions, laser/item state etc. live in RAM arrays declared at the
 ; end of src/world.asm (ACT_X/Y, ACT_ALIVE, ITEM_STATE, LASER_STATE, ...).
 
@@ -171,6 +173,8 @@ SIDCLR  lda #0
         lda #$FF    : sta VIC_IRQ
 
         lda #0      : sta SND_TMR       ; ensure music plays from first IRQ
+        lda #$1F    : sta JOY_PREV      ; treat a stick held at boot as old
+        lda #0      : sta JOY_NEW
 
         cli
 
@@ -203,6 +207,16 @@ MAIN_LOOP
         lda TICK_FLAG
         beq MAIN_LOOP
         lda #0 : sta TICK_FLAG
+
+        ; Poll joystick 2 once per frame: JOY_NEW = bits pressed now but not
+        ; last frame (1=pressed; 0 up, 1 down, 2 left, 3 right, 4 fire).
+        ; Menus and fire actions use JOY_NEW, so a press held over from the
+        ; previous screen can't immediately trigger the next one.
+        lda #$FF : sta CIA1_DDRA : sta CIA1_PRA
+        lda CIA1_PRA : eor #$FF : and #$1F : tax
+        eor JOY_PREV : sta JOY_NEW
+        txa : and JOY_NEW : sta JOY_NEW
+        stx JOY_PREV
 
         lda GAME_STATE
         bne MLNOT0

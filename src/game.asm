@@ -294,13 +294,19 @@ READ_KEYS
         lda #0 : sta KEY_X
         lda #0 : sta KEY_SPC
 
+        ; Joystick port 2 = CIA1 PRA ($DC00), read with no keyboard column
+        ; selected (PRA=$FF). Bits active low: 0 up, 1 down, 2 left,
+        ; 3 right, 4 fire. Fire acts as space (terminal / search), but only
+        ; on a fresh press (JOY_NEW, MAIN_LOOP) — fire still held from the
+        ; terminal's logoff/select must not re-enter the terminal.
         lda #$FF : sta CIA1_DDRA : sta CIA1_PRA
-        lda CIA1_PRB : sta TMP
+        lda CIA1_PRA : sta TMP
         lda TMP : and #$01 : bne RKJ1 : lda #1 : sta KEY_U
 RKJ1    lda TMP : and #$02 : bne RKJ2 : lda #1 : sta KEY_D
 RKJ2    lda TMP : and #$04 : bne RKJ3 : lda #1 : sta KEY_L
 RKJ3    lda TMP : and #$08 : bne RKJ4 : lda #1 : sta KEY_R
-RKJ4
+RKJ4    lda JOY_NEW : and #$10 : beq RKJ5 : lda #1 : sta KEY_SPC
+RKJ5
         ; W (up): col 1 (PA=$FD), row 1 (PB bit 1, active low)
         lda #$FD : sta CIA1_PRA
         lda CIA1_PRB : and #$02 : bne RKWN

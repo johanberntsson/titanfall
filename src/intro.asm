@@ -7,7 +7,10 @@
 ; ---------------------------------------------------------------------------
 DO_INTRO
         jsr GETIN
+        bne INTRO_GO
+        lda JOY_NEW : and #$10          ; or joystick fire
         beq INTRO_NOBTN
+INTRO_GO
         jsr SETUP_GAME
         jmp MAIN_LOOP
 

@@ -7,7 +7,10 @@
 ; ---------------------------------------------------------------------------
 DO_MAP
         jsr GETIN
+        bne MAP_GO
+        lda JOY_NEW : and #$10          ; or joystick fire
         beq MAPDONE
+MAP_GO
         lda #1 : sta GAME_STATE
         lda #0 : sta $C6
         jsr DRAW_ROOM

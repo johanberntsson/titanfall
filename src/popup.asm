@@ -18,7 +18,9 @@
 ; popup on the very next frame.
 ; ---------------------------------------------------------------------------
 DO_POPUP
-        lda #$FF : sta CIA1_DDRA
+        lda #$FF : sta CIA1_DDRA : sta CIA1_PRA
+        lda CIA1_PRA : and #$10        ; joystick 2 fire (active low)
+        beq DPDOWN
         lda #$7F : sta CIA1_PRA        ; space: col 7 (PA=$7F), row 4
         lda CIA1_PRB : and #$10        ; 0 = pressed (active low)
         beq DPDOWN

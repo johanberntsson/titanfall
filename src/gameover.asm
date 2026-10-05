@@ -7,7 +7,10 @@
 ; ---------------------------------------------------------------------------
 DO_GAMEOVER
         jsr GETIN
+        bne GO_GO
+        lda JOY_NEW : and #$10          ; or joystick fire
         beq GO_NOBTN
+GO_GO
         lda #0     : sta GAME_STATE
         lda #BLACK : sta VIC_BRDCOL : sta VIC_BGCOL
         lda #$00   : sta VIC_SPEN
