@@ -158,68 +158,63 @@ HUDST2  lda #CH_HBLK : sta SCRN+40,x
         rts
 
 HUD_TMPL
-        !pet "00:00:00 human reactor:[        ]  0%   "
+        !pet "human     reactor: [        ]   00:00:00"
 
 ; =============================================================================
 ; DRAW_HUD_DYNAMIC
 ; =============================================================================
 DRAW_HUD_DYNAMIC
+        ; layout: mode at cols 0-4, gauge centred at 10-28, clock at 32-39
         lda CLK_H : jsr DEC2
-        lda TMP : sta SCRN+0 : lda TMP2 : sta SCRN+1
-        lda #CH_COLN : sta SCRN+2
+        lda TMP : sta SCRN+HUD_CLK+0 : lda TMP2 : sta SCRN+HUD_CLK+1
+        lda #CH_COLN : sta SCRN+HUD_CLK+2
         lda CLK_M : jsr DEC2
-        lda TMP : sta SCRN+3 : lda TMP2 : sta SCRN+4
-        lda #CH_COLN : sta SCRN+5
+        lda TMP : sta SCRN+HUD_CLK+3 : lda TMP2 : sta SCRN+HUD_CLK+4
+        lda #CH_COLN : sta SCRN+HUD_CLK+5
         lda CLK_S : jsr DEC2
-        lda TMP : sta SCRN+6 : lda TMP2 : sta SCRN+7
+        lda TMP : sta SCRN+HUD_CLK+6 : lda TMP2 : sta SCRN+HUD_CLK+7
 
         lda #WHITE
         ldx CLK_H : bne HUDCC
         ldx CLK_M : cpx #10 : bcs HUDCC
         lda #LTRED
 HUDCC   ldx #7
-HUDCCL  sta CRAM,x : dex : bpl HUDCCL
+HUDCCL  sta CRAM+HUD_CLK,x : dex : bpl HUDCCL
 
         lda PLAYER_MODE : bne HUDMLR
         ldx #4
-HUDML   lda LMODE_H,x : jsr PET2SCREEN : sta SCRN+9,x
-        lda #CYAN : sta CRAM+9,x
+HUDML   lda LMODE_H,x : jsr PET2SCREEN : sta SCRN,x
+        lda #CYAN : sta CRAM,x
         dex
         bpl HUDML
         jmp HUDMLDONE
 HUDMLR  ldx #4
-HUDML2  lda LMODE_R,x : jsr PET2SCREEN : sta SCRN+9,x
-        lda #GREEN : sta CRAM+9,x
+HUDML2  lda LMODE_R,x : jsr PET2SCREEN : sta SCRN,x
+        lda #GREEN : sta CRAM,x
         dex
         bpl HUDML2
 HUDMLDONE
 
-        ; reactor thermometer: 8 solid segments (cols 24-31), lit ones in
+        ; reactor thermometer: 8 solid segments (cols 20-27), lit ones in
         ; their zone colour (4 green, 2 yellow, 2 red), unlit ones dark grey
         lda REACT_TEMP : clc : adc REACT_JIT     ; shown = base + flicker
         cmp #100 : bcc HUDRV : lda #99
-HUDRV   sta TMP
-        ldx #0                                   ; lit = (shown+6)/12, 0-8
+HUDRV   ldx #0                                   ; lit = (shown+6)/12, 0-8
         clc : adc #6
 HUDRDV  cmp #12 : bcc HUDRDD
         sbc #12 : inx : bne HUDRDV
 HUDRDD  stx TMP2
         ldy #0
-HUDBAR  lda #CH_SOLID : sta SCRN+24,y
+HUDBAR  lda #CH_SOLID : sta SCRN+HUD_BAR,y
         lda #DGRAY
         cpy TMP2 : bcs HUDBUL
         lda REACT_ZONES,y
-HUDBUL  sta CRAM+24,y
+HUDBUL  sta CRAM+HUD_BAR,y
         iny : cpy #8 : bne HUDBAR
-
-        ldx TMP2 : dex : bpl HUDRNC : ldx #0     ; number: colour of the top
-HUDRNC  lda REACT_ZONES,x : pha                  ;  lit segment (green if none)
-        lda TMP : jsr DEC3                       ; (clobbers TMP/TMP2/X)
-        lda DEC3BUF+0 : sta SCRN+33
-        lda DEC3BUF+1 : sta SCRN+34
-        lda DEC3BUF+2 : sta SCRN+35
-        pla : sta CRAM+33 : sta CRAM+34 : sta CRAM+35
         rts
+
+HUD_CLK = 32                    ; HUD row columns: clock, first gauge segment
+HUD_BAR = 20
 
 REACT_ZONES !byte LTGREEN,LTGREEN,LTGREEN,LTGREEN,YELLOW,YELLOW,LTRED,LTRED
 
@@ -235,22 +230,6 @@ DEC2L   cmp #10 : bcc DEC2D
         sec : sbc #10 : inx : bne DEC2L
 DEC2D   clc : adc #CH_0 : sta TMP2
         txa : clc : adc #CH_0 : sta TMP
-        rts
-
-; =============================================================================
-; DEC3 — A (0-99) → 3 chars in DEC3BUF (space-padded left)
-; =============================================================================
-DEC3BUF !byte 0,0,0
-
-DEC3
-        jsr DEC2
-        lda TMP : cmp #CH_0 : bne DEC3T
-        lda #CH_SPC : sta DEC3BUF+0 : sta DEC3BUF+1
-        lda TMP2 : sta DEC3BUF+2
-        rts
-DEC3T   lda #CH_SPC : sta DEC3BUF+0
-        lda TMP : sta DEC3BUF+1
-        lda TMP2 : sta DEC3BUF+2
         rts
 
 ; =============================================================================

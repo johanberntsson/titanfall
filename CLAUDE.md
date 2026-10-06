@@ -302,13 +302,14 @@ Interior walls are derived from the room art at build time (see "Interior walls"
 ## HUD Layout (row 0, 40 chars)
 
 ```
-00:00:00 human reactor:[########]  99%
-^      ^ ^   ^ ^      ^^       ^^  ^
-0      7 9  13 15    23 24    31 33 36
+human     reactor: [########]   00:00:00
+^   ^     ^      ^ ^^       ^   ^      ^
+0   4    10     17 1920    28  32     39
 ```
+Mode (`human` cyan / `robot` green) on the left, the gauge block centred (`HUD_BAR` = 20, first segment), the clock right-aligned (`HUD_CLK` = 32; white, light red under 10 minutes).
 (`#` = one thermometer segment, a solid block `$E0`; row 1 below the HUD is a full row of `CH_HBLK` in blue as a separator.)
 
-The reactor gauge visualises the countdown (nothing in the game reads it back). `TICK_REACTOR` sets `REACT_TEMP = 99 − M·89/START` every frame, with `M = CLK_H*60+CLK_M` (minutes left) and `START` the starting countdown in minutes — 10% at mission start (one green segment, clearly safe), 99% as the clock runs out, and a death penalty visibly heats it up. To avoid a runtime division it multiplies `M` by `REACT_K = REACT_SPAN*256/START` (`REACT_SPAN` = 89 = 99 − the starting 10%) (an assembly-time constant from `CFG_CLK_H/M`) and takes the high byte; `genworld.py` rejects a `start_time` under one minute. It also re-rolls a 0–3 flicker (`REACT_JIT`) every 8 frames; the shown value is `REACT_TEMP+REACT_JIT` (capped 99). `DRAW_HUD_DYNAMIC` draws it as an 8-segment thermometer in columns 24–31: solid blocks (`CH_SOLID` = `$E0` — not `$A0`, which is a room tile in the custom charset), `(shown+6)/12` segments lit in their zone colour from `REACT_ZONES` (4 green, 2 yellow, 2 red), the rest dark gray. The percentage (columns 33–35) uses the colour of the topmost lit segment. Note `DEC3`/`DEC2` clobber `TMP`/`TMP2`/`X` — keep any colour you need across them on the stack (the old code kept it in `TMP2`, so the digits were coloured by their own character code — usually black).
+The reactor gauge visualises the countdown (nothing in the game reads it back). `TICK_REACTOR` sets `REACT_TEMP = 99 − M·89/START` every frame, with `M = CLK_H*60+CLK_M` (minutes left) and `START` the starting countdown in minutes — 10% at mission start (one green segment, clearly safe), 99% as the clock runs out, and a death penalty visibly heats it up. To avoid a runtime division it multiplies `M` by `REACT_K = REACT_SPAN*256/START` (`REACT_SPAN` = 89 = 99 − the starting 10%) (an assembly-time constant from `CFG_CLK_H/M`) and takes the high byte; `genworld.py` rejects a `start_time` under one minute. It also re-rolls a 0–3 flicker (`REACT_JIT`) every 8 frames; the shown value is `REACT_TEMP+REACT_JIT` (capped 99). `DRAW_HUD_DYNAMIC` draws it as an 8-segment thermometer in columns 20–27 (no number — the bar is the whole display): solid blocks (`CH_SOLID` = `$E0` — not `$A0`, which is a room tile in the custom charset), `(shown+6)/12` segments lit in their zone colour from `REACT_ZONES` (4 green, 2 yellow, 2 red), the rest dark gray. Note `DEC2` clobbers `TMP`/`TMP2`/`X` — keep anything you need across it on the stack.
 
 ## Visual Style
 
