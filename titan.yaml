@@ -77,7 +77,7 @@ items:
 
 rooms:
   - name: room1
-    vchar64_map: graphics/titan_room01-map.s
+    vchar64_map: graphics/titan-map01.s
     label: room 1                      # name on the sector map (default: name)
     # bounds: {max_x: 19, max_y: 10}   # optional; default is the whole room
     player_start: {x: 6, y: 4}
@@ -105,7 +105,7 @@ rooms:
         arrive: {x: 19}                # y omitted = keep current y
 
   - name: room2
-    vchar64_map: graphics/titan_room02-map.s
+    vchar64_map: graphics/titan-map02.s
     label: room 2
     player_start: {x: 17, y: 5}
     robots:
