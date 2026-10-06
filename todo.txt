@@ -2,8 +2,6 @@
 #           OPEN
 # ------------------------
 
-The top status bar should be changed to "HUMAN   00:00:00   Reactor[xxxx]". No % needed
-
 We don't need to define the terminal hitbox in titan.yaml. We can find the terminal tile
 in the map file and define where it's activated from that
 
@@ -19,7 +17,7 @@ and when you release the fire button it disappears. If you do find something it 
 you get the popup instead, telling you what you find (like already implemented for the
 red card).
 
-I want to add two more sprites
+I'm made two new sprites for later
 
 Perhaps remove keyboard support. This is a joystick controlled game. The only exception is "any key"
 to close popups and the intro screen - this is still allowed to register the keyboard as an option.
@@ -27,6 +25,8 @@ to close popups and the intro screen - this is still allowed to register the key
 # ------------------------
 #           DONE
 # ------------------------
+
+The top status bar should be changed to "HUMAN   00:00:00   Reactor[xxxx]". No % needed
 
 The sprites are centered, and the walls are always on the left/top side of the tile. It
 means that the current wall detection is wrong. The player sprite can go one tile closer
