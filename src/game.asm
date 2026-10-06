@@ -23,6 +23,9 @@ GAME_ALIVE
 GA_CLOCKOK
         jsr TICK_REACTOR
         inc ANIM_CNT            ; drives the always-on hover animation
+        lda ANIM_CNT : and #7 : bne GA_NOLASER
+        jsr ANIM_LASER          ; flicker the beams ~6 times a second
+GA_NOLASER
         jsr TICK_ROBOT
         jsr READ_KEYS
         jsr MOVE_PLAYER
@@ -120,6 +123,30 @@ RSRLSRD
         jsr UPDATE_ROBOT_SPRITES
         lda VIC_SPCOLL
         lda VIC_SPEN : ora #$01 : sta VIC_SPEN
+        rts
+
+; =============================================================================
+; ANIM_LASER — make every laser beam crawl by flipping its dash pattern in
+; the charset itself (so all beams on screen animate at once, no screen RAM
+; writes): the beam glyph's rows alternate LASER_DASH / 0, and XOR-ing every
+; row with LASER_DASH swaps the two phases. The emitters carry the same
+; pattern in their beam half (top emitter rows 4-7, bottom emitter rows
+; 0-3), flipped along so the beam stays continuous into them. Must match
+; the art: chars $81-$83 in src/charset.asm (art.laser_tiles in titan.yaml).
+; =============================================================================
+LASER_DASH = $18                        ; the beam's lit pixels (00011000)
+CH_BEAM    = CHARSET+$81*8              ; beam, top emitter, bottom emitter
+CH_EMIT_T  = CHARSET+$82*8
+CH_EMIT_B  = CHARSET+$83*8
+
+ANIM_LASER
+        ldx #7
+ALBEAM  lda CH_BEAM,x : eor #LASER_DASH : sta CH_BEAM,x
+        dex : bpl ALBEAM
+        ldx #3
+ALEMIT  lda CH_EMIT_T+4,x : eor #LASER_DASH : sta CH_EMIT_T+4,x
+        lda CH_EMIT_B,x : eor #LASER_DASH : sta CH_EMIT_B,x
+        dex : bpl ALEMIT
         rts
 
 ; =============================================================================
