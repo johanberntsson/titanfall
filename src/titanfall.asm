@@ -55,6 +55,12 @@ PLR_ANIM   = $2A   ; player walk frame: 0=rest 1=walk1 2=walk2
 ANIM_CNT   = $2B   ; free-running game-frame counter (hover animation)
 ROB_TMR    = $2D   ; robot movement timer (shared by all actors)
 ROB_PHASE  = $3D   ; toggles every ROB_HALF frames: normal-pace actors step on 0
+BOLT_ON    = $3E   ; 1 = a shooter's bolt is in flight (hw sprite 3; one at a time)
+BOLT_DIR   = $3F   ; 0 = flying right, 1 = left
+BOLT_XL    = $40   ; bolt centre X in room pixels (tile*16+8), 9 bits
+BOLT_XH    = $41
+BOLT_TY    = $42   ; bolt tile row (wall checks)
+BOLT_SY    = $43   ; bolt sprite Y
 PLAYER_MODE = $31  ; 0=human (control PLR_X/Y)  else actor index+1 (proxy mode)
 KEY_X      = $32   ; X key flag (exit robot proxy mode)
 POPUP_ST   = $33   ; popup: 0=waiting for opening space to be released, 1=armed
@@ -77,6 +83,7 @@ SPRPTR     = $07F8
 SPRP_PLAYER = sprite_down_rest/64   ; default pointers written after CLS
 SPRP_ROBOT  = robot_down_rest/64    ; (ASSIGN_SPRITES / FRAME_PTR set the
 SPRP_DRONE  = drone_down_hover/64   ;  real per-frame values in game state)
+SPRP_BOLT   = bolt_1/64             ; shooter's bolt (bolt_1/bolt_2), sprite 3
 
 ; facings — also the frame-group order inside each sprite set
 DIR_DOWN   = 0
@@ -101,6 +108,9 @@ VIC_SP1Y   = $D003
 VIC_SPCOL1 = $D028
 VIC_SP2X   = $D004
 VIC_SP2Y   = $D005
+VIC_SP3X   = $D006
+VIC_SP3Y   = $D007
+VIC_SPCOL3 = $D02A
 VIC_BRDCOL = $D020
 VIC_BGCOL  = $D021
 
@@ -172,7 +182,7 @@ SIDCLR  lda #0
 
         ; VIC init
         lda #BLACK : sta VIC_BRDCOL : sta VIC_BGCOL
-        lda #$1A : sta VIC_VMCSB        ; screen $0400, custom charset $2800
+        lda #$1E : sta VIC_VMCSB        ; screen $0400, custom charset $3800
         lda #$0E : sta $0291            ; stop KERNAL IRQ resetting charset
 
         ; Sprite pointers and config
@@ -180,7 +190,8 @@ SIDCLR  lda #0
         lda #SPRP_ROBOT  : sta SPRPTR+1
         lda #SPRP_DRONE  : sta SPRPTR+2
         lda TYPE_COLOR+ATYPE_HUMAN : sta VIC_SPCOL0  ; slots 1-2 set by ASSIGN_SPRITES
-        lda #$07   : sta $D01C          ; sprites 0-2 multicolour
+        lda #WHITE : sta VIC_SPCOL3     ; the bolt's hot core
+        lda #$0F   : sta $D01C          ; sprites 0-3 multicolour
         lda #DGRAY : sta $D025          ; MC0 (%01) — outlines
         lda #LTGRAY : sta $D026         ; MC1 (%11) — shared light grey
         lda #$00   : sta $D01D
@@ -414,21 +425,35 @@ SCR_BORDER_BOTTOM  !pet G_RD_LL, G_HORIZ_BAR, G_HORIZ_BAR, G_HORIZ_BAR, G_HORIZ_
         !source "src/charset.asm"
 
 ; =============================================================================
-; Sprites — multicolour, 64-byte frames, packed from $3000 (right after the
-; charset; pointers $C0+). Shared colours: $D025 (MC0) = black, $D026 (MC1)
-; = light grey; the per-sprite colour comes from TYPE_COLOR. Each actor type
-; points at its first frame (sprite: in titan.yaml); frames follow as
-; rest/walk1/walk2 (or hover/move1/move2) per facing, facings in
-; down/up/left/right order — FRAME_PTR in game.asm picks the frame.
-; Every set has all 4 facings (12 frames).
+; Sprites — multicolour, 64-byte frames, packed to end right below CHARSET
+; ($3800, the top 2K of VIC bank 0 — charset.asm). Sprite pointers are 8-bit
+; (address/64), so every frame must sit below $4000; packing the block down
+; from the charset leaves all the space from $0810 up to SPRITES_START for
+; code. ACME can't set * from a forward reference, so SPRITE_FRAMES is kept
+; by hand — the !error below fires if it doesn't match the sources. Every
+; frame added here costs 64 bytes of code space.
+; Shared colours: $D025 (MC0) = black, $D026 (MC1) = light grey; the
+; per-sprite colour comes from TYPE_COLOR. Each actor type points at its
+; first frame (sprite: in titan.yaml); frames follow as rest/walk1/walk2 (or
+; hover/move1/move2) per facing, facings in down/up/left/right order —
+; FRAME_PTR in game.asm picks the frame. Every actor set has all 4 facings
+; (12 frames).
 ; =============================================================================
-        * = $3000
+SPRITE_FRAMES = 12+12+12+2
+        * = CHARSET - SPRITE_FRAMES*64
 SPRITES_START
         !source "src/c64_walker_sprites.asm"    ; player:  12 frames
         !source "src/c64_robot_sprites.asm"     ; robot:   12 frames
         !source "src/c64_drone_sprites.asm"     ; drone:   12 frames
+        !source "src/c64_bolt_sprites.asm"      ; bolt:     2 frames (shooter)
 SPRITES_END
+!if SPRITES_END != CHARSET {
+        !error "SPRITE_FRAMES doesn't match the sprite files - update it"
+}
 
+; Everything below is CPU-only data (no VIC access): above the charset,
+; from $4000 up to the music at $C000.
+        * = CHARSET + $800
         !source "src/titanfall_title.asm"     ; intro logo (data only)
 
 ; =============================================================================

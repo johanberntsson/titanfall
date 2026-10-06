@@ -32,7 +32,7 @@ TILES_X = 40 // 2
 TILES_Y = 22 // 2
 
 MAX_ROBOTS_PER_ROOM = 2   # hardware sprites 1 and 2 (sprite 0 = player)
-AI_NAMES = ["patrol", "hunter"]      # ai: values; index = AI_* constant in world.asm
+AI_NAMES = ["patrol", "hunter", "shooter"]      # ai: values; index = AI_* constant in world.asm
 LABEL_WIDTH = 12          # status-line item label field width
 MSG_INTERIOR = 30         # popup box interior width (matches SBOX_* strings)
 TERM_NAME_WIDTH = 22      # robot name in the terminal menu (cols 5-26; the

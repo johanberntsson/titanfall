@@ -52,6 +52,9 @@ actor_types:
   #             hunter = patrol, but rush the player at double speed while
   #                      on the same tile row with no wall in between;
   #                      needs a horizontal patrol through its start
+  #             shooter = patrol, but stop and fire a bolt along the row while
+  #                       the player is on it with no wall in between
+  #                       (one bolt in flight at a time, shared by all)
   # color:      the multicolour sprite's own colour (%10 pixels); black and
   #             light grey are shared by all sprites ($D025/$D026)
   human:
@@ -93,6 +96,7 @@ rooms:
       - type: sentry
         name: bot-5150  sentry
         locked: true
+        ai: shooter                    # shoots bolts along its row at you
         start: {x: 3, y: 7}
         patrol: [{x: 3, y: 7}, {x: 6, y: 7}]
       - id: bot3312                    # referenced by the terminal menu (ACTOR_BOT3312)

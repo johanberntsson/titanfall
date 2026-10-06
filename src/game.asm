@@ -33,6 +33,7 @@ GA_NOLASER
         lda GAME_STATE : cmp #1 : bne GAME_TICK_DONE  ; terminal/win/map/popup entered this frame
         jsr UPDATE_SPRITE0
         jsr UPDATE_ROBOT_SPRITES
+        jsr BOLT_TICK                    ; before the collision read
         jsr CHECK_SPRITE_HIT
         jsr DRAW_HUD_DYNAMIC
         jsr DRAW_STATUS
@@ -929,15 +930,18 @@ TROBD   rts
 ; ---------------------------------------------------------------------------
 ; ACTOR_THINK — X = actor; one step of its AI (ACT_AI, ai: in titan.yaml).
 ; AI_PATROL just patrols. AI_HUNTER patrols too, but while it can see the
-; human (HUNT_SEES) it rushes at the player at double pace (ACT_FAST=1: steps every
+; human (SEES_PLAYER) it rushes at the player at double pace (ACT_FAST=1: steps every
 ; ROB_HALF frames, glides 2 px/frame). Losing sight drops it back to normal
 ; pace and it walks back onto its patrol. Speed only changes when a glide
 ; has finished: a normal-pace robot is only asked on even half periods
 ; (TICK_ROBOT), and one that loses sight on an odd one waits for the next.
 ; ---------------------------------------------------------------------------
+; AI_SHOOTER: see SHOOTER_THINK.
 ACTOR_THINK
-        lda ACT_AI,x : cmp #AI_HUNTER : bne ACTOR_PATROL_STEP
-        jsr HUNT_SEES : bcc ATNOSEE
+        lda ACT_AI,x : cmp #AI_HUNTER : beq ATHUNT
+        cmp #AI_SHOOTER : bne ACTOR_PATROL_STEP
+        jmp SHOOTER_THINK
+ATHUNT  jsr SEES_PLAYER : bcc ATNOSEE
         jmp HUNT_RUSH
 ATNOSEE lda ACT_FAST,x : beq ACTOR_PATROL_STEP
         lda #0 : sta ACT_FAST,x          ; lost sight: normal pace again,
@@ -972,13 +976,13 @@ APSFLIP lda ACT_TGT,x : eor #1 : sta ACT_TGT,x
         rts
 
 ; ---------------------------------------------------------------------------
-; HUNT_SEES — X = actor. Carry set if it can see the human: human mode (a
+; SEES_PLAYER — X = actor (hunter, shooter). Carry set if it can see the human: human mode (a
 ; robot link leaves the human standing at the terminal, not hunted), not
 ; already dying, same room, same tile row, and no wall tile between them on
 ; that row. Lasers don't block sight (but HUNT_RUSH won't step into one).
 ; Preserves X; clobbers A/Y/NEWX/NEWY/PTR/TMP.
 ; ---------------------------------------------------------------------------
-HUNT_SEES
+SEES_PLAYER
         lda PLAYER_MODE : ora PLR_DYING : bne HSNO
         lda ACT_ROOM,x : cmp CUR_ROOM : bne HSNO
         lda ACT_Y,x : cmp PLR_Y : bne HSNO
@@ -1008,6 +1012,68 @@ HRGO    jsr ACT_FACE                     ; turn to face the player even if block
         lda NEWX : sta ACT_X,x
         jmp ACT_STEP_ANIM
 HRSTOP  lda #0 : sta ACT_ANIM,x
+        rts
+
+; ---------------------------------------------------------------------------
+; SHOOTER_THINK — X = actor with AI_SHOOTER, at normal pace. Patrols; while it
+; sees the player (SEES_PLAYER: same row, no wall between) it stops, turns to
+; face them and fires a bolt along the row, unless one is already in flight
+; (there is only one bolt, BOLT_*; BOLT_TICK flies it).
+; ---------------------------------------------------------------------------
+SHOOTER_THINK
+        jsr SEES_PLAYER : bcs STSEE
+        jmp ACTOR_PATROL_STEP
+STSEE   lda #0 : sta ACT_ANIM,x          ; stand and aim
+        lda ACT_X,x : cmp PLR_X : beq STOUT   ; same tile: no direction
+        lda #0 : rol : sta TMP           ; C = player to the left -> 1
+        lda #DIR_RIGHT
+        ldy TMP : beq STFACE
+        lda #DIR_LEFT
+STFACE  jsr ACT_FACE
+        lda BOLT_ON : bne STOUT
+        lda TMP : sta BOLT_DIR
+        lda #1 : sta BOLT_ON             ; fire from the shooter's tile centre
+        lda ACT_Y,x : sta BOLT_TY
+        asl : asl : asl : asl : clc : adc #62 : sta BOLT_SY   ; = robot's sprite Y
+        lda #0 : sta BOLT_XH
+        lda ACT_X,x : asl : asl : asl : asl   ; only the last asl can carry
+        rol BOLT_XH : ora #8 : sta BOLT_XL
+STOUT   rts
+
+; ---------------------------------------------------------------------------
+; BOLT_TICK — every game frame: fly the bolt BOLT_SPEED px along its row and
+; show it on hw sprite 3 (bolt_1/bolt_2 alternating every 2 frames). It
+; vanishes when its centre enters a wall tile or leaves the room. It passes
+; robots and lasers; hitting the player is the ordinary sprite collision
+; (CHECK_SPRITE_HIT, bit 0). DRAW_ROOM clears BOLT_ON (room change, respawn,
+; redraw after terminal/map/popup).
+; ---------------------------------------------------------------------------
+BOLT_SPEED = 3                          ; px per frame (player: 2)
+
+BOLT_TICK
+        lda BOLT_ON : beq BTOFF
+        lda BOLT_DIR : bne BTLEFT
+        lda BOLT_XL : clc : adc #BOLT_SPEED : sta BOLT_XL
+        bcc BTMOVED : inc BOLT_XH : bne BTMOVED
+BTLEFT  lda BOLT_XL : sec : sbc #BOLT_SPEED : sta BOLT_XL
+        bcs BTMOVED : dec BOLT_XH : bmi BTKILL  ; past the left edge
+BTMOVED lda BOLT_XH : lsr                ; tile = X/16 (C = bit 8)
+        lda BOLT_XL : ror : lsr : lsr : lsr
+        cmp #20 : bcs BTKILL             ; past the right edge (tile 20)
+        sta NEWX
+        lda BOLT_TY : sta NEWY
+        lda CUR_ROOM : jsr WALL_AT : bcs BTKILL
+        lda BOLT_XL : clc : adc #12 : sta VIC_SP3X   ; sprite X = centre+12
+        lda BOLT_XH : adc #0 : beq BTMSB0
+        lda VIC_SP_MSB : ora #$08 : bne BTMSB
+BTMSB0  lda VIC_SP_MSB : and #$F7
+BTMSB   sta VIC_SP_MSB
+        lda BOLT_SY : sta VIC_SP3Y
+        lda ANIM_CNT : lsr : and #1 : clc : adc #SPRP_BOLT : sta SPRPTR+3
+        lda VIC_SPEN : ora #$08 : sta VIC_SPEN
+        rts
+BTKILL  lda #0 : sta BOLT_ON
+BTOFF   lda VIC_SPEN : and #$F7 : sta VIC_SPEN
         rts
 
 ; ---------------------------------------------------------------------------
@@ -1055,6 +1121,7 @@ FPWALK  lda TMP : sec : sbc TYPE_DIR0,x : sta TMP   ; facing group 0-3
 ; =============================================================================
 DRAW_ROOM
         lda #0 : sta SRCH_TMR : sta SRCH_ST ; the redraw ends any search (and
+        sta BOLT_ON                      ;  any bolt in flight)
         lda #1 : sta FIRE_PREV           ;  its small popup); want a new press
         jsr DRMSETPTR
         lda #<(SCRN+80) : sta PTR2 : lda #>(SCRN+80) : sta PTR2+1

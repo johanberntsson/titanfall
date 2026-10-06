@@ -4,7 +4,7 @@
 vchar64's ASM export is labelled ACME-compatible but uses .byte (64tass /
 KickAssembler syntax); this re-emits the data as !byte under the labels the
 game uses: TILE_COLORS (256 bytes, floats right after the code) and CHARSET
-(2048 bytes, pinned at $2800).
+(2048 bytes, pinned at $3800).
 
 Usage: python3 tools/gencharset.py <charset.s> <tile-colors.s> <charset.asm>
 """
@@ -67,10 +67,10 @@ def main():
         *rows(colors),
         "",
         "; ---------------------------------------------------------------------------",
-        "; CHARSET -- 2048-byte custom charset at $2800 (2K-aligned, below the sprite",
-        "; block at $3000). $D018 = $1A selects screen $0400 / charset $2800.",
+        "; CHARSET -- 2048-byte custom charset at $3800 (2K-aligned, the top of VIC bank 0, right",
+        "; above the sprite block). $D018 = $1E selects screen $0400 / charset $3800.",
         "; ---------------------------------------------------------------------------",
-        "        * = $2800",
+        "        * = $3800",
         "CHARSET",
         *rows(charset),
         "",
