@@ -11,13 +11,14 @@ This is a Commodore 64 game called **TITAN Fall** (working title) — a cinemati
 ```
 make        # generate world.asm + assemble + pack
 make run    # generate, assemble, pack, and launch in Vice
-make clean  # remove game.prg, titanfall.prg and the generated src/world.asm
+make clean  # remove game.prg, titanfall.prg and the generated src/world.asm + src/charset.asm
 ```
 
-The build is three steps handled by the Makefile:
+The build is four steps handled by the Makefile:
 1. **tools/genworld.py** (Python 3 + PyYAML) generates `src/world.asm` from `titan.yaml` — all world data tables (rooms, actors, items, doors, lasers, terminal zones) plus the room map data converted from the vchar64 exports
-2. **ACME 0.97** assembles `src/titanfall.asm` → `game.prg` (`-f cbm`, 2-byte load header)
-3. **Exomizer** packs `game.prg` + the music PRG into a self-extracting `titanfall.prg`
+2. **tools/gencharset.py** generates `src/charset.asm` (`TILE_COLORS` + `CHARSET`) from the vchar64 exports `graphics/titan-charset.s` and `graphics/titan-tile-colors.s`
+3. **ACME 0.97** assembles `src/titanfall.asm` → `game.prg` (`-f cbm`, 2-byte load header)
+4. **Exomizer** packs `game.prg` + the music PRG into a self-extracting `titanfall.prg`
 
 Emulator: **x64sc** (Vice). Do not run `acme` directly; always use `make`.
 
@@ -39,12 +40,13 @@ The source is split into one orchestrator and eight state/data modules, all `!so
 | `src/map.asm` | `DO_MAP`, `SETUP_MAP` (copies the generated `MAP_SCR`/`MAP_COL`, lights the current room) |
 | `src/popup.asm` | `DO_POPUP`, `SHOW_POPUP`, `SETUP_SEARCH`, `SETUP_DOOR_LOCKED`, popup strings |
 | `src/c64_walker_sprites.asm`, `src/c64_robot_sprites.asm`, `src/c64_drone_sprites.asm` | Multicolour sprite sets (player / walking robot / flying drone), `!source`d into the sprite block at `$3000`. All three have all four facings (robots need up/down too — the terminal lets you drive them in any direction) |
-| `src/charset.asm` | `TILE_COLORS` (256-byte tile→colour table) and `CHARSET` (custom 2K charset at `$2800`), generated from `graphics/*.s` — see "Custom Charset / Screen Art" |
+| `src/charset.asm` | **Generated** by `tools/gencharset.py` (never edit it; in `.gitignore`): `TILE_COLORS` (256-byte tile→colour table) and `CHARSET` (custom 2K charset at `$2800`) from the vchar64 exports — see "Custom Charset / Screen Art" |
 | `src/world.asm` | **Generated** by `tools/genworld.py` from `titan.yaml` (data only, no code): `NUM_*`/`ACTOR_*`/`ITEM_*`/`CFG_*` constants, `ROOM_*`/`TYPE_*`/`ACT_*`/`ITEM_*`/`DOOR_*`/`LASER_*`/`TERMZ_*`/`MAPHL_*` tables, the generated sector map `MAP_SCR`/`MAP_COL`, `ROOM_MAP_n` screen-code data, and the runtime state arrays (`ACT_X/Y/TGT/ALIVE/DIR/ANIM`, `GL_PXL/PXH/PY`, `ITEM_STATE`, `LASER_STATE`, `SPR_SLOT_ACT`) |
 
 Other files:
 - `titan.yaml` — **the world definition** (rooms, robots, items, doors, lasers, terminals, start clock); the preferred place to change gameplay content
 - `tools/genworld.py` — build-time generator `titan.yaml` → `src/world.asm`
+- `tools/gencharset.py` — build-time generator vchar64 charset/tile-colour exports → `src/charset.asm`
 - `graphics/` — vchar64 project files (`.vchar64proj`) and their raw ASM exports (`.s`); source of truth for room art, edited in vchar64 and re-exported, not hand-edited
 - `game.prg` — intermediate assembled output (not committed)
 - `titanfall.prg` — final self-extracting packed output (not committed)
@@ -328,10 +330,10 @@ The reactor gauge visualises the countdown (nothing in the game reads it back). 
 
 ## Custom Charset / Screen Art
 
-Room/HUD art is authored with **vchar64** (charset + screen + colour editor). `graphics/` holds the vchar64 project files (`.vchar64proj`) plus their ASM exports (`-charset.s`, `-colors.s`, `-map.s` per room); `src/charset.asm` is the ACME-ready version wired into the build (`!source`d from `titanfall.asm` after `map.asm`).
+Room/HUD art is authored with **vchar64** (charset + screen + colour editor). `graphics/` holds the single vchar64 project for all rooms (`titan.vchar64proj`) plus its ASM exports: `titan-charset.s` (charset), `titan-tile-colors.s` (colour per char), `titan-mapNN.s` (one per room, referenced by `vchar64_map:` in `titan.yaml`) and `titan-char-colorsNN.s` (per-cell colours, not used — the game colours by char via `TILE_COLORS`). The old per-room projects are in `graphics.old/`. `src/charset.asm` is generated from the first two by `tools/gencharset.py` and `!source`d from `titanfall.asm` after `map.asm`.
 
 - **Export format: ASM**, not BIN/PRG. Fits the existing convention (sprites/room data are already inline `!byte` literals in source); avoids managing binary blobs, load-header stripping, or Makefile/Exomizer changes for extra files.
-- vchar64 labels its ASM export "ACME-compatible" but it isn't: it emits `.byte` (64tass/KickAssembler syntax), which ACME rejects. Every export needs `s/^\.byte/!byte/` before inclusion. `src/charset.asm` is the already-fixed, checked-in version — regenerate it from `graphics/*.s` with the same substitution if the art changes.
+- vchar64 labels its ASM export "ACME-compatible" but it isn't: it emits `.byte` (64tass/KickAssembler syntax), which ACME rejects. So no export is `!source`d directly: `gencharset.py` and `genworld.py` parse the `.byte` lines and re-emit them as `!byte` (and check the sizes: 2048 / 256 / 880 bytes). Just re-export from vchar64 and run `make`.
 - **Charset lives at `$2800`** (2K-aligned, in the gap between end-of-code/`TILE_COLORS` and the sprite block at `$3000`; moved up from `$2000` once code growth started colliding with it — see the gotcha below). `$D018 = $1A` selects screen `$0400` / charset `$2800`. A-Z, digits, and the box-drawing glyphs (`G_HORIZ_BAR`, `G_VERT_BAR`, rounded corners, etc.) used by the intro/gameover/win screens keep their default-ROM-charset code points and shapes — only unused graphics-character slots were repurposed for room-art tiles, so those three screens needed no changes.
 - **`TILE_COLORS`** (in `src/charset.asm`, right before the `CHARSET` data) is a 256-byte table indexed by screen code, giving the default colour RAM value for each tile. `COL_BYTE` in `game.asm` does a straight `lda (PTR),y : tax : lda TILE_COLORS,x` lookup instead of switching on individual byte values — **`X` is the caller's page counter in `DRMCPG` and must be saved/restored across the call** (`txa:pha` / `pla:tax`), since `COL_BYTE` needs `X` itself to index the table.
 - **Room data is raw screen codes, not PETSCII.** The `ROOM_MAP_n` blocks in the generated `world.asm` (converted by `genworld.py` from the `vchar64_map:` files listed in `titan.yaml`, `.byte`→`!byte`) are blitted straight from `(PTR),y` to `(PTR2),y` in `DRAW_ROOM` with no `PET2SCREEN` conversion (the vchar64 export already emits screen codes). Don't add a `PET2SCREEN` call back in if editing this path.
@@ -345,7 +347,7 @@ Room/HUD art is authored with **vchar64** (charset + screen + colour editor). `g
 - **Always check `make`'s full output for `Warning` lines, not just for a nonzero exit code** — a successful build can still have silently corrupted data.
 - To check headroom: `acme -f cbm -o /tmp/g.prg -l /tmp/labels.txt src/titanfall.asm` then `grep TILE_COLORS /tmp/labels.txt` — its start address + 256 must stay under `CHARSET`'s fixed address. **As of 2026-10-06 `TILE_COLORS` starts at `$258D`, leaving ~370 bytes.** Unrolled 40-byte row-copy loops are the usual bloat: prefer a `DRAW_ROWS` table (see "Screen Art") for new screens.
 - Keep *data* out of the code area where possible: the intro logo, sprites and all generated world data already live above the charset (`$3000+`); prefer that for new tables/strings too.
-- `CHARSET` was moved from `$2000` to `$2800` for exactly this reason (code had grown ~173 bytes past the old boundary); this freed a full extra 2KB of headroom. If it happens again, the same fix applies — bump `CHARSET`'s `* =` in `src/charset.asm` to the next free 2K-aligned address (the sprite block at `$3000` and the world data after it would have to move up too) and update `VIC_VMCSB`'s value in `titanfall.asm` to match (`$D018 = (screen_base/1024)*16 + (charset_base/2048)*2`; `$0400`/`$2800` → `$1A`).
+- `CHARSET` was moved from `$2000` to `$2800` for exactly this reason (code had grown ~173 bytes past the old boundary); this freed a full extra 2KB of headroom. If it happens again, the same fix applies — bump `CHARSET`'s `* =` (emitted by `tools/gencharset.py`) to the next free 2K-aligned address (the sprite block at `$3000` and the world data after it would have to move up too) and update `VIC_VMCSB`'s value in `titanfall.asm` to match (`$D018 = (screen_base/1024)*16 + (charset_base/2048)*2`; `$0400`/`$2800` → `$1A`).
 
 ### CLS wipes the sprite pointers
 `CLS` clears all 1024 bytes of screen RAM (`$0400–$07FF`), which includes the sprite pointer table at `$07F8–$07FF`. After **every** `CLS` call, immediately restore all three pointers:

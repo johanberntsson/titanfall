@@ -1,2 +1,3 @@
 *.prg
 src/world.asm
+src/charset.asm
