@@ -1,9 +1,10 @@
 ; =============================================================================
 ; POPUP STATE (GAME_STATE = 6)
 ; =============================================================================
-; Small popup box shown over the room art (rows 8-13, columns 4-35; the
-; room/HUD/status stay visible around it) — used both for "found item" messages (SETUP_SEARCH,
-; space key) and the locked room 2 exit door (SETUP_DOOR_LOCKED). Time and
+; Popup box shown over the room art (rows 8-13, columns 4-35; the
+; room/HUD/status stay visible around it) — used both for "found item"
+; messages (SETUP_SEARCH, at the end of a successful held-fire search, see
+; SEARCH_TICK) and the locked room 2 exit door (SETUP_DOOR_LOCKED). Time and
 ; robots are paused for free: DO_GAME (and hence TICK_CLOCK/TICK_ROBOT)
 ; simply isn't called while GAME_STATE=6.
 ; =============================================================================
@@ -41,6 +42,115 @@ DPCLOSE ; close the popup and resume the game
         jsr UPDATE_SPRITE0
         jsr UPDATE_ROBOT_SPRITES
 POPUPDONE jmp MAIN_LOOP
+
+; ---------------------------------------------------------------------------
+; SEARCH_TICK — Impossible Mission style searching, from READ_KEYS every game
+; frame. A fresh fire press (KEY_SPC) starts a search (human only, outside
+; terminal zones — the terminal takes that press first); while fire stays
+; held SRCH_TMR counts up and MOVE_PLAYER stands still. At SRCH_SHOW a small
+; "searching" box appears by the player; at SRCH_DONE the tile is checked:
+; an item there opens the big found-item popup (SETUP_SEARCH), otherwise the
+; box turns into "nothing here" until fire is let go. Time and robots keep
+; running throughout — searching is a risk.
+; ---------------------------------------------------------------------------
+SRCH_SHOW = 10                          ; frames held before "searching"
+SRCH_DONE = SRCH_SHOW+50                ; ... and before the result
+
+SEARCH_TICK
+        lda PLAYER_MODE : bne SRCHEND    ; a driven robot can't search
+        lda FIRE_PREV : beq SRCHEND      ; fire not held: stop
+        lda SRCH_TMR : bne SRCHHOLD
+        lda KEY_SPC : beq SRCHOUT        ; held over from before: no search
+        lda #0 : sta PLR_ANIM            ; stand at rest while searching
+SRCHHOLD
+        lda SRCH_TMR : cmp #SRCH_DONE : bcs SRCHOUT   ; finished: just wait
+        inc SRCH_TMR
+        lda SRCH_TMR
+        cmp #SRCH_SHOW : bne SRCHRES
+        jsr SPOP_PLACE                   ; show "searching"
+        lda #SP_SAVE : ldx #0 : jsr SPOP
+        lda #SP_DRAW : ldx #SP_T_SEARCH-SP_TEXTS : jsr SPOP
+        lda #1 : sta SRCH_ST
+        rts
+SRCHRES cmp #SRCH_DONE : bne SRCHOUT
+        ldx #0                           ; a still-hidden item on this tile?
+SRCHL   cpx #NUM_ITEMS : bcs SRCHNONE
+        lda ITEM_STATE,x : bne SRCHN     ; already found/used
+        lda ITEM_ROOM,x : cmp CUR_ROOM : bne SRCHN
+        lda ITEM_X,x : cmp PLR_X : bne SRCHN
+        lda ITEM_Y,x : cmp PLR_Y : bne SRCHN
+        txa : pha
+        jsr SPOP_HIDE
+        pla : tax
+        jmp SETUP_SEARCH                 ; X = item index
+SRCHN   inx : bne SRCHL
+SRCHNONE
+        lda #SP_DRAW : ldx #SP_T_NOTHING-SP_TEXTS : jsr SPOP
+        lda #2 : sta SRCH_ST
+        rts
+SRCHEND jsr SPOP_HIDE
+        lda #0 : sta SRCH_TMR
+SRCHOUT rts
+
+; SPOP_HIDE — take the small search popup down (if shown), restoring the
+; screen under it.
+SPOP_HIDE
+        lda SRCH_ST : beq SPHOUT
+        lda #SP_REST : ldx #0 : jsr SPOP
+        lda #0 : sta SRCH_ST
+SPHOUT  rts
+
+; SPOP_PLACE — put the small popup (SPOP_W x SPOP_H) centred over the
+; player: above the sprite (bottom row = screen row 2y, the sprite covers
+; rows 2y+1..2y+3), or below it (from row 2y+4) when there's no room above
+; the playfield's top (row 2); columns clamped to the screen.
+SPOP_PLACE
+        lda PLR_Y : asl                  ; 2y
+        cmp #5 : bcc SPPBELOW            ; 2y-3 < 2
+        sbc #SPOP_H-1 : bcs SPPROW       ; (C set by the cmp)
+SPPBELOW adc #SPOP_H                     ; (C clear)
+SPPROW  sta SP_ROW
+        lda PLR_X : asl : sec : sbc #(SPOP_W-1)/2-1   ; centre on col 2x+1
+        bcs SPPC1 : lda #0
+SPPC1   cmp #40-SPOP_W+1 : bcc SPPC2 : lda #40-SPOP_W
+SPPC2   sta SP_COL
+        rts
+
+; SPOP — process the SPOP_W x SPOP_H cells at SP_ROW/SP_COL. A = mode:
+; SP_SAVE copies screen+colour into SP_BUF, SP_REST copies them back (X=0
+; for both), SP_DRAW draws the template at SP_TEXTS+X (border glyphs, codes
+; >= $60, light green; text yellow). Preserves nothing but SP_ROW/SP_COL.
+SP_SAVE = 0
+SP_DRAW = 1
+SP_REST = 2
+SPOP_W  = 11
+SPOP_H  = 4
+SP_BUF  = $0340                         ; 2 x 44 bytes in the (unused) tape buffer
+
+SPOP
+        sta SP_MODE
+        lda SP_ROW : sta SP_R
+SPRL    lda SP_R : jsr ROW_PTR
+        lda PTR2 : clc : adc SP_COL : sta PTR2 : sta PTR3
+        lda PTR2+1 : adc #0 : sta PTR2+1
+        clc : adc #>(CRAM-SCRN) : sta PTR3+1
+        ldy #0
+SPCL    lda SP_MODE : bne SPCL1
+        lda (PTR2),y : sta SP_BUF,x                    ; save
+        lda (PTR3),y : sta SP_BUF+SPOP_W*SPOP_H,x
+        jmp SPCN
+SPCL1   cmp #SP_DRAW : bne SPCL2
+        lda SP_TEXTS,x : jsr PET2SCREEN : sta (PTR2),y ; draw
+        lda SP_TEXTS,x : cmp #$60
+        lda #YELLOW : bcc SPCC : lda #LTGREEN
+SPCC    sta (PTR3),y
+        jmp SPCN
+SPCL2   lda SP_BUF,x : sta (PTR2),y                    ; restore
+        lda SP_BUF+SPOP_W*SPOP_H,x : sta (PTR3),y
+SPCN    inx : iny : cpy #SPOP_W : bne SPCL
+        inc SP_R
+        lda SP_R : sec : sbc SP_ROW : cmp #SPOP_H : bne SPRL
+        rts
 
 ; ---------------------------------------------------------------------------
 ; SETUP_SEARCH — "found item" popup. Called via jsr from READ_KEYS with
@@ -89,6 +199,19 @@ SBOX_ROWS
         !byte 12, DGRAY,   <SBOX_HNT, >SBOX_HNT
         !byte 13, LTGREEN, <SBOX_BOT, >SBOX_BOT
         !byte $FF
+
+; Small search popup templates: SPOP_H rows of SPOP_W PETSCII bytes each
+SP_TEXTS
+SP_T_SEARCH
+        !byte G_RD_UL : !fill SPOP_W-2, G_HORIZ_BAR : !byte G_RD_UR
+        !pet G_VERT_BAR, "searching", G_VERT_BAR
+        !pet G_VERT_BAR, "   ...   ", G_VERT_BAR
+        !byte G_RD_LL : !fill SPOP_W-2, G_HORIZ_BAR : !byte G_RD_LR
+SP_T_NOTHING
+        !byte G_RD_UL : !fill SPOP_W-2, G_HORIZ_BAR : !byte G_RD_UR
+        !pet G_VERT_BAR, " nothing ", G_VERT_BAR
+        !pet G_VERT_BAR, "  here   ", G_VERT_BAR
+        !byte G_RD_LL : !fill SPOP_W-2, G_HORIZ_BAR : !byte G_RD_LR
 
 ; =============================================================================
 ; Popup strings — all exactly 40 bytes

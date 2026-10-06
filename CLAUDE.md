@@ -222,7 +222,7 @@ Dying (laser or sprite collision, `DEATH_TMR` counting down to 0 in `DO_GAME`) n
 
 ### Popups (search, locked door) — GAME_STATE=6
 `src/popup.asm` implements one shared popup overlay used by two features:
-- **Searching (items).** Space is the search key (`KEY_SPC`) — WASD/joystick already own W/A/S/D, so search couldn't reuse S. `READ_KEYS`' `RKSEARCHCHK` block scans the generated `ITEM_ROOM/X/Y` tables for a still-hidden (`ITEM_STATE=0`) item at the player's exact tile; it requires `PLAYER_MODE=0` — **like the terminal, search is human-only; a player-driven robot can't use equipment or search**. On a match it calls `SETUP_SEARCH` with the item index in `X`, which sets `ITEM_STATE=1` (carried) and shows the item's generated found-message (`ITEM_MSG_*`, built from `found_text` in `titan.yaml`). Adding a search spot = adding an `items:` entry plus a `things:` placement in the config — no code.
+- **Searching (items) — hold fire, Impossible Mission style.** `SEARCH_TICK` (`popup.asm`, called from `READ_KEYS` at `RKSEARCHCHK`) starts a search on a *fresh* fire/Space press outside a terminal zone (the terminal check runs first and takes the press) and only in human mode — **like the terminal, search is human-only**. While fire stays held, `SRCH_TMR` counts up and `MOVE_PLAYER` stands still; time and robots keep running, so searching is a risk. At `SRCH_SHOW` (10 frames — long enough to ignore a tap) a small 11×4 box saying "searching ..." appears just above the player's sprite (below it near the top wall; `SPOP_PLACE`). At `SRCH_DONE` (+50 frames) the generated `ITEM_ROOM/X/Y` tables are checked for a still-hidden (`ITEM_STATE=0`) item on the player's exact tile: if found, the small box goes and `SETUP_SEARCH` (item index in `X`) sets `ITEM_STATE=1` and shows the big popup with the item's generated found-message (`ITEM_MSG_*`, from `found_text` in `titan.yaml`); otherwise the box changes to "nothing / here" and stays until fire is released. Releasing fire at any point removes the small box. The small box (`SPOP`) saves the 44 screen + 44 colour cells under it in `SP_BUF` (`$0340`, the unused tape buffer) and restores them on close, so the room art — including an erased laser — comes back exactly; `DRAW_ROOM` resets the search (`SRCH_TMR`/`SRCH_ST`) since a full redraw makes the saved cells stale. Adding a search spot = adding an `items:` entry plus a `things:` placement in the config — no code.
 - **Locked door.** `DOOR_ENTER` calls `SETUP_DOOR_LOCKED` when the door's `DOOR_KEY` item is still hidden — the door just acts like a wall.
 - Both funnel into the shared `SHOW_POPUP`, which draws the box/border/hint rows and takes only the message row's address via `PTR`/`PTR+1` (a 40-byte PETSCII string) — a new popup means one more message string and a one-line caller, not touching the drawing code.
 - **The popup closes on a fresh Space press, not `GETIN`.** The Space press that opened it is still in the KERNAL keyboard buffer (the raster IRQ's `$EA31` tail runs the KERNAL keyboard scan every frame), so a `GETIN`-based wait closes the popup after one frame. `DO_POPUP` instead polls the CIA matrix directly with edge detection (`POPUP_ST`, `$33`: 0=opening press still held, 1=released/armed, 2=new press seen; closes on that press's release so the closing Space can't leak into `READ_KEYS` either), and drops any buffered keys (`$C6=0`) on close.
@@ -261,18 +261,18 @@ $1C  BLINK_TMR    blink frame counter
 $1D  BLINK_ST     blink state (0=visible 1=hidden)
 $1E  SND_TMR      sound effect countdown (0=silent, music plays)
 $1F  TERM_SEL     terminal selected menu entry (0..TERM_N-1)
-$20  (free — was TERM_TMR)
+$20  FIRE_PREV    fire/space held (0/1) as of this frame's READ_KEYS (DRAW_ROOM sets 1: a new press is needed after any screen change)
 $21  NEAR_TERM    non-zero when player is adjacent to terminal
 $22  (free — was KEY_F1/T key flag, removed when terminal entry moved to Space/KEY_SPC)
 $23/$24 ROWS_PTR  DRAW_ROWS row-list pointer
 $25  CUR_ROOM     current room index (into world.asm ROOM_* tables)
-$26  (free — was KEY_MAP)
+$26  SRCH_TMR     search: frames fire held (0 = not searching; caps at SRCH_DONE)
 $27  NEWX         candidate tile X for the move being attempted
 $28  NEWY         candidate tile Y (MOVE_PLAYER/MOVE_ACTOR/patrol/sprite scratch)
 $29  PLR_DIR      player facing (DIR_DOWN/UP/LEFT/RIGHT = 0-3)
 $2A  PLR_ANIM     player walk frame (0=rest 1=walk1 2=walk2)
 $2B  ANIM_CNT     free-running game-frame counter (hover animation)
-$2C  (free — was SND_KIND)
+$2C  SRCH_ST      small search popup: 0 none, 1 "searching", 2 "nothing here"
 $2D  ROB_TMR      robot movement timer (shared by all actors, ROB_PERIOD = 16 frames)
 $2E  GL_SX        GLIDE speed X, px/frame (smooth movement)
 $2F  GL_SY        GLIDE speed Y, px/frame
@@ -280,11 +280,16 @@ $31  PLAYER_MODE  0=human (PLR_X/Y)  else actor index+1 (proxy mode, ACT_X/Y)
 $32  KEY_X        X key flag (exit robot proxy mode; fire does the same)
 $33  POPUP_ST     popup close edge-detector (0=opener held, 1=armed, 2=pressed)
 $34  JOY_PREV     joystick 2 bits held last frame (1=pressed; 0 U 1 D 2 L 3 R 4 fire)
-$35  KEY_SPC      space key flag (search, and enter terminal — see Keyboard matrix gotcha)
+$35  KEY_SPC      fire or Space *freshly pressed* this frame (enter terminal, start a search, end a robot link)
 $36  JOY_NEW      joystick 2 bits newly pressed this frame (set in MAIN_LOOP)
+$37/$38 PTR3      third pointer (search popup colour RAM)
+$39  SP_ROW       search popup top screen row
+$3A  SP_COL       search popup left column
+$3B  SP_R         SPOP row being processed
+$3C  SP_MODE      SPOP mode (save/draw/restore)
 ```
 
-Free zero-page slots: `$20`, `$26`, `$2C`, `$30`, `$37+`. Per-robot positions, laser/item state etc. moved to RAM arrays at the end of `src/world.asm` (`ACT_X/Y/TGT/ALIVE/DIR/ANIM`, `GL_PXL/PXH/PY`, `ITEM_STATE`, `LASER_STATE`, `SPR_SLOT_ACT`) — indexed with `,x`, sized by the config.
+Free zero-page slots: `$22`, `$30`, `$3D+`. (`$0340`–`$0397` in the tape buffer is the search popup's `SP_BUF`.) Per-robot positions, laser/item state etc. moved to RAM arrays at the end of `src/world.asm` (`ACT_X/Y/TGT/ALIVE/DIR/ANIM`, `GL_PXL/PXH/PY`, `ITEM_STATE`, `LASER_STATE`, `SPR_SLOT_ACT`) — indexed with `,x`, sized by the config.
 
 ## Room Map
 
@@ -336,7 +341,7 @@ Room/HUD art is authored with **vchar64** (charset + screen + colour editor). `g
 ### Code growth can silently corrupt TILE_COLORS/CHARSET — watch for ACME warnings
 `TILE_COLORS` (256 bytes, in `src/charset.asm`) has no fixed address — it starts wherever the code before it (all of `titanfall.asm` + every `!source`d module) happens to end, and `CHARSET` right after it is pinned to a fixed, 2K-aligned address (`* = $2800`). If code+`TILE_COLORS` ever grows past that fixed address, ACME does **not** fail the build — it prints `Warning - ... Segment starts inside another one, overwriting it.` and silently truncates the tail of `TILE_COLORS`, whose bytes get overwritten by the start of `CHARSET`. Since most room tiles use screen codes in the `$80s`-`$A0s`, this corrupts colour lookups for most of the room art (tiles render in wrong/black colours) while leaving the charset bitmaps themselves intact — exactly the "graphics look horrible, wrong colours" symptom, with no build error to point at it.
 - **Always check `make`'s full output for `Warning` lines, not just for a nonzero exit code** — a successful build can still have silently corrupted data.
-- To check headroom: `acme -f cbm -o /tmp/g.prg -l /tmp/labels.txt src/titanfall.asm` then `grep TILE_COLORS /tmp/labels.txt` — its start address + 256 must stay under `CHARSET`'s fixed address. **As of 2026-10-06 `TILE_COLORS` starts at `$24F4`, leaving ~520 bytes.** Unrolled 40-byte row-copy loops are the usual bloat: prefer a `DRAW_ROWS` table (see "Screen Art") for new screens.
+- To check headroom: `acme -f cbm -o /tmp/g.prg -l /tmp/labels.txt src/titanfall.asm` then `grep TILE_COLORS /tmp/labels.txt` — its start address + 256 must stay under `CHARSET`'s fixed address. **As of 2026-10-06 `TILE_COLORS` starts at `$258D`, leaving ~370 bytes.** Unrolled 40-byte row-copy loops are the usual bloat: prefer a `DRAW_ROWS` table (see "Screen Art") for new screens.
 - Keep *data* out of the code area where possible: the intro logo, sprites and all generated world data already live above the charset (`$3000+`); prefer that for new tables/strings too.
 - `CHARSET` was moved from `$2000` to `$2800` for exactly this reason (code had grown ~173 bytes past the old boundary); this freed a full extra 2KB of headroom. If it happens again, the same fix applies — bump `CHARSET`'s `* =` in `src/charset.asm` to the next free 2K-aligned address (the sprite block at `$3000` and the world data after it would have to move up too) and update `VIC_VMCSB`'s value in `titanfall.asm` to match (`$D018 = (screen_base/1024)*16 + (charset_base/2048)*2`; `$0400`/`$2800` → `$1A`).
 
@@ -377,7 +382,7 @@ D (right):         col 2 (PA=$FB), row 2 (PRB bit 2 = mask $04, active low)
 X key (exit proxy):col 2 (PA=$FB), row 7 (PRB bit 7 = mask $80, active low)
 Space (search/terminal): col 7 (PA=$7F), row 4 (PRB bit 4 = mask $10, active low)
 ```
-**The game is fully playable with a joystick in port 2** (move, fire = search / use terminal / select / end a robot link / every "press fire" prompt); the keyboard is an alternative: WASD (not cursor keys), Space, X, and in the terminal Return/cursor up/down/F7. There is no map key — the map is a terminal entry. Joystick port 2 works alongside the keyboard: `READ_KEYS` first reads `CIA1_PRA` (`$DC00`) with `PRA=$FF` (no keyboard column selected; bits 0-4 = up/down/left/right/fire, active low) and ORs the directions into the same `KEY_U/D/L/R` flags (held = move). Fire is Space, but only on a *fresh* press: `MAIN_LOOP` polls port 2 once per frame into `JOY_PREV` (held bits) and `JOY_NEW` (bits newly pressed this frame, 1=pressed), and `READ_KEYS` sets `KEY_SPC` from `JOY_NEW` — otherwise fire still held from the terminal's logoff would re-enter the terminal on the next frame. (Port 1 would be `$DC01`, which collides with keyboard rows; it isn't read.) The `GETIN`-driven screens also take `JOY_NEW`: fire = "press fire" on intro/game over/win/map (any key also works), and in the terminal menu fire = Return, up/down = cursor up/down. `DO_POPUP` polls fire directly with its own edge detector, alongside Space. Space does double duty: it enters the terminal inside a terminal zone (`TERMZ_*` tables) and searches on an item spot (`ITEM_*` tables) — keep these zones non-overlapping in `titan.yaml`, since the terminal check wins (it runs first in `READ_KEYS`). There used to be a dedicated T key for the terminal; it was removed in favor of reusing Space. If a key seems to trigger the wrong action, re-derive its column/row from the matrix table rather than guessing; `col`/`row` values that look adjacent (e.g. row 4 vs row 6) are an easy transcription error.
+**The game is fully playable with a joystick in port 2** (move, fire = hold to search / use terminal / select / end a robot link / every "press fire" prompt); the keyboard is an alternative: WASD (not cursor keys), Space, X, and in the terminal Return/cursor up/down/F7. There is no map key — the map is a terminal entry. Joystick port 2 works alongside the keyboard: `READ_KEYS` first reads `CIA1_PRA` (`$DC00`) with `PRA=$FF` (no keyboard column selected; bits 0-4 = up/down/left/right/fire, active low) and ORs the directions into the same `KEY_U/D/L/R` flags (held = move). Fire and Space are one button: `MAIN_LOOP` polls port 2 once per frame into `JOY_PREV` (held bits) and `JOY_NEW` (bits newly pressed this frame, 1=pressed); `READ_KEYS` ORs held fire (`JOY_PREV` bit 4) with the Space key, then sets `KEY_SPC` = pressed now but not in the previous game frame, `FIRE_PREV` = held now. Actions use the fresh press (`KEY_SPC`) — otherwise fire still held from the terminal's logoff would re-enter the terminal on the next frame — and the search uses the held state. `DRAW_ROOM` sets `FIRE_PREV=1`, so fire held across any screen change (terminal, map, popup, respawn, door) never counts as a new press. (Port 1 would be `$DC01`, which collides with keyboard rows; it isn't read.) The `GETIN`-driven screens also take `JOY_NEW`: fire = "press fire" on intro/game over/win/map (any key also works), and in the terminal menu fire = Return, up/down = cursor up/down. `DO_POPUP` polls fire directly with its own edge detector, alongside Space. Fire/Space does double duty: it enters the terminal inside a terminal zone (`TERMZ_*` tables) and searches anywhere else — keep these zones non-overlapping in `titan.yaml`, since the terminal check wins (it runs first in `READ_KEYS`). There used to be a dedicated T key for the terminal; it was removed in favor of reusing Space. If a key seems to trigger the wrong action, re-derive its column/row from the matrix table rather than guessing; `col`/`row` values that look adjacent (e.g. row 4 vs row 6) are an easy transcription error.
 
 Terminal menu keyboard navigation uses `GETIN` (KERNAL keyboard buffer) for PETSCII codes: `$11`=cursor down, `$91`=cursor up, `$0D`=Return, `$88`=F7 (leave). Space is deliberately not "select" there: the Space press that opened the terminal is still in the KERNAL buffer.
 

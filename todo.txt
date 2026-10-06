@@ -5,14 +5,6 @@
 We don't need to define the terminal hitbox in titan.yaml. We can find the terminal tile
 in the map file and define where it's activated from that
 
-When searching we can use Impossible Misison like dynamics. You press the fire button and
-keep it pressed. Very soon (just long enough to make sure that it's not a random click)
-a small "Searching" popup appears near the player. Keep pushing, and after another second
-it changes to "nothing here" (this can be on two lines to make the popup compact)
-and when you release the fire button it disappears. If you do find something it disappears and
-you get the normal big popup instead, telling you what you find (like already implemented for the
-red card).
-
 I'm made two new sprites for later
 
 Perhaps remove keyboard support. This is a joystick controlled game. The only exception is "any key"
@@ -21,6 +13,14 @@ to close popups and the intro screen - this is still allowed to register the key
 # ------------------------
 #           DONE
 # ------------------------
+
+When searching we can use Impossible Misison like dynamics. You press the fire button and
+keep it pressed. Very soon (just long enough to make sure that it's not a random click)
+a small "Searching" popup appears near the player. Keep pushing, and after another second
+it changes to "nothing here" (this can be on two lines to make the popup compact)
+and when you release the fire button it disappears. If you do find something it disappears and
+you get the normal big popup instead, telling you what you find (like already implemented for the
+red card).
 
 The death effect when hitting a laser is fine, but when you hit a robot there's a flash and a
 sound effect, then you are moved to the start position, and then there's another flash. The

@@ -316,17 +316,15 @@ READ_KEYS
 
         ; Joystick port 2 = CIA1 PRA ($DC00), read with no keyboard column
         ; selected (PRA=$FF). Bits active low: 0 up, 1 down, 2 left,
-        ; 3 right, 4 fire. Fire acts as space (terminal / search), but only
-        ; on a fresh press (JOY_NEW, MAIN_LOOP) — fire still held from the
-        ; terminal's logoff/select must not re-enter the terminal.
+        ; 3 right, 4 fire. Fire (held: JOY_PREV) is merged with space
+        ; below, at RKSPCN.
         lda #$FF : sta CIA1_DDRA : sta CIA1_PRA
         lda CIA1_PRA : sta TMP
         lda TMP : and #$01 : bne RKJ1 : lda #1 : sta KEY_U
 RKJ1    lda TMP : and #$02 : bne RKJ2 : lda #1 : sta KEY_D
 RKJ2    lda TMP : and #$04 : bne RKJ3 : lda #1 : sta KEY_L
 RKJ3    lda TMP : and #$08 : bne RKJ4 : lda #1 : sta KEY_R
-RKJ4    lda JOY_NEW : and #$10 : beq RKJ5 : lda #1 : sta KEY_SPC
-RKJ5
+RKJ4
         ; W (up): col 1 (PA=$FD), row 1 (PB bit 1, active low)
         lda #$FD : sta CIA1_PRA
         lda CIA1_PRB : and #$02 : bne RKWN
@@ -359,6 +357,16 @@ RKXN
         lda CIA1_PRB : and #$10 : bne RKSPCN
         lda #1 : sta KEY_SPC
 RKSPCN
+        ; Fire = joystick fire or space. FIRE_PREV becomes "held now" (the
+        ; search holds it), KEY_SPC "freshly pressed" (terminal, starting a
+        ; search, ending a robot link). DRAW_ROOM sets FIRE_PREV=1, so after
+        ; any screen change fire must be let go and pressed again.
+        lda JOY_PREV : and #$10 : ora KEY_SPC : beq RKFUP
+        lda FIRE_PREV : eor #1 : sta KEY_SPC
+        lda #1 : sta FIRE_PREV
+        bne RKFDONE
+RKFUP   sta KEY_SPC : sta FIRE_PREV      ; A = 0
+RKFDONE
 
         ; Check proximity to a terminal zone (TERMZ_* tables) in this room.
         ; Human mode only: while proxying a robot the human sprite still
@@ -380,25 +388,12 @@ RKTL    cpx #NUM_TERMZONES : bcs RKSEARCHCHK
         rts
 RKTN    inx : bne RKTL
 RKSEARCHCHK
-        ; Search (space): human mode only — a player-driven robot can't use
-        ; equipment or search. Looks for a still-hidden item at the player's
-        ; exact tile in this room (ITEM_* tables).
-        lda KEY_SPC : beq RKXCHK
-        lda PLAYER_MODE : bne RKXCHK
-        ldx #0
-RKSL    cpx #NUM_ITEMS : bcs RKXCHK
-        lda ITEM_STATE,x : bne RKSRN          ; already found/used
-        lda ITEM_ROOM,x : cmp CUR_ROOM : bne RKSRN
-        lda ITEM_X,x : cmp PLR_X : bne RKSRN
-        lda ITEM_Y,x : cmp PLR_Y : bne RKSRN
-        jsr SETUP_SEARCH                     ; X = item index
-        rts
-RKSRN   inx : bne RKSL
+        jsr SEARCH_TICK                  ; hold fire to search (popup.asm)
 RKXCHK
         ; End a robot link: a fresh fire press (fire is free in proxy mode —
         ; a driven robot can't search or use terminals) or the X key.
         lda PLAYER_MODE : beq RKDONE
-        lda JOY_NEW : and #$10 : ora KEY_X : beq RKDONE
+        lda KEY_SPC : ora KEY_X : beq RKDONE
         lda #0 : sta PLAYER_MODE
 RKDONE  rts
 
@@ -414,6 +409,9 @@ RKDONE  rts
 ; pressed, or every pressed direction walled off) drops back to the rest pose.
 ; =============================================================================
 MOVE_PLAYER
+        lda SRCH_TMR : beq MPNOSRCH      ; searching: stand still
+        rts
+MPNOSRCH
         lda MOVE_TMR : beq MOVEGO
         dec MOVE_TMR : rts
 MOVEGO  lda #MOVE_PERIOD-1 : sta MOVE_TMR
@@ -936,6 +934,8 @@ FPWALK  lda TMP : sec : sbc TYPE_DIR0,x : sta TMP   ; facing group 0-3
 ; DRAW_ROOM — draws CUR_ROOM to screen rows 2-23
 ; =============================================================================
 DRAW_ROOM
+        lda #0 : sta SRCH_TMR : sta SRCH_ST ; the redraw ends any search (and
+        lda #1 : sta FIRE_PREV           ;  its small popup); want a new press
         jsr DRMSETPTR
         lda #<(SCRN+80) : sta PTR2 : lda #>(SCRN+80) : sta PTR2+1
         ldx #3 : ldy #0

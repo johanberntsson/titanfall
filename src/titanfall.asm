@@ -38,6 +38,14 @@ SND_TMR    = $1E   ; sound effect frame counter (0=silent, music plays)
 TERM_SEL   = $1F   ; terminal: selected menu entry (0..TERM_N-1)
 NEAR_TERM  = $21   ; non-zero when player is adjacent to terminal
 ROWS_PTR   = $23   ; $23/$24: DRAW_ROWS row-list pointer
+FIRE_PREV  = $20   ; fire/space held (0/1), as of this frame's READ_KEYS
+SRCH_TMR   = $26   ; search: frames fire held (0 = not searching)
+SRCH_ST    = $2C   ; search popup: 0 none, 1 "searching", 2 "nothing here"
+PTR3       = $37   ; $37/$38: third pointer (search popup colour RAM)
+SP_ROW     = $39   ; search popup: top screen row, left column,
+SP_COL     = $3A   ;  row being processed, mode (SPOP)
+SP_R       = $3B
+SP_MODE    = $3C
 CUR_ROOM   = $25   ; current room index (into world.asm ROOM_* tables)
 NEWX       = $27   ; candidate tile X for the move being attempted
 NEWY       = $28   ; candidate tile Y (MOVE_PLAYER/MOVE_ACTOR/patrol scratch)
@@ -49,7 +57,7 @@ PLAYER_MODE = $31  ; 0=human (control PLR_X/Y)  else actor index+1 (proxy mode)
 KEY_X      = $32   ; X key flag (exit robot proxy mode)
 POPUP_ST   = $33   ; popup: 0=waiting for opening space to be released, 1=armed
 JOY_PREV   = $34   ; joystick 2 bits held last frame (1=pressed, bits 0-4)
-KEY_SPC    = $35   ; space key flag (search / enter terminal)
+KEY_SPC    = $35   ; fire/space freshly pressed this frame (READ_KEYS)
 JOY_NEW    = $36   ; joystick 2 bits newly pressed this frame (U/D/L/R/fire)
 GL_SX      = $2E   ; GLIDE speed X (px/frame)
 GL_SY      = $2F   ; GLIDE speed Y (px/frame)
