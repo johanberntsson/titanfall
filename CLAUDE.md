@@ -421,6 +421,8 @@ Non-game screens (intro, game over, win) use a PETSCII box design: a bordered pa
 - `SCR_BLANK` — `G_VERT_BAR` + 38 spaces + `G_VERT_BAR` empty interior row
 - `ITR_SEP` — `G_VERT_BAR  ==...==  G_VERT_BAR` separator (reused by all three screens)
 
+**All boxes use the PETSCII line glyphs** from `src/petscii.asm` — rounded corners `G_RD_UL/UR/LL/LR`, `G_HORIZ_BAR`, `G_VERT_BAR` — never ASCII `+`, `-`, `|` (those render as plain/odd glyphs). The terminal box reuses `SCR_BORDER_TOP`/`SCR_BORDER_BOTTOM`/`SCR_BLANK`; the popup's narrower box (`SBOX_*`, columns 4–35) builds its border rows with `!fill 30, G_HORIZ_BAR`; `genworld.py` frames the generated `ITEM_MSG_*` rows with `G_VERT_BAR`; the sector map's room outlines (`MAP_R9`–`MAP_R13`) use the rounded corners too. After drawing a box, call `FRAME_EDGES` (full width) / `FRAME_EDGES_LR` (columns preset in `FR_L`/`FR_R`) with the frame colour so the `G_VERT_BAR` ends don't inherit each row's text colour.
+
 All string-copy loops call `jsr PET2SCREEN` to convert PETSCII to screen codes before writing to screen RAM. `PET2SCREEN` is defined in `src/titanfall.asm` after `CLS`.
 - `ITR_TAG`, `ITR_M1`–`ITR_M3` — intro panel content (the intro has no title row in the box any more — the logo above it replaces it)
 - `GO_TITLE`, `GO_M1`–`GO_M3` — game over panel content

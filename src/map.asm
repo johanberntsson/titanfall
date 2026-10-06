@@ -112,28 +112,28 @@ SMHLCOL lda #LTGREEN : sta (PTR),y
 ; =============================================================================
 MAP_R8   !pet "      * sector map *                    "
 MAP_R9
-        !pet "  +"
+        !pet "  ", G_RD_UL
         !fill 10, G_HORIZ_BAR
-        !pet "+      +"
+        !pet G_RD_UR, "      ", G_RD_UL
         !fill 10, G_HORIZ_BAR
-        !pet "+        "
+        !pet G_RD_UR, "        "
 MAP_R10  !pet "  ", G_VERT_BAR, "  room 1  ", G_VERT_BAR, "      ", G_VERT_BAR, "  room 2  ", G_VERT_BAR, "        "
-MAP_R11
-        !pet "  ", G_VERT_BAR, "          +"
+MAP_R11                                 ; corridor top: walls turn into it
+        !pet "  ", G_VERT_BAR, "          ", G_RD_LL
         !fill 6, G_HORIZ_BAR
-        !pet "+          ", G_VERT_BAR, "        "
-MAP_R12
-        !pet "  ", G_VERT_BAR, "          +"
+        !pet G_RD_LR, "          ", G_VERT_BAR, "        "
+MAP_R12                                 ; corridor bottom
+        !pet "  ", G_VERT_BAR, "          ", G_RD_UL
         !fill 6, G_HORIZ_BAR
-        !pet "+          ", G_VERT_BAR, "        "
+        !pet G_RD_UR, "          ", G_VERT_BAR, "        "
 MAP_R13
-        !pet "  +"
+        !pet "  ", G_RD_LL
         !fill 10, G_HORIZ_BAR
-        !pet "+      +"
+        !pet G_RD_LR, "      ", G_RD_LL
         !fill 4, G_HORIZ_BAR
         !pet "  "
         !fill 4, G_HORIZ_BAR
-        !pet "+        "
+        !pet G_RD_LR, "        "
 MAP_R14  !pet "                         ", G_VERT_BAR, G_VERT_BAR, "             "
 MAP_R15  !pet "                        exit            "
 MAP_R17  !pet "     press any key to return            "

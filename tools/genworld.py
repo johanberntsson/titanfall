@@ -185,7 +185,7 @@ def main():
                          f"item {name} found_text")
         if len(text) > MSG_INTERIOR:
             die(f"item {name}: found_text longer than {MSG_INTERIOR} chars")
-        item_msgs.append(f"    |{text.center(MSG_INTERIOR)}|    ")
+        item_msgs.append(text.center(MSG_INTERIOR))   # framed when emitted
 
     # ---- walk rooms, flattening everything into parallel arrays --------
     act = {k: [] for k in ("type", "room", "sx", "sy", "wx0", "wy0", "wx1", "wy1")}
@@ -373,7 +373,7 @@ def main():
         o.append("        !byte " + ",".join(f">ITEM_MSG_{i}" for i in range(len(items))))
         for i, (label, msg) in enumerate(zip(item_labels, item_msgs)):
             o.append(f'ITEM_LBL_{i} !pet "{label}"')
-            o.append(f'ITEM_MSG_{i} !pet "{msg}"')
+            o.append(f'ITEM_MSG_{i} !pet "    ", G_VERT_BAR, "{msg}", G_VERT_BAR, "    "')
     else:
         o.append("ITEM_LABEL_LO")
         o.append("ITEM_LABEL_HI")

@@ -107,8 +107,12 @@ SPROW13 lda SBOX_BOT,x : jsr PET2SCREEN : sta SCRN+13*40,x
 ; =============================================================================
 ; Popup strings — all exactly 40 bytes
 ; =============================================================================
-SBOX_TOP        !pet "    +------------------------------+    "
-SBOX_BLK        !pet "    |                              |    "
-SBOX_MSG_LOCKED !pet "    |         door locked!         |    "
-SBOX_HNT        !pet "    |         press space          |    "
-SBOX_BOT        !pet "    +------------------------------+    "
+SBOX_TOP        !pet "    ", G_RD_UL
+                !fill 30, G_HORIZ_BAR
+                !pet G_RD_UR, "    "
+SBOX_BLK        !pet "    ", G_VERT_BAR, "                              ", G_VERT_BAR, "    "
+SBOX_MSG_LOCKED !pet "    ", G_VERT_BAR, "         door locked!         ", G_VERT_BAR, "    "
+SBOX_HNT        !pet "    ", G_VERT_BAR, "         press space          ", G_VERT_BAR, "    "
+SBOX_BOT        !pet "    ", G_RD_LL
+                !fill 30, G_HORIZ_BAR
+                !pet G_RD_LR, "    "

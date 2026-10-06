@@ -48,7 +48,7 @@ SETUP_TERMINAL
 
         ; Row 4: top border
         ldx #39
-TSETB1  lda TBOX_TOP,x : jsr PET2SCREEN : sta SCRN+160,x
+TSETB1  lda SCR_BORDER_TOP,x : jsr PET2SCREEN : sta SCRN+160,x
         lda #LTGREEN : sta CRAM+160,x
         dex : bpl TSETB1
 
@@ -66,7 +66,7 @@ TSETB3  lda TBOX_SUB,x : jsr PET2SCREEN : sta SCRN+240,x
 
         ; Row 7: blank interior
         ldx #39
-TSETB4  lda TBOX_BLK,x : jsr PET2SCREEN : sta SCRN+280,x
+TSETB4  lda SCR_BLANK,x : jsr PET2SCREEN : sta SCRN+280,x
         lda #GREEN : sta CRAM+280,x
         dex : bpl TSETB4
 
@@ -86,7 +86,7 @@ TSETD2  lda TBOX_D2,x : jsr PET2SCREEN : sta TERM_ROW2,x
 
         ; Row 11: blank
         ldx #39
-TSETB5  lda TBOX_BLK,x : jsr PET2SCREEN : sta SCRN+440,x
+TSETB5  lda SCR_BLANK,x : jsr PET2SCREEN : sta SCRN+440,x
         lda #GREEN : sta CRAM+440,x
         dex : bpl TSETB5
 
@@ -98,7 +98,7 @@ TSETD3  lda TBOX_D3,x : jsr PET2SCREEN : sta TERM_ROW3,x
 
         ; Row 13: blank
         ldx #39
-TSETB6  lda TBOX_BLK,x : jsr PET2SCREEN : sta SCRN+520,x
+TSETB6  lda SCR_BLANK,x : jsr PET2SCREEN : sta SCRN+520,x
         lda #GREEN : sta CRAM+520,x
         dex : bpl TSETB6
 
@@ -110,7 +110,7 @@ TSETB7  lda TBOX_HNT,x : jsr PET2SCREEN : sta SCRN+560,x
 
         ; Row 15: bottom border
         ldx #39
-TSETB8  lda TBOX_BOT,x : jsr PET2SCREEN : sta SCRN+600,x
+TSETB8  lda SCR_BORDER_BOTTOM,x : jsr PET2SCREEN : sta SCRN+600,x
         lda #LTGREEN : sta CRAM+600,x
         dex : bpl TSETB8
 
@@ -250,16 +250,13 @@ TDSELX  lda #LTGREEN : ldx #4 : ldy #15 : jmp FRAME_EDGES  ; box rows 4-15
 ; =============================================================================
 ; Terminal strings — all exactly 40 bytes
 ; =============================================================================
-TBOX_TOP  !pet "+--------------------------------------+"
-TBOX_TTL  !pet "|  * sector drone network - terminal   |"
-TBOX_SUB  !pet "|  access verified. select unit:       |"
-TBOX_BLK  !pet "|                                      |"
-TBOX_D0   !pet "|   [1] bot-7741  loader    available  |"
-TBOX_D1   !pet "|   [2] bot-3312  splicer   available  |"
-TBOX_D2   !pet "|   [3] bot-9901  centurion  locked    |"
-TBOX_D3   !pet "|   [ ] logoff                         |"
-TBOX_HNT  !pet "|   return=select   f7=exit            |"
-TBOX_BOT  !pet "+--------------------------------------+"
+TBOX_TTL  !pet G_VERT_BAR, "  * sector drone network - terminal   ", G_VERT_BAR
+TBOX_SUB  !pet G_VERT_BAR, "  access verified. select unit:       ", G_VERT_BAR
+TBOX_D0   !pet G_VERT_BAR, "   [1] bot-7741  loader    available  ", G_VERT_BAR
+TBOX_D1   !pet G_VERT_BAR, "   [2] bot-3312  splicer   available  ", G_VERT_BAR
+TBOX_D2   !pet G_VERT_BAR, "   [3] bot-9901  centurion  locked    ", G_VERT_BAR
+TBOX_D3   !pet G_VERT_BAR, "   [ ] logoff                         ", G_VERT_BAR
+TBOX_HNT  !pet G_VERT_BAR, "   return=select   f7=exit            ", G_VERT_BAR
 TMSG_OK   !pet "  proxy link established. unit active   "
 TMSG_LCK  !pet "  access denied. unit locked by titan.  "
 TMSG_DEAD !pet "  unit destroyed. link unavailable.     "
