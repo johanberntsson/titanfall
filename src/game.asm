@@ -275,12 +275,13 @@ TCKOUT  rts
 ; TICK_REACTOR
 ; =============================================================================
 TICK_REACTOR
-        ; The reactor tracks the countdown: REACT_TEMP = 99 - M*99/START,
+        ; The reactor tracks the countdown: REACT_TEMP = 99 - M*89/START,
         ; with M = minutes left (CLK_H*60+CLK_M) and START = the starting
-        ; countdown in minutes — 0 at mission start, 99 as the clock runs
-        ; out (so a death penalty visibly heats it up). M*99/START is done as
-        ; M * REACT_K, REACT_K = 99*256/START precomputed at assembly time,
-        ; taking the high byte. REACT_JIT is a 0-3 flicker shown on top,
+        ; countdown in minutes — 10 at mission start (one green segment:
+        ; visibly safe), 99 as the clock runs out (so a death penalty
+        ; visibly heats it up). M*89/START is done as M * REACT_K,
+        ; REACT_K = 89*256/START precomputed at assembly time, taking the
+        ; high byte. REACT_JIT is a 0-3 flicker shown on top,
         ; re-rolled from the LFSR every 8 frames (display only).
         lda LFSR_ST : asl : bcc RCTNFB : eor #$B8
 RCTNFB  sta LFSR_ST
@@ -294,7 +295,7 @@ RCTHR   lda TMP : clc : adc #60 : sta TMP
         bcc RCTHN : inc TMP2
 RCTHN   dex : bne RCTHR
 RCTMUL  lda #0 : sta PTR : sta PTR+1     ; PTR = M * REACT_K (16-bit;
-        ldx #16                          ;  M <= START keeps it <= 99*256)
+        ldx #16                          ;  M <= START keeps it <= 89*256)
 RCTML   asl PTR : rol PTR+1
         asl TMP : rol TMP2 : bcc RCTMN
         lda PTR : clc : adc #<REACT_K : sta PTR
@@ -306,7 +307,8 @@ RCTSET  sta REACT_TEMP
         rts
 
 REACT_START_M = CFG_CLK_H*60 + CFG_CLK_M
-REACT_K = (99*256 + REACT_START_M DIV 2) DIV REACT_START_M
+REACT_SPAN = 89                         ; 99 - starting temperature (10)
+REACT_K = (REACT_SPAN*256 + REACT_START_M DIV 2) DIV REACT_START_M
 
 ; =============================================================================
 ; READ_KEYS
@@ -475,7 +477,10 @@ TRY_MOVE
         jmp TRY_DOOR                 ; outside walkable range: door or wall
 TMXOK   lda NEWY : cmp ROOM_MAXY,x : bcc TMYOK : beq TMYOK
         jmp TRY_DOOR
-TMYOK   jsr LASER_AT : bcc TMCOMMIT
+TMYOK   lda CUR_ROOM : jsr WALL_AT : bcc TMNOWALL
+        clc : rts                    ; wall: blocked (try the next direction)
+TMNOWALL
+        jsr LASER_AT : bcc TMCOMMIT
         ; stepped into an active laser — death, move not committed
         lda #RED  : sta VIC_BRDCOL
         lda #ZAP_LEN : sta DEATH_TMR ; respawn the moment the zap ends
@@ -571,13 +576,30 @@ TRY_ACT
         clc : rts
 TAXOK   lda NEWY : cmp ROOM_MAXY,y : bcc TAYOK : beq TAYOK
         clc : rts
-TAYOK   lda NEWX : sta ACT_X,x
+TAYOK   lda ACT_ROOM,x : jsr WALL_AT : bcc TANOWALL
+        clc : rts                    ; wall: blocked
+TANOWALL
+        lda NEWX : sta ACT_X,x
         lda NEWY : sta ACT_Y,x
         jsr ACT_STEP_ANIM
         jsr LASER_AT : bcc TAOK
         sty PEND_LSR                 ; hit a laser: finish the slide into the
         lda #2 : sta ACT_ALIVE,x     ;  beam first, then die (UPD_DYING)
 TAOK    sec : rts
+
+; =============================================================================
+; WALL_AT — A = room, NEWX/NEWY = tile (in bounds). Carry set if the tile is
+; solid: genworld.py derives ROOM_WALLS_n (16 bytes per tile row, 1 = solid)
+; from the wall chars under the sprite's feet in the room art. Preserves X;
+; clobbers A/Y/PTR.
+; =============================================================================
+WALL_AT
+        tay
+        lda ROOM_WALL_LO,y : sta PTR
+        lda ROOM_WALL_HI,y : sta PTR+1
+        lda NEWY : asl : asl : asl : asl : ora NEWX : tay
+        lda (PTR),y : cmp #1             ; C = solid
+        rts
 
 ; =============================================================================
 ; LASER_AT — carry set if NEWX/NEWY is inside an active laser rectangle of

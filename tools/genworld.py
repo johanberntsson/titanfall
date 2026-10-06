@@ -112,6 +112,38 @@ def laser_art_patches(mapdata, l, laser_tiles, floor_tile, what):
     return patches
 
 
+def wall_grid(mapdata, maxx, maxy, solid_tiles):
+    """Solid tiles of a room, judged by the art under the sprite's feet.
+
+    A sprite at tile (x, y) is drawn at screen pixel (x*24+4, y*16) of the
+    room area; its feet are the bottom-middle of the 24x21 sprite, i.e. map
+    chars cols 3x+1..3x+2, rows 2y+1..2y+2. The tile is solid if any of
+    those 4 chars is in solid_tiles. Returns grid[y][x] (bool).
+    """
+    grid = []
+    for y in range(maxy + 1):
+        row = []
+        for x in range(maxx + 1):
+            cells = [mapdata[r * 40 + c]
+                     for r in (2 * y + 1, 2 * y + 2) for c in (3 * x + 1, 3 * x + 2)
+                     if r < ROOM_MAP_BYTES // 40 and c < 40]
+            row.append(any(ch in solid_tiles for ch in cells))
+        grid.append(row)
+    return grid
+
+
+def patrol_path(x, y, tx, ty):
+    """Tiles visited by ACTOR_PATROL_STEP walking (x,y) -> (tx,ty): X first."""
+    tiles = []
+    while x != tx:
+        x += 1 if tx > x else -1
+        tiles.append((x, y))
+    while y != ty:
+        y += 1 if ty > y else -1
+        tiles.append((x, y))
+    return tiles
+
+
 def main():
     if len(sys.argv) != 3:
         die("usage: genworld.py <titan.yaml> <world.asm>")
@@ -199,6 +231,7 @@ def main():
     laser_art = []                      # per laser: [(map offset, new char), ...]
     art = cfg.get("art") or die("config needs an art section (floor_tile, laser_tiles)")
     floor_tile = int(art["floor_tile"])
+    solid_tiles = {int(t) for t in art.get("solid_tiles") or []}
     laser_tiles = {int(t) for t in art.get("laser_tiles") or []}
     if not laser_tiles:
         die("art.laser_tiles must list the laser beam/emitter screen codes")
@@ -283,6 +316,51 @@ def main():
     for iname, ii in item_index.items():
         if ii not in item_pos:
             die(f"item {iname!r} is never placed in a room")
+
+    # ---- walls: solid tiles per room, from the art; validate placements --
+    walls = []
+    for room in rooms:
+        walls.append(wall_grid(read_vchar64_map(room["vchar64_map"]),
+                               room["_maxx"], room["_maxy"], solid_tiles))
+
+    def check_open(ri, x, y, what):
+        room = rooms[ri]
+        if not (0 <= x <= room["_maxx"] and 0 <= y <= room["_maxy"]):
+            die(f"{what}: ({x},{y}) is outside room {room['name']}'s bounds")
+        if walls[ri][y][x]:
+            die(f"{what}: ({x},{y}) is inside a wall in room {room['name']} "
+                f"(wall art under the sprite's feet: map cols {3*x+1}-{3*x+2}, "
+                f"rows {2*y+1}-{2*y+2})")
+
+    for ri, room in enumerate(rooms):
+        ps = room["player_start"]
+        check_open(ri, int(ps["x"]), int(ps["y"]), f"room {room['name']} player_start")
+    for ai in range(len(act["type"])):
+        ri, what = act["room"][ai], f"robot #{ai} in room {rooms[act['room'][ai]]['name']}"
+        sx, sy = act["sx"][ai], act["sy"][ai]
+        w0, w1 = (act["wx0"][ai], act["wy0"][ai]), (act["wx1"][ai], act["wy1"][ai])
+        check_open(ri, sx, sy, what + " start")
+        for (fx, fy), (tx, ty) in (((sx, sy), w1), (w1, w0), (w0, w1)):
+            for x, y in patrol_path(fx, fy, tx, ty):
+                check_open(ri, x, y, what + f" patrol path {fx},{fy} -> {tx},{ty}")
+    for ii, (ri, x, y) in item_pos.items():
+        check_open(ri, x, y, f"item {list(item_index)[ii]!r}")
+    for di in range(len(door["room"])):
+        dest = door["dest"][di]
+        if dest == 0xFF:
+            continue
+        xs = range(door["x1"][di], door["x2"][di] + 1) if door["ax"][di] == 0xFF else [door["ax"][di]]
+        ys = range(door["y1"][di], door["y2"][di] + 1) if door["ay"][di] == 0xFF else [door["ay"][di]]
+        for x in xs:
+            for y in ys:
+                check_open(dest, x, y, f"door #{di} from room {rooms[door['room'][di]]['name']} arrival")
+    for ti in range(len(termz["room"])):
+        ri = termz["room"][ti]
+        if all(walls[ri][y][x]
+               for y in range(termz["y1"][ti], termz["y2"][ti] + 1)
+               for x in range(termz["x1"][ti], termz["x2"][ti] + 1)):
+            die(f"terminal zone #{ti} in room {rooms[ri]['name']} is entirely inside walls")
+
 
     # ---- emit ----------------------------------------------------------
     o = []
@@ -419,6 +497,20 @@ def main():
     for name, key in (("TERMZ_ROOM", "room"), ("TERMZ_X1", "x1"), ("TERMZ_Y1", "y1"),
                       ("TERMZ_X2", "x2"), ("TERMZ_Y2", "y2")):
         o.append(tbl(name, [byte(v, "termz") for v in termz[key]]))
+    o.append("")
+
+    o.append("; ---- walls: per room, 16 bytes per tile row (y*16+x), 1 = solid ----")
+    o.append("; (from the art under each tile's feet -- see wall_grid in genworld.py)")
+    o.append("ROOM_WALL_LO")
+    o.append("        !byte " + ",".join(f"<ROOM_WALLS_{i}" for i in range(len(rooms))))
+    o.append("ROOM_WALL_HI")
+    o.append("        !byte " + ",".join(f">ROOM_WALLS_{i}" for i in range(len(rooms))))
+    for i, grid in enumerate(walls):
+        o.append(f"ROOM_WALLS_{i}      ; {rooms[i]['name']}")
+        for y, row in enumerate(grid):
+            vals = [1 if b else 0 for b in row] + [0] * (16 - len(row))
+            pic = "".join("#" if b else "." for b in row)
+            o.append(f"        !byte {','.join(str(v) for v in vals)}   ; y={y} {pic}")
     o.append("")
 
     o.append("; ---- room map data: 22 rows x 40 chars of raw screen codes ----")

@@ -23,6 +23,11 @@ game:
 art:
   floor_tile: 0x80
   laser_tiles: [0x81, 0x82, 0x83]      # beam, top emitter, bottom emitter
+  # Wall chars. A tile is solid if any of the 2x2 chars under the sprite's
+  # feet there (map cols 3x+1..3x+2, rows 2y+1..2y+2) is one of these; the
+  # build computes the wall map from the art and rejects starts, patrols,
+  # items or door arrivals inside a wall.
+  solid_tiles: [0x84, 0x85, 0x86, 0x87, 0x88, 0x89, 0x8a, 0x8b]
 
 # Actor types: name, sprite set (src/c64_*_sprites.asm, included by src/titanfall.asm),
 # colour, and AI routine used while computer-controlled. "human" is reserved
@@ -75,8 +80,8 @@ rooms:
         patrol: [{x: 2, y: 7}, {x: 4, y: 7}]
       - id: bot3312                    # referenced by the terminal menu (ACTOR_BOT3312)
         type: splicer
-        start: {x: 7, y: 3}
-        patrol: [{x: 7, y: 3}, {x: 9, y: 3}]
+        start: {x: 7, y: 4}
+        patrol: [{x: 7, y: 4}, {x: 9, y: 4}]   # y=3 at x=9 is inside a wall
     things:
       - item: red_card
         at: {x: 9, y: 5}
