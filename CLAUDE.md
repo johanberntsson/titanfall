@@ -209,7 +209,7 @@ If you change a step period, change the matching speeds (tile pitch / period) or
 - The terminal blocks re-linking to a destroyed robot: its menu row is dark grey and tagged "destroyed", and `TERM_ROBOT` shows `TMSG_DEAD` instead of linking.
 
 ### Sprite collision
-`CHECK_SPRITE_HIT` reads `VIC_SPCOLL` (`$D01E`) each frame after all three sprites are positioned. Bit 0 (sprite 0 / player) non-zero means the player overlapped any other enabled sprite. Response mirrors laser death: red border, `DEATH_TMR = DEATH_LEN`, `SOUND_DEATH_START` (the falling sweep; a laser death plays the zap with `DEATH_TMR = ZAP_LEN`). `$D01E` is cleared by the hardware on read. (With only 2 sprites the old code checked `bits 0-1`; with 3 sprites a robot-vs-robot collision could set bit 1 or 2 without the player involved, so only bit 0 is checked now.)
+`CHECK_SPRITE_HIT` reads `VIC_SPCOLL` (`$D01E`) each frame after all three sprites are positioned. Bit 0 (sprite 0 / player) non-zero means the player overlapped any other enabled sprite. The response is the same as a laser death — both call `PLAYER_DIE` (red border, `DEATH_TMR = ZAP_LEN`, `SOUND_ZAP_START`), so there is one death effect. `$D01E` is cleared by the hardware on read — **but nothing reads it during the death pause** (`DO_GAME` skips `CHECK_SPRITE_HIT` while `DEATH_TMR` runs), so the collision of a robot kill stays latched while the two sprites sit overlapped. `RESET_ROUND` therefore turns all sprites off while it redraws, positions them, reads `$D01E` once to discard the stale hit, and only then re-enables the player sprite; without that, every robot kill killed the respawned player again on its first frame (a second flash, and the time penalty charged twice). (With only 2 sprites the old code checked `bits 0-1`; with 3 sprites a robot-vs-robot collision could set bit 1 or 2 without the player involved, so only bit 0 is checked now.)
 
 ### Death & Respawn (Impossible Mission style)
 Dying (laser or sprite collision, `DEATH_TMR` counting down to 0 in `DO_GAME`) no longer ends the game outright — it costs time and respawns you:
@@ -256,7 +256,7 @@ $16/$17  PTR2     dest pointer
 $18  TMP          scratch
 $19  TMP2         scratch / bar colour
 $1A  GAME_STATE   0=intro 1=game 2=gameover 3=terminal 4=win 5=map 6=popup
-$1B  DEATH_TMR    frames remaining after laser/robot hit (as long as the death sound: `ZAP_LEN` for a laser, `DEATH_LEN` for a robot hit, so border, sound and pause end together); on expiry, APPLY_DEATH_PENALTY runs (see Death & Respawn)
+$1B  DEATH_TMR    frames remaining after a laser/robot hit (`ZAP_LEN`, as long as the zap, so border, sound and pause end together); on expiry, APPLY_DEATH_PENALTY runs (see Death & Respawn)
 $1C  BLINK_TMR    blink frame counter
 $1D  BLINK_ST     blink state (0=visible 1=hidden)
 $1E  SND_TMR      sound effect countdown (0=silent, music plays)
@@ -272,7 +272,7 @@ $28  NEWY         candidate tile Y (MOVE_PLAYER/MOVE_ACTOR/patrol/sprite scratch
 $29  PLR_DIR      player facing (DIR_DOWN/UP/LEFT/RIGHT = 0-3)
 $2A  PLR_ANIM     player walk frame (0=rest 1=walk1 2=walk2)
 $2B  ANIM_CNT     free-running game-frame counter (hover animation)
-$2C  SND_KIND     sound effect playing: 0=death sweep 1=laser zap
+$2C  (free — was SND_KIND)
 $2D  ROB_TMR      robot movement timer (shared by all actors, ROB_PERIOD = 16 frames)
 $2E  GL_SX        GLIDE speed X, px/frame (smooth movement)
 $2F  GL_SY        GLIDE speed Y, px/frame
@@ -284,7 +284,7 @@ $35  KEY_SPC      space key flag (search, and enter terminal — see Keyboard ma
 $36  JOY_NEW      joystick 2 bits newly pressed this frame (set in MAIN_LOOP)
 ```
 
-Free zero-page slots: `$20`, `$26`, `$30`, `$37+`. Per-robot positions, laser/item state etc. moved to RAM arrays at the end of `src/world.asm` (`ACT_X/Y/TGT/ALIVE/DIR/ANIM`, `GL_PXL/PXH/PY`, `ITEM_STATE`, `LASER_STATE`, `SPR_SLOT_ACT`) — indexed with `,x`, sized by the config.
+Free zero-page slots: `$20`, `$26`, `$2C`, `$30`, `$37+`. Per-robot positions, laser/item state etc. moved to RAM arrays at the end of `src/world.asm` (`ACT_X/Y/TGT/ALIVE/DIR/ANIM`, `GL_PXL/PXH/PY`, `ITEM_STATE`, `LASER_STATE`, `SPR_SLOT_ACT`) — indexed with `,x`, sized by the config.
 
 ## Room Map
 
@@ -400,19 +400,18 @@ Sprite X is 9 bits: `X pixel = tile*16+20` exceeds 255 for tiles 15–19, and th
 
 - **Init:** `lda #0 : jsr $C000` — called once during startup (after SID clear, before `cli`). `A` selects the subtune (0 = tune 1).
 - **Play:** `jsr $C127` — called from `RASTER_IRQ` every frame (50 Hz PAL). (The old Armalyte tune used `$C059` — if the music file is swapped, the play address in `RASTER_IRQ` must change with it; check with `sidplayfp -v <file>.sid`.)
-- **Sound effect interlock:** while `SND_TMR > 0`, `RASTER_IRQ` calls `SOUND_TICK` instead of `$C127`, giving the effect (death sweep or laser zap) exclusive SID control. Music resumes automatically when `SND_TMR` reaches 0.
+- **Sound effect interlock:** while `SND_TMR > 0`, `RASTER_IRQ` calls `SOUND_TICK` instead of `$C127`, giving the effect (the laser zap) exclusive SID control. Music resumes automatically when `SND_TMR` reaches 0.
 - Candidate replacement tunes that fit the `$C000–$CFFF` window are listed in `music/possible_songs.txt` (HVSC scan via `music/find_sids_in_range.py`); `music/README.txt` documents the sid→prg conversion (`psid64`).
 
 ### $D418 (master volume) discipline
 The Whittaker player writes `$D418` itself during play (unlike the old Armalyte player, which set it only at init — the original reason for this rule). But while `SND_TMR > 0` the play routine is not called, so nothing restores volume during the death-sound window:
 
-**Rule:** never leave `$D418` at `$00`. `SOUND_DEATH_START` and `SOUND_ZAP_START` set `$D418 = $0F` (the zap fades through `$D418` but never reaches 0), and `SNDOFF` restores `$0F` after gating off voice 1. `SETUP_GAMEOVER` and `SETUP_WIN` must not write to `$D418` — let music continue. `SND_TMR` is zeroed explicitly in the init before `cli` — the KERNAL may leave `$1E` non-zero, which would permanently block music in intro.
+**Rule:** never leave `$D418` at `$00`. `SOUND_ZAP_START` sets `$D418 = $0F` (the zap fades through `$D418` but never reaches 0), and `SNDOFF` restores `$0F` after gating off voice 1. `SETUP_GAMEOVER` and `SETUP_WIN` must not write to `$D418` — let music continue. `SND_TMR` is zeroed explicitly in the init before `cli` — the KERNAL may leave `$1E` non-zero, which would permanently block music in intro.
 
 ### Sound effects
-Voice 1, one effect at a time, `SND_KIND` (`$2C`) selects the effect `SOUND_TICK` plays:
-- **Death sweep** (`SOUND_DEATH_START`, kind 0) — sawtooth, gates on at ~350 Hz and sweeps downward over 50 frames. Used when a patrol robot catches the human (`CHECK_SPRITE_HIT`).
-- **Laser zap** (`SOUND_ZAP_START`, kind 1, `ZAP_LEN` = 40 frames) — the "bzzzt": a thin 12.5% pulse at ~60–90 Hz (mains-hum range, pitch jittered from `LFSR_ST`) alternating every frame with a high noise crackle, a one-frame gate drop every 8 frames for the stutter, fading out through `$D418` over the last 15 frames. Used when the human walks into a laser (`TRY_MOVE`) and when a driven robot burns one out (`ROBOT_LASER_DEATH`).
-Both set `$D418 = $0F` on start, and `SNDOFF` gates off and restores `$0F` at the end.
+Voice 1. There is a single effect (the old falling-sawtooth death sweep was dropped — every death now uses the zap); a second effect would need a selector variable again (`$2C` is free):
+- **Laser zap** (`SOUND_ZAP_START`, `ZAP_LEN` = 40 frames) — the "bzzzt": a thin 12.5% pulse at ~60–90 Hz (mains-hum range, pitch jittered from `LFSR_ST`) alternating every frame with a high noise crackle, a one-frame gate drop every 8 frames for the stutter, fading out through `$D418` over the last 15 frames. Used for every human death (`PLAYER_DIE`: laser in `TRY_MOVE`, robot in `CHECK_SPRITE_HIT`) and when a driven robot burns out a laser (`ROBOT_LASER_DEATH`).
+It sets `$D418 = $0F` on start, and `SNDOFF` gates off and restores `$0F` at the end.
 
 ## Screen Art
 

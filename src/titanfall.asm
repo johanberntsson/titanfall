@@ -44,7 +44,6 @@ NEWY       = $28   ; candidate tile Y (MOVE_PLAYER/MOVE_ACTOR/patrol scratch)
 PLR_DIR    = $29   ; player facing (DIR_*)
 PLR_ANIM   = $2A   ; player walk frame: 0=rest 1=walk1 2=walk2
 ANIM_CNT   = $2B   ; free-running game-frame counter (hover animation)
-SND_KIND   = $2C   ; sound effect playing: 0=death sweep 1=laser zap
 ROB_TMR    = $2D   ; robot movement timer (shared by all actors)
 PLAYER_MODE = $31  ; 0=human (control PLR_X/Y)  else actor index+1 (proxy mode)
 KEY_X      = $32   ; X key flag (exit robot proxy mode)

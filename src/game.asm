@@ -63,6 +63,7 @@ SGITEMD jmp RESET_ROUND
 RESET_ROUND
         lda #1   : sta GAME_STATE
         lda #0   : sta $C6
+        lda #0   : sta VIC_SPEN            ; no sprites (or collisions) while redrawing
         lda #BLACK : sta VIC_BRDCOL : sta VIC_BGCOL
 
         lda #START_ROOM : sta CUR_ROOM
@@ -109,10 +110,26 @@ RSRLSRD
         jsr DRAW_HUD_STATIC
         jsr DRAW_ROOM
 
-        lda #$07 : sta VIC_SPEN
+        ; Robots first (UPDATE_ROBOT_SPRITES enables their slots), then drop
+        ; any collision still latched in $D01E from the death pause — DO_GAME
+        ; doesn't read it while DEATH_TMR runs, so a robot kill would
+        ; otherwise kill the respawned player again — and only then show
+        ; the player.
         jsr UPDATE_SPRITE0
         jsr UPDATE_ROBOT_SPRITES
+        lda VIC_SPCOLL
+        lda VIC_SPEN : ora #$01 : sta VIC_SPEN
         rts
+
+; =============================================================================
+; PLAYER_DIE — the human is killed (laser or robot): red border, the laser
+; zap, and a ZAP_LEN pause (DEATH_TMR, as long as the zap) before DO_GAME
+; calls APPLY_DEATH_PENALTY to respawn.
+; =============================================================================
+PLAYER_DIE
+        lda #RED : sta VIC_BRDCOL
+        lda #ZAP_LEN : sta DEATH_TMR
+        jmp SOUND_ZAP_START
 
 ; =============================================================================
 ; APPLY_DEATH_PENALTY — Impossible Mission style: laser/robot death no longer
@@ -441,9 +458,7 @@ TMYOK   lda CUR_ROOM : jsr WALL_AT : bcc TMNOWALL
 TMNOWALL
         jsr LASER_AT : bcc TMCOMMIT
         ; stepped into an active laser — death, move not committed
-        lda #RED  : sta VIC_BRDCOL
-        lda #ZAP_LEN : sta DEATH_TMR ; respawn the moment the zap ends
-        jsr SOUND_ZAP_START
+        jsr PLAYER_DIE
         sec : rts
 TMCOMMIT
         lda NEWX : sta PLR_X
@@ -829,9 +844,7 @@ CHECK_SPRITE_HIT
         lda PLAYER_MODE : bne SPRHITOK
         lda DEATH_TMR : bne SPRHITOK
         lda TMP : and #$01 : beq SPRHITOK
-        lda #RED : sta VIC_BRDCOL
-        lda #DEATH_LEN : sta DEATH_TMR  ; respawn the moment the sweep ends
-        jsr SOUND_DEATH_START
+        jmp PLAYER_DIE                  ; same death as a laser
 SPRHITOK rts
 
 ; =============================================================================
@@ -1047,30 +1060,14 @@ STAT_TMPL
 ; Space straight into the terminal right after the splicer burns out).
 ; SOUND_TICK runs inside the IRQ: it may only touch A (the KERNAL IRQ
 ; entry/exit saves and restores A/X/Y) and SND_* — never TMP/PTR etc.
-;   SND_KIND 0 = death: sawtooth, descending pitch sweep over ~50 frames
-;            1 = zap:   laser "bzzzt" — a low raspy pulse buzz alternating
-;                       every frame with a noise crackle, a one-frame gate
-;                       drop every 8 frames for the stutter, fading out
-;                       over the last 15 frames
+;   The laser "bzzzt" (the only effect; used for every death and when a
+;   driven robot burns out a laser): a low raspy pulse buzz alternating
+;   every frame with a noise crackle, a one-frame gate drop every 8 frames
+;   for the stutter, fading out over the last 15 frames
 ; =============================================================================
 ZAP_LEN   = 40                  ; frames; also the laser-death pause
-DEATH_LEN = 50                  ; frames; also the robot-collision death pause
-
-SOUND_DEATH_START
-        lda #0     : sta SND_KIND
-        lda #DEATH_LEN : sta SND_TMR
-
-        lda #$00   : sta $D405      ; attack=0, decay=0
-        lda #$F0   : sta $D406      ; sustain=15, release=0
-        lda #$0F   : sta $D418      ; master volume full
-
-        lda #$90   : sta $D400      ; freq lo  ($0290 ≈ 350Hz)
-        lda #$02   : sta $D401      ; freq hi
-        lda #$21   : sta $D404      ; sawtooth + gate on
-        rts
 
 SOUND_ZAP_START
-        lda #1       : sta SND_KIND
         lda #ZAP_LEN : sta SND_TMR
 
         lda #$00   : sta $D405      ; attack=0, decay=0
@@ -1089,18 +1086,7 @@ SOUND_TICK
         beq SNDOUT
 
         dec SND_TMR
-        beq SNDOFF
-        lda SND_KIND : bne ZAP_TICK
-
-        ; Frequency = SND_TMR * 8 + $0200
-        lda SND_TMR
-        asl : asl : asl
-        sta $D400               ; freq lo
-        lda SND_TMR
-        lsr : lsr : lsr : lsr : lsr
-        clc : adc #2
-        sta $D401               ; freq hi
-        bne SNDOUT
+        bne ZAP_TICK
 
 SNDOFF  lda #$20 : sta $D404
         lda #$0F : sta $D418
