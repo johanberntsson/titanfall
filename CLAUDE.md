@@ -41,7 +41,7 @@ The source is split into one orchestrator and eight state/data modules, all `!so
 | `src/popup.asm` | `DO_POPUP`, `SHOW_POPUP`, `SETUP_SEARCH`, `SETUP_DOOR_LOCKED`, popup strings |
 | `src/c64_walker_sprites.asm`, `src/c64_robot_sprites.asm`, `src/c64_drone_sprites.asm` | Multicolour sprite sets (player / walking robot / flying drone), `!source`d into the sprite block at `$3000`. All three have all four facings (robots need up/down too — the terminal lets you drive them in any direction) |
 | `src/charset.asm` | **Generated** by `tools/gencharset.py` (never edit it; in `.gitignore`): `TILE_COLORS` (256-byte tile→colour table) and `CHARSET` (custom 2K charset at `$2800`) from the vchar64 exports — see "Custom Charset / Screen Art" |
-| `src/world.asm` | **Generated** by `tools/genworld.py` from `titan.yaml` (data only, no code): `NUM_*`/`ACTOR_*`/`ITEM_*`/`CFG_*` constants, `ROOM_*`/`TYPE_*`/`ACT_*`/`ITEM_*`/`DOOR_*`/`LASER_*`/`TERMZ_*`/`MAPHL_*` tables, the generated sector map `MAP_SCR`/`MAP_COL`, `ROOM_MAP_n` screen-code data, and the runtime state arrays (`ACT_X/Y/TGT/ALIVE/DIR/ANIM`, `GL_PXL/PXH/PY`, `ITEM_STATE`, `LASER_STATE`, `SPR_SLOT_ACT`) |
+| `src/world.asm` | **Generated** by `tools/genworld.py` from `titan.yaml` (data only, no code): `NUM_*`/`ACTOR_*`/`ITEM_*`/`CFG_*` constants, `ROOM_*`/`TYPE_*`/`ACT_*`/`ITEM_*`/`DOOR_*`/`LASER_*`/`TERMZ_*`/`MAPHL_*` tables, the generated sector map `MAP_SCR`/`MAP_COL`, `ROOM_MAP_n` screen-code data, and the runtime state arrays (`ACT_X/Y/TGT/ALIVE/DIR/ANIM/FAST`, `GL_PXL/PXH/PY`, `ITEM_STATE`, `LASER_STATE`, `SPR_SLOT_ACT`) |
 
 Other files:
 - `titan.yaml` — **the world definition** (rooms, robots, items, doors, lasers, terminals, start clock); the preferred place to change gameplay content
@@ -81,7 +81,7 @@ The SYS address in `!pet` must be kept in sync manually if the header ever chang
 | Address | Purpose |
 |---------|---------|
 | `$0801` | BASIC stub (SYS 2064) |
-| `$0810` | Entry point / code start (code + `TILE_COLORS` end before `$2800` — ~550 bytes left, see the TILE_COLORS gotcha) |
+| `$0810` | Entry point / code start (code + `TILE_COLORS` end before `$2800` — ~390 bytes left, see the TILE_COLORS gotcha) |
 | `$0340–$0397` | Tape buffer, reused as `SP_BUF` (screen + colour cells under the small search popup) |
 | `$0400–$07FF` | Screen RAM (default VIC bank) |
 | `$2800–$2FFF` | `CHARSET` — custom 2K room-art charset (see below) |
@@ -197,11 +197,14 @@ After every `CLS` the pointers are reset to `SPRP_PLAYER`/`SPRP_ROBOT`/`SPRP_DRO
 ### Actors and patrol AI
 All robots are rows in the generated `ACT_*` tables (the player is *not* in them; `PLAYER_MODE` maps "actor index+1" onto them for proxy mode). Static data per actor: `ACT_TYPE` (indexes `TYPE_SPRPTR`/`TYPE_COLOR`), `ACT_ROOM`, `ACT_SX/SY` (start), `ACT_WX0/WY0`/`ACT_WX1/WY1` (two patrol waypoints). Runtime state: `ACT_X/Y`, `ACT_TGT` (which waypoint it's heading for), `ACT_ALIVE`.
 
-`TICK_ROBOT` is called every game frame (shared `ROB_PERIOD` = 16-frame timer, `ROB_TMR`) and runs `ACTOR_PATROL_STEP` for every alive, non-player-driven actor — one step toward the current target waypoint (X axis first, then Y; on arrival the target flips). Actors in other rooms keep patrolling off-screen. Patrol paths are authored in `titan.yaml` not to cross lasers — the patrol AI does no hazard checks.
+`TICK_ROBOT` is called every game frame. Its timer `ROB_TMR` fires every `ROB_HALF` = 8 frames and flips `ROB_PHASE` (`$3D`); a normal-pace actor acts only on phase 0 (every `ROB_PERIOD` = 16 frames), a rushing one (`ACT_FAST=1`) on every half period. For each alive, non-player-driven actor it runs `ACTOR_THINK`, which dispatches on `ACT_AI` (`ai:` in `titan.yaml`, per type with a per-robot override; `AI_PATROL`/`AI_HUNTER` constants from `genworld.py`'s `AI_NAMES`):
+- **`patrol`** — `ACTOR_PATROL_STEP`: one step toward the current target waypoint (X axis first, then Y; on arrival the target flips). Actors in other rooms keep patrolling off-screen. Patrol paths are authored in `titan.yaml` not to cross lasers — the patrol AI does no hazard checks.
+- **`hunter`** (room 2's drone) — patrols, but while `HUNT_SEES` (human mode, not dying, same room, **same tile row**, no wall tile between them via `WALL_AT`; lasers don't block sight) it `HUNT_RUSH`es: `ACT_FAST=1` and one step along the row toward the player every half period, at double speed — the player's own pace — and glides at `GL_FAST` (`UPD_SLOT` checks `ACT_FAST`). It never steps into an active laser (`LASER_AT`); it stops and waits at the beam instead. The sprite collision does the killing. Losing sight clears `ACT_FAST`, and it walks back onto its patrol at normal pace. Speed only changes when a glide has finished: a normal-pace actor is only asked on phase 0, and a rusher that loses sight on phase 1 waits for phase 0 before its first slow step — otherwise the 1 px/frame glide would lag a tile behind. Because rush and return only move along the robot's row, `genworld.py` **requires a hunter's patrol to be horizontal through its start** (both waypoints on the start row), so it only ever walks tiles that the line-of-sight test found free of walls. In proxy mode the frozen human isn't hunted. `RESET_ROUND` clears `ACT_FAST` and `ROB_PHASE`.
 
 **Smooth movement (gliding).** Logic stays tile-based (`PLR_X/Y`, `ACT_X/Y` — collisions with walls/doors/lasers/terminals/items are all per tile), but sprites don't jump a whole tile (16×16 px) per step. Each sprite has its own pixel position in `GL_PXL`/`GL_PXH`/`GL_PY` (runtime arrays in `world.asm`, `NUM_ACTORS+1` long: slot = actor index, last slot `GL_PLAYER` = the human), and `GLIDE` (`game.asm`) moves it `GL_SX`/`GL_SY` px per frame toward the pixel position of its tile, clamping so it never overshoots. Speeds are matched to the step periods so a glide finishes just as the next step starts:
 - player, and a player-driven robot: one step per `MOVE_PERIOD` = 8 frames, glide `GL_FAST_X/Y` = 2/2 px per frame (16/8) → continuous walking with no stop at each tile
 - patrolling robots: one step per `ROB_PERIOD` = 16 frames, glide `GL_SLOW_X/Y` = 1/1 px per frame → continuous too
+- a rushing hunter (`ACT_FAST`): one step per `ROB_HALF` = 8 frames, glide `GL_FAST_X/Y`, like the player
 - `SNAP_ALL` (called by `DRAW_ROOM` — room change, respawn, redraws after terminal/map/popup) jumps every sprite straight to its tile, so nothing glides across a room change.
 If you change a step period, change the matching speeds (tile pitch / period) or the glide will lag behind or stall. Hardware sprite collisions (`$D01E`) use the glided positions, i.e. what's on screen. A robot that drives into a laser finishes its glide into the beam before it is destroyed (see "Lasers can be destroyed by a driven robot").
 
@@ -281,7 +284,7 @@ $29  PLR_DIR      player facing (DIR_DOWN/UP/LEFT/RIGHT = 0-3)
 $2A  PLR_ANIM     player walk frame (0=rest 1=walk1 2=walk2)
 $2B  ANIM_CNT     free-running game-frame counter (hover animation)
 $2C  SRCH_ST      small search popup: 0 none, 1 "searching", 2 "nothing here"
-$2D  ROB_TMR      robot movement timer (shared by all actors, ROB_PERIOD = 16 frames)
+$2D  ROB_TMR      robot movement timer (shared by all actors, fires every ROB_HALF = 8 frames)
 $2E  GL_SX        GLIDE speed X, px/frame (smooth movement)
 $2F  GL_SY        GLIDE speed Y, px/frame
 $30  F2_PREV      F2 held last game frame (edge detect for the where-am-I popup)
@@ -296,9 +299,10 @@ $39  SP_ROW       search popup top screen row
 $3A  SP_COL       search popup left column
 $3B  SP_R         SPOP row being processed
 $3C  SP_MODE      SPOP mode (save/draw/restore)
+$3D  ROB_PHASE    flips every ROB_HALF frames; normal-pace actors step on 0, rushing ones on both
 ```
 
-Free zero-page slots: `$3D+`. (`$0340`–`$0397` in the tape buffer is the search popup's `SP_BUF`.) Per-robot positions, laser/item state etc. moved to RAM arrays at the end of `src/world.asm` (`ACT_X/Y/TGT/ALIVE/DIR/ANIM`, `GL_PXL/PXH/PY`, `ITEM_STATE`, `LASER_STATE`, `SPR_SLOT_ACT`) — indexed with `,x`, sized by the config.
+Free zero-page slots: `$3E+`. (`$0340`–`$0397` in the tape buffer is the search popup's `SP_BUF`.) Per-robot positions, laser/item state etc. moved to RAM arrays at the end of `src/world.asm` (`ACT_X/Y/TGT/ALIVE/DIR/ANIM/FAST`, `GL_PXL/PXH/PY`, `ITEM_STATE`, `LASER_STATE`, `SPR_SLOT_ACT`) — indexed with `,x`, sized by the config.
 
 ## Room Map
 
@@ -350,7 +354,7 @@ Room/HUD art is authored with **vchar64** (charset + screen + colour editor). `g
 ### Code growth can silently corrupt TILE_COLORS/CHARSET — watch for ACME warnings
 `TILE_COLORS` (256 bytes, in `src/charset.asm`) has no fixed address — it starts wherever the code before it (all of `titanfall.asm` + every `!source`d module) happens to end, and `CHARSET` right after it is pinned to a fixed, 2K-aligned address (`* = $2800`). If code+`TILE_COLORS` ever grows past that fixed address, ACME does **not** fail the build — it prints `Warning - ... Segment starts inside another one, overwriting it.` and silently truncates the tail of `TILE_COLORS`, whose bytes get overwritten by the start of `CHARSET`. Since most room tiles use screen codes in the `$80s`-`$A0s`, this corrupts colour lookups for most of the room art (tiles render in wrong/black colours) while leaving the charset bitmaps themselves intact — exactly the "graphics look horrible, wrong colours" symptom, with no build error to point at it.
 - **Always check `make`'s full output for `Warning` lines, not just for a nonzero exit code** — a successful build can still have silently corrupted data.
-- To check headroom: `acme -f cbm -o /tmp/g.prg -l /tmp/labels.txt src/titanfall.asm` then `grep TILE_COLORS /tmp/labels.txt` — its start address + 256 must stay under `CHARSET`'s fixed address. **As of 2026-10-07 `TILE_COLORS` starts at `$24D3`, leaving ~550 bytes.** Unrolled 40-byte row-copy loops are the usual bloat: prefer a `DRAW_ROWS` table (see "Screen Art") for new screens.
+- To check headroom: `acme -f cbm -o /tmp/g.prg -l /tmp/labels.txt src/titanfall.asm` then `grep TILE_COLORS /tmp/labels.txt` — its start address + 256 must stay under `CHARSET`'s fixed address. **As of 2026-10-07 `TILE_COLORS` starts at `$2578`, leaving ~390 bytes.** Unrolled 40-byte row-copy loops are the usual bloat: prefer a `DRAW_ROWS` table (see "Screen Art") for new screens.
 - Keep *data* out of the code area where possible: the intro logo, sprites and all generated world data already live above the charset (`$3000+`); prefer that for new tables/strings too.
 - `CHARSET` was moved from `$2000` to `$2800` for exactly this reason (code had grown ~173 bytes past the old boundary); this freed a full extra 2KB of headroom. If it happens again, the same fix applies — bump `CHARSET`'s `* =` (emitted by `tools/gencharset.py`) to the next free 2K-aligned address (the sprite block at `$3000` and the world data after it would have to move up too) and update `VIC_VMCSB`'s value in `titanfall.asm` to match (`$D018 = (screen_base/1024)*16 + (charset_base/2048)*2`; `$0400`/`$2800` → `$1A`).
 
@@ -471,11 +475,10 @@ Controls and interface (as of 2026-10-06): the game is fully joystick-driven (ke
 
 - Robot abilities: every linkable robot drives the same way (any of them would burn out a laser); the per-type capabilities from the design (loader immune to lasers, splicer through ducts, centurion armed) aren't implemented. The room-1 sentry is `locked: true` so the splicer stays the puzzle's key
 - Item states `carried` vs `used` aren't distinguished yet — door keys accept either, nothing sets `used` (=2)
-- `ai:` in `titan.yaml` only accepts `patrol` (two-waypoint shuttle); no other AI routines exist yet
+- `ai:` in `titan.yaml` accepts `patrol` (two-waypoint shuttle) and `hunter` (patrol + rush along the tile row on sight). Ideas: sight only in the facing direction (sneaking up from behind), vertical line of sight, chasing around corners
 - Max 2 robots per room (hardware sprites 1–2; enforced by `genworld.py`) — a sprite multiplexer is deliberately out of scope
 - The reactor gauge is display-only — nothing happens when it's in the red (an idea: make it a real hazard)
 - Weapons: the bolt and force-field sprites exist (see "Sprites") but nothing uses them yet. With 3 of the 8 hardware sprites in use (player + 2 robots), sprites 3–7 are free for projectiles/effects without a multiplexer
-- Room 2's drone patrols only X 3–11, leaving the right third of the room unguarded
 - Furniture is walk-through (not in `art.solid_tiles`); walls only check the sprite's feet, so the upper body overlaps wall art in the oblique view (intended)
 - Every terminal shows the same menu (the current room's robots, map, logoff); there's no per-terminal behaviour yet (e.g. a terminal that only reaches certain robots or unlocks something)
-- The code area has ~550 bytes left before `CHARSET` at `$2800` — keep new tables/strings in generated data above `$3000` where possible (see the TILE_COLORS gotcha)
+- The code area has ~390 bytes left before `CHARSET` at `$2800` — keep new tables/strings in generated data above `$3000` where possible (see the TILE_COLORS gotcha)

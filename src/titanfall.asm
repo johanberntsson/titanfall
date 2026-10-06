@@ -54,6 +54,7 @@ PLR_DIR    = $29   ; player facing (DIR_*)
 PLR_ANIM   = $2A   ; player walk frame: 0=rest 1=walk1 2=walk2
 ANIM_CNT   = $2B   ; free-running game-frame counter (hover animation)
 ROB_TMR    = $2D   ; robot movement timer (shared by all actors)
+ROB_PHASE  = $3D   ; toggles every ROB_HALF frames: normal-pace actors step on 0
 PLAYER_MODE = $31  ; 0=human (control PLR_X/Y)  else actor index+1 (proxy mode)
 KEY_X      = $32   ; X key flag (exit robot proxy mode)
 POPUP_ST   = $33   ; popup: 0=waiting for opening space to be released, 1=armed

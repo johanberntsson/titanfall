@@ -12,16 +12,15 @@ And if we don't have a code we'll get a poup in the terminal saying so.
 
 I'm made two new sprites for later
 
-More interesting robot AI. For example,
-The robot in room 2 rushes towards you when you're in the line of sight. This means that Robots should have at least two speeds, normal and fast. If you leave the line of sight it goes back to the normal speed and behaviour
-
-2 someone that can shoot at you (using the bolt sprite)
+A robot that can shoot at you (using the bolt sprite). Only one bolt at the time. The bolt disappears when it hits a wall. It doesn't kill other robots.
 3 someone that has a laser field like Impossible Mission (using the force filed sprite)
 
 
 # ------------------------
 #           DONE
 # ------------------------
+
+More interesting robot AI. For example, The robot in room 2 rushes towards you when you're in the line of sight. This means that Robots should have at least two speeds, normal and fast (double?). If you leave the line of sight it goes back to the normal speed and behaviour
 
 No need to write room and x/y all the time. Do this as a popup when pushing F2 (not likely
 to be pushed by mistake on a real C64) Remove "JOYSTICK" too from the bottom line.

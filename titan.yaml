@@ -46,6 +46,12 @@ actor_types:
   # directions: 4 = down/up/left/right, 2 = left/right only (the type's
   #             down/up frames aren't assembled; vertical moves keep facing)
   # anim:       walk = animates while stepping, hover = always animating
+  # ai:         what a robot of this type does while not player-driven
+  #             (a robot entry can override it with its own ai:):
+  #             patrol = shuttle between the two patrol waypoints
+  #             hunter = patrol, but rush the player at double speed while
+  #                      on the same tile row with no wall in between;
+  #                      needs a horizontal patrol through its start
   # color:      the multicolour sprite's own colour (%10 pixels); black and
   #             light grey are shared by all sprites ($D025/$D026)
   human:
@@ -111,6 +117,7 @@ rooms:
     robots:
       - type: drone
         name: bot-8808  drone
+        ai: hunter                     # rushes you when you're on its row
         start: {x: 3, y: 5}
         patrol: [{x: 3, y: 5}, {x: 11, y: 5}]
     doors:

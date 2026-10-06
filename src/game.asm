@@ -97,6 +97,7 @@ RSRACT  cpx #NUM_ACTORS : bcs RSRACTD
         lda #1 : sta ACT_TGT,x
         lda #1 : sta ACT_ALIVE,x
         lda #0 : sta ACT_ANIM,x
+        lda #0 : sta ACT_FAST,x
         ldy ACT_TYPE,x
         lda TYPE_DIR0,y : sta ACT_DIR,x
         inx : bne RSRACT
@@ -106,7 +107,8 @@ RSRLSR  cpx #NUM_LASERS : bcs RSRLSRD
         lda #0 : sta LASER_STATE,x
         inx : bne RSRLSR
 RSRLSRD
-        lda #ROB_PERIOD-1 : sta ROB_TMR
+        lda #ROB_HALF-1 : sta ROB_TMR
+        lda #0 : sta ROB_PHASE
 
         jsr CLS
         lda #SPRP_PLAYER : sta SPRPTR
@@ -740,11 +742,13 @@ UPD_SLOT
         lda ACT_ROOM,x : cmp CUR_ROOM : beq UPDON
 UPDSOFF lda VIC_SPEN : and SLOT_ANDBIT,y : sta VIC_SPEN
         rts
-UPDON   ; glide toward its tile: patrol pace, or the player's pace while driven
+UPDON   ; glide toward its tile: patrol pace, or the player's pace while
+        ; driven or rushing (a hunter that has seen the player)
         lda #GL_SLOW_X : sta GL_SX
         lda #GL_SLOW_Y : sta GL_SY
+        lda ACT_FAST,x : bne UPDFAST
         txa : clc : adc #1 : cmp PLAYER_MODE : bne UPDSPD
-        lda #GL_FAST_X : sta GL_SX
+UPDFAST lda #GL_FAST_X : sta GL_SX
         lda #GL_FAST_Y : sta GL_SY
 UPDSPD  lda ACT_X,x : sta NEWX
         lda ACT_Y,x : sta NEWY
@@ -799,6 +803,7 @@ UDNO    clc : rts
 ; =============================================================================
 MOVE_PERIOD = 8                 ; frames per player step
 ROB_PERIOD  = 16                ; frames per patrol step
+ROB_HALF    = ROB_PERIOD/2      ; frames per rushing step (ACT_FAST)
 GL_FAST_X   = 2                 ; 16 px / 8 frames
 GL_FAST_Y   = 2                 ; 16 px / 8 frames
 GL_SLOW_X   = 1                 ; 16 px / 16 frames
@@ -909,14 +914,35 @@ SPRHITOK rts
 TICK_ROBOT
         lda ROB_TMR : beq TROBOK
         dec ROB_TMR : rts
-TROBOK  lda #ROB_PERIOD-1 : sta ROB_TMR
+TROBOK  lda #ROB_HALF-1 : sta ROB_TMR
+        lda ROB_PHASE : eor #1 : sta ROB_PHASE
         ldx #0
 TROBL   cpx #NUM_ACTORS : bcs TROBD
         lda ACT_ALIVE,x : cmp #1 : bne TROBN   ; dead, or dying in a laser
         txa : clc : adc #1 : cmp PLAYER_MODE : beq TROBN
-        jsr ACTOR_PATROL_STEP
+        lda ACT_FAST,x : bne TROBGO      ; rushing: every half period
+        lda ROB_PHASE : bne TROBN        ; normal pace: every other one
+TROBGO  jsr ACTOR_THINK
 TROBN   inx : bne TROBL
 TROBD   rts
+
+; ---------------------------------------------------------------------------
+; ACTOR_THINK — X = actor; one step of its AI (ACT_AI, ai: in titan.yaml).
+; AI_PATROL just patrols. AI_HUNTER patrols too, but while it can see the
+; human (HUNT_SEES) it rushes at the player at double pace (ACT_FAST=1: steps every
+; ROB_HALF frames, glides 2 px/frame). Losing sight drops it back to normal
+; pace and it walks back onto its patrol. Speed only changes when a glide
+; has finished: a normal-pace robot is only asked on even half periods
+; (TICK_ROBOT), and one that loses sight on an odd one waits for the next.
+; ---------------------------------------------------------------------------
+ACTOR_THINK
+        lda ACT_AI,x : cmp #AI_HUNTER : bne ACTOR_PATROL_STEP
+        jsr HUNT_SEES : bcc ATNOSEE
+        jmp HUNT_RUSH
+ATNOSEE lda ACT_FAST,x : beq ACTOR_PATROL_STEP
+        lda #0 : sta ACT_FAST,x          ; lost sight: normal pace again,
+        lda ROB_PHASE : beq ACTOR_PATROL_STEP   ;  on the normal beat
+        rts
 
 ; ---------------------------------------------------------------------------
 ; ACTOR_PATROL_STEP — X = actor. One step toward the current target waypoint
@@ -943,6 +969,45 @@ APSSTEP jsr ACT_FACE
         jmp ACT_STEP_ANIM
 APSFLIP lda ACT_TGT,x : eor #1 : sta ACT_TGT,x
         lda #0 : sta ACT_ANIM,x      ; pause at the waypoint in the rest pose
+        rts
+
+; ---------------------------------------------------------------------------
+; HUNT_SEES — X = actor. Carry set if it can see the human: human mode (a
+; robot link leaves the human standing at the terminal, not hunted), not
+; already dying, same room, same tile row, and no wall tile between them on
+; that row. Lasers don't block sight (but HUNT_RUSH won't step into one).
+; Preserves X; clobbers A/Y/NEWX/NEWY/PTR/TMP.
+; ---------------------------------------------------------------------------
+HUNT_SEES
+        lda PLAYER_MODE : ora PLR_DYING : bne HSNO
+        lda ACT_ROOM,x : cmp CUR_ROOM : bne HSNO
+        lda ACT_Y,x : cmp PLR_Y : bne HSNO
+        sta NEWY
+        lda ACT_X,x : sta NEWX
+HSL     lda NEWX : cmp PLR_X : beq HSYES ; reached the player: clear view
+        bcc HSR
+        dec NEWX : jmp HSW
+HSR     inc NEWX
+HSW     lda CUR_ROOM : jsr WALL_AT : bcc HSL
+HSNO    clc : rts
+HSYES   sec : rts
+
+; HUNT_RUSH — X = actor that sees the human (same row): one fast step along
+; the row toward the player; the sprite collision does the rest. Stands still (on
+; the player already, or the next tile is an active laser).
+HUNT_RUSH
+        lda #1 : sta ACT_FAST,x
+        lda ACT_Y,x : sta NEWY
+        lda ACT_X,x : sta NEWX
+        cmp PLR_X : beq HRSTOP
+        bcc HRR
+        dec NEWX : lda #DIR_LEFT : bne HRGO
+HRR     inc NEWX : lda #DIR_RIGHT
+HRGO    jsr ACT_FACE                     ; turn to face the player even if blocked
+        jsr LASER_AT : bcs HRSTOP        ; never charge into a beam
+        lda NEWX : sta ACT_X,x
+        jmp ACT_STEP_ANIM
+HRSTOP  lda #0 : sta ACT_ANIM,x
         rts
 
 ; ---------------------------------------------------------------------------

@@ -32,6 +32,7 @@ TILES_X = 40 // 2
 TILES_Y = 22 // 2
 
 MAX_ROBOTS_PER_ROOM = 2   # hardware sprites 1 and 2 (sprite 0 = player)
+AI_NAMES = ["patrol", "hunter"]      # ai: values; index = AI_* constant in world.asm
 LABEL_WIDTH = 12          # status-line item label field width
 MSG_INTERIOR = 30         # popup box interior width (matches SBOX_* strings)
 TERM_NAME_WIDTH = 22      # robot name in the terminal menu (cols 5-26; the
@@ -376,6 +377,7 @@ def main():
     if "human" not in types:
         die("actor_types needs a human entry (the player sprite)")
     type_sprite, type_color, type_dir0, type_anim = [], [], [], []
+    type_ai = {}                        # type name -> AI name (robots may override)
     for name, t in types.items():
         type_sprite.append(t["sprite"])  # label of first frame; ACME computes /64
         # frame sets: 3 frames per facing, facings down/up/left/right; a
@@ -392,9 +394,11 @@ def main():
         if color not in C64_COLORS:
             die(f"actor type {name}: unknown color {color!r}")
         type_color.append(C64_COLORS[color])
-        ai = t.get("ai")
-        if name != "human" and ai != "patrol":
-            die(f"actor type {name}: only ai: patrol is implemented")
+        if name != "human":
+            ai = t.get("ai", "patrol")
+            if ai not in AI_NAMES:
+                die(f"actor type {name}: ai must be one of {', '.join(AI_NAMES)}")
+            type_ai[name] = ai
 
     # ---- items ---------------------------------------------------------
     items = cfg.get("items") or {}
@@ -412,7 +416,7 @@ def main():
         item_msgs.append(text.center(MSG_INTERIOR))   # framed when emitted
 
     # ---- walk rooms, flattening everything into parallel arrays --------
-    act = {k: [] for k in ("type", "room", "sx", "sy", "wx0", "wy0", "wx1", "wy1", "lock")}
+    act = {k: [] for k in ("type", "room", "sx", "sy", "wx0", "wy0", "wx1", "wy1", "lock", "ai")}
     act_names = []                      # terminal menu name per actor
     actor_ids = {}
     item_pos = {}                       # item index -> (room, x, y)
@@ -473,6 +477,17 @@ def main():
             act["wy0"].append(int(patrol[0]["y"]))
             act["wx1"].append(int(patrol[1]["x"]))
             act["wy1"].append(int(patrol[1]["y"]))
+            ai = r.get("ai", type_ai[tname])     # per-robot override of the type's ai
+            if ai not in AI_NAMES:
+                die(f"room {rname}: robot {aname!r}: ai must be one of {', '.join(AI_NAMES)}")
+            # A hunter charges along its own tile row and then walks back to
+            # its patrol X-first, so the patrol must be one horizontal line
+            # through its start: rush and return then only cover tiles of
+            # that row that the line-of-sight test found free of walls.
+            if ai == "hunter" and not (int(start["y"]) == act["wy0"][-1] == act["wy1"][-1]):
+                die(f"room {rname}: robot {aname!r}: an ai: hunter robot needs a "
+                    f"horizontal patrol (both waypoints on its start row)")
+            act["ai"].append(AI_NAMES.index(ai))
 
         for thing in room.get("things") or []:
             iname = thing.get("item")
@@ -612,6 +627,8 @@ def main():
         o.append(f"ITEM_{iname.upper()} = {ii}   ; item index")
     for tname, ti in type_index.items():
         o.append(f"ATYPE_{tname.upper()} = {ti}   ; actor type index")
+    for i, ainame in enumerate(AI_NAMES):
+        o.append(f"AI_{ainame.upper()} = {i}   ; ACT_AI value")
     o.append("")
 
     o.append("; ---- actor types (indexed by ACT_TYPE) ----")
@@ -656,7 +673,8 @@ def main():
             ("ACT_WY0", "wy0", ""),
             ("ACT_WX1", "wx1", "patrol waypoint 1"),
             ("ACT_WY1", "wy1", ""),
-            ("ACT_LOCK", "lock", "1 = terminal refuses to link (locked: true)")):
+            ("ACT_LOCK", "lock", "1 = terminal refuses to link (locked: true)"),
+            ("ACT_AI", "ai", "AI_* routine while computer-controlled")):
         o.append(tbl(name, [byte(v, name) for v in act[key]], comment))
     o.append("ACT_TROW_LO     ; 40-char terminal menu row (name, locked tag)")
     o.append("        !byte " + (",".join(f"<ACT_TROW_{i}" for i in range(len(act_names))) or "0"))
@@ -778,6 +796,7 @@ def main():
     o.append("ACT_ALIVE   !fill NUM_ACTORS    ; 0 = destroyed (hidden, no patrol/link)")
     o.append("ACT_DIR     !fill NUM_ACTORS    ; facing (DIR_*)")
     o.append("ACT_ANIM    !fill NUM_ACTORS    ; walk frame 0=rest 1=walk1 2=walk2")
+    o.append("ACT_FAST    !fill NUM_ACTORS    ; 1 = rushing (hunter saw the player): double pace")
     o.append("GL_PXL      !fill NUM_ACTORS+1  ; sprite pixel X lo (smooth movement;")
     o.append("GL_PXH      !fill NUM_ACTORS+1  ;  last slot = the human), X hi bit")
     o.append("GL_PY       !fill NUM_ACTORS+1  ; sprite pixel Y")
