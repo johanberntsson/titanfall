@@ -100,7 +100,7 @@ RSRLSR  cpx #NUM_LASERS : bcs RSRLSRD
         lda #0 : sta LASER_STATE,x
         inx : bne RSRLSR
 RSRLSRD
-        lda #20  : sta ROB_TMR
+        lda #ROB_PERIOD-1 : sta ROB_TMR
 
         jsr CLS
         lda #SPRP_PLAYER : sta SPRPTR
@@ -420,7 +420,7 @@ RKDONE  rts
 MOVE_PLAYER
         lda MOVE_TMR : beq MOVEGO
         dec MOVE_TMR : rts
-MOVEGO  lda #8 : sta MOVE_TMR
+MOVEGO  lda #MOVE_PERIOD-1 : sta MOVE_TMR
 
         lda PLAYER_MODE : beq MOVEHUM
         jmp MOVE_ACTOR
@@ -520,7 +520,9 @@ DENDRW  jsr PLR_STEP_ANIM            ; walking through the doorway is a step
 ; =============================================================================
 MOVE_ACTOR
         ldx PLAYER_MODE : dex
-        lda KEY_U : beq MAD
+        lda ACT_ALIVE,x : cmp #1 : beq MAGO
+        rts                          ; sliding into a laser: no more input
+MAGO    lda KEY_U : beq MAD
         lda #DIR_UP : jsr MASET : dec NEWY
         jsr TRY_ACT : bcs MADONE
 MAD     lda KEY_D : beq MAL
@@ -542,8 +544,9 @@ MASET   jsr ACT_FACE
         rts
 
 ; TRY_ACT — X = actor index. Carry set = handled, clear = blocked by wall.
-; The move commits first, then the laser check runs on the new position (the
-; robot lands on the laser tile as it dies), matching the old splicer code.
+; The move commits first, then the laser check runs on the new position: a
+; hit marks the robot dying (ACT_ALIVE=2) and it glides onto the laser tile
+; before ROBOT_LASER_DEATH runs (see UPD_DYING).
 TRY_ACT
         ldy ACT_ROOM,x
         lda NEWX : cmp ROOM_MAXX,y : bcc TAXOK : beq TAXOK
@@ -554,7 +557,8 @@ TAYOK   lda NEWX : sta ACT_X,x
         lda NEWY : sta ACT_Y,x
         jsr ACT_STEP_ANIM
         jsr LASER_AT : bcc TAOK
-        jsr ROBOT_LASER_DEATH
+        sty PEND_LSR                 ; hit a laser: finish the slide into the
+        lda #2 : sta ACT_ALIVE,x     ;  beam first, then die (UPD_DYING)
 TAOK    sec : rts
 
 ; =============================================================================
@@ -575,12 +579,17 @@ LAN     iny : bne LAL
 LANONE  clc : rts
 
 ; =============================================================================
-; ROBOT_LASER_DEATH — X = actor, Y = laser (from LASER_AT). The robot is
-; destroyed for good and the laser burns out with it, so it no longer hurts
-; the human either, and its chars are repainted as floor (ERASE_LASER).
-; Control snaps back to human immediately.
+; ROBOT_LASER_DEATH — X = actor; the laser index is PEND_LSR. A driven robot
+; that steps into an active laser first gets ACT_ALIVE=2 ("dying": no more
+; input, no patrol) and keeps gliding; UPD_DYING calls this once its sprite
+; has reached the laser tile. The robot is destroyed for good and the laser
+; burns out with it, so it no longer hurts the human either, and its chars
+; are repainted as floor (ERASE_LASER). Control snaps back to human.
 ; =============================================================================
+PEND_LSR !byte 0                     ; laser a dying robot is sliding into
+
 ROBOT_LASER_DEATH
+        ldy PEND_LSR
         lda #0   : sta ACT_ALIVE,x
         lda #1   : sta LASER_STATE,y
         jsr ERASE_LASER              ; beam/emitters vanish from the room art
@@ -598,14 +607,17 @@ UPDATE_SPRITE0
         lda PLR_ANIM : sta TMP2
         ldx #ATYPE_HUMAN : jsr FRAME_PTR
         sta SPRPTR
-        lda PLR_X : jsr TILE_TO_PIXEL_X
-        sta VIC_SP0X
-        bcs SPRMSB
-        lda VIC_SP_MSB : and #$FE : sta VIC_SP_MSB : bcc SPRDX
+        lda PLR_X : sta NEWX
+        lda PLR_Y : sta NEWY
+        lda #GL_FAST_X : sta GL_SX
+        lda #GL_FAST_Y : sta GL_SY
+        ldx #GL_PLAYER : jsr GLIDE
+        lda GL_PXL+GL_PLAYER : sta VIC_SP0X
+        lda GL_PXH+GL_PLAYER : bne SPRMSB
+        lda VIC_SP_MSB : and #$FE : sta VIC_SP_MSB : jmp SPRDX
 SPRMSB  lda VIC_SP_MSB : ora #$01 : sta VIC_SP_MSB
 SPRDX
-        lda PLR_Y : asl : asl : asl : asl
-        clc : adc #66 : sta VIC_SP0Y
+        lda GL_PY+GL_PLAYER : sta VIC_SP0Y
 
         lda BFLASH : beq SPROUT
         dec BFLASH : bne SPROUT
@@ -656,27 +668,138 @@ UPD_SLOT
         ldx SPR_SLOT_ACT,y
         cpx #$FF : beq UPDSOFF
         lda ACT_ALIVE,x : beq UPDSOFF
-        lda ACT_ROOM,x : cmp CUR_ROOM : bne UPDSOFF
-        lda ACT_X,x : sta NEWX
+        lda ACT_ROOM,x : cmp CUR_ROOM : beq UPDON
+UPDSOFF lda VIC_SPEN : and SLOT_ANDBIT,y : sta VIC_SPEN
+        rts
+UPDON   ; glide toward its tile: patrol pace, or the player's pace while driven
+        lda #GL_SLOW_X : sta GL_SX
+        lda #GL_SLOW_Y : sta GL_SY
+        txa : clc : adc #1 : cmp PLAYER_MODE : bne UPDSPD
+        lda #GL_FAST_X : sta GL_SX
+        lda #GL_FAST_Y : sta GL_SY
+UPDSPD  lda ACT_X,x : sta NEWX
         lda ACT_Y,x : sta NEWY
+        jsr GL_TARGET
+        jsr UPD_DYING : bcs UPDSOFF      ; drawn on the laser tile: destroyed
+        jsr GLIDE                        ; (preserves X/Y)
+        lda GL_PXL,x : sta NEWX          ; NEWX/NEWY/GLT_H now hold the
+        lda GL_PY,x  : sta NEWY          ;  sprite's pixel position
+        lda GL_PXH,x : sta GLT_H
         lda ACT_DIR,x : sta TMP
         lda ACT_ANIM,x : sta TMP2
         lda ACT_TYPE,x : tax
         jsr FRAME_PTR                    ; (preserves Y)
         sta SPRPTR+1,y
         lda VIC_SPEN : ora SLOT_ORBIT,y : sta VIC_SPEN
-        lda NEWX : jsr TILE_TO_PIXEL_X   ; (preserves Y, clobbers TMP/TMP2)
         ldx SLOT_REGOFF,y
-        sta VIC_SP1X,x
-        bcs UPDSMSB
+        lda NEWX : sta VIC_SP1X,x
+        lda GLT_H : bne UPDSMSB
         lda VIC_SP_MSB : and SLOT_ANDBIT,y : sta VIC_SP_MSB
         jmp UPDSY
 UPDSMSB lda VIC_SP_MSB : ora SLOT_ORBIT,y : sta VIC_SP_MSB
-UPDSY   lda NEWY : asl : asl : asl : asl
-        clc : adc #66 : sta VIC_SP1Y,x
+UPDSY   lda NEWY : sta VIC_SP1Y,x
         rts
-UPDSOFF lda VIC_SPEN : and SLOT_ANDBIT,y : sta VIC_SPEN
+
+; UPD_DYING — X = actor, GLT_* = its tile's pixel position (GL_TARGET),
+; checked *before* this frame's GLIDE: if it is dying (ACT_ALIVE=2) and the
+; sprite was already drawn on the laser tile last frame, run
+; ROBOT_LASER_DEATH and return carry set (hide the sprite).
+; Preserves X/Y.
+UPD_DYING
+        lda ACT_ALIVE,x : cmp #2 : bne UDNO
+        lda GL_PXL,x : cmp GLT_L : bne UDNO
+        lda GL_PXH,x : cmp GLT_H : bne UDNO
+        lda GL_PY,x  : cmp GLT_Y : bne UDNO
+        tya : pha
+        jsr ROBOT_LASER_DEATH
+        pla : tay
+        sec : rts
+UDNO    clc : rts
+
+; =============================================================================
+; Smooth movement. Game logic stays on tiles (PLR_X/Y, ACT_X/Y); each sprite
+; has its own pixel position (GL_PXL/GL_PXH/GL_PY, slot = actor index, or
+; GL_PLAYER for the human) that GLIDE moves toward its tile's pixel position
+; by GL_SX/GL_SY pixels per frame, so a one-tile step (24 x 16 px) is drawn
+; as a slide instead of a jump. Speeds are matched to the step periods so a
+; glide just finishes as the next step starts: the player (and a driven
+; robot) steps every MOVE_PERIOD=8 frames at 3/2 px per frame; patrolling
+; robots step every ROB_PERIOD=24 frames at 1 px per frame. GL_SNAP jumps
+; straight to the tile (DRAW_ROOM -> SNAP_ALL: room change, respawn,
+; redraw after terminal/map/popup).
+; =============================================================================
+MOVE_PERIOD = 8                 ; frames per player step
+ROB_PERIOD  = 24                ; frames per patrol step
+GL_FAST_X   = 3                 ; 24 px / 8 frames
+GL_FAST_Y   = 2                 ; 16 px / 8 frames
+GL_SLOW_X   = 1                 ; 24 px / 24 frames
+GL_SLOW_Y   = 1                 ; 16 px / 16 frames (then waits)
+GL_PLAYER   = NUM_ACTORS        ; glide slot of the human
+
+GLT_L   !byte 0                 ; GL_TARGET result: pixel X lo/hi, pixel Y
+GLT_H   !byte 0
+GLT_Y   !byte 0
+
+; GL_TARGET — NEWX/NEWY tile -> GLT_L/GLT_H/GLT_Y. Preserves X/Y.
+GL_TARGET
+        lda NEWX : jsr TILE_TO_PIXEL_X
+        sta GLT_L
+        lda #0 : rol : sta GLT_H
+        lda NEWY : asl : asl : asl : asl
+        clc : adc #66 : sta GLT_Y
         rts
+
+; GL_SNAP — X = glide slot, NEWX/NEWY = tile: jump straight there.
+GL_SNAP
+        jsr GL_TARGET
+        lda GLT_L : sta GL_PXL,x
+        lda GLT_H : sta GL_PXH,x
+        lda GLT_Y : sta GL_PY,x
+        rts
+
+; GLIDE — X = glide slot, NEWX/NEWY = tile, GL_SX/GL_SY = speed: one
+; frame's step toward that tile, never overshooting. Preserves X/Y.
+GLIDE
+        jsr GL_TARGET
+        lda GL_PXH,x : cmp GLT_H : bne GLXNE
+        lda GL_PXL,x : cmp GLT_L : beq GLY
+GLXNE   bcs GLXDEC                       ; C from the deciding compare
+        lda GL_PXL,x : clc : adc GL_SX : sta GL_PXL,x   ; moving right
+        lda GL_PXH,x : adc #0 : sta GL_PXH,x
+        cmp GLT_H : bne GLXC1
+        lda GL_PXL,x : cmp GLT_L
+GLXC1   bcc GLY : beq GLY                ; not past the target yet
+        jmp GLXSET
+GLXDEC  lda GL_PXL,x : sec : sbc GL_SX : sta GL_PXL,x   ; moving left
+        lda GL_PXH,x : sbc #0 : sta GL_PXH,x
+        cmp GLT_H : bne GLXC2
+        lda GL_PXL,x : cmp GLT_L
+GLXC2   bcs GLY                          ; not past the target yet
+GLXSET  lda GLT_L : sta GL_PXL,x         ; overshot: clamp
+        lda GLT_H : sta GL_PXH,x
+GLY     lda GL_PY,x : cmp GLT_Y : beq GLDONE
+        bcs GLYDEC
+        adc GL_SY                        ; moving down (C clear)
+        cmp GLT_Y : bcc GLYST
+        lda GLT_Y : jmp GLYST
+GLYDEC  sbc GL_SY                        ; moving up (C set)
+        cmp GLT_Y : bcs GLYST
+        lda GLT_Y
+GLYST   sta GL_PY,x
+GLDONE  rts
+
+; SNAP_ALL — every sprite straight to its tile (from DRAW_ROOM).
+SNAP_ALL
+        lda PLR_X : sta NEWX
+        lda PLR_Y : sta NEWY
+        ldx #GL_PLAYER : jsr GL_SNAP
+        ldx #0
+SNAPL   cpx #NUM_ACTORS : bcs SNAPD
+        lda ACT_X,x : sta NEWX
+        lda ACT_Y,x : sta NEWY
+        jsr GL_SNAP
+        inx : bne SNAPL
+SNAPD   rts
 
 ; =============================================================================
 ; TILE_TO_PIXEL_X — A=tile number. Returns pixel X low byte in A (store to
@@ -723,16 +846,17 @@ SPRHITOK rts
 
 ; =============================================================================
 ; TICK_ROBOT — run every actor's patrol AI (shared 20-frame timer). An actor
-; is skipped while dead (ACT_ALIVE=0) or player-driven (PLAYER_MODE=index+1).
+; is skipped while dead (ACT_ALIVE=0), dying (2: sliding into a laser) or
+; player-driven (PLAYER_MODE=index+1).
 ; Actors in other rooms keep patrolling off-screen, as before.
 ; =============================================================================
 TICK_ROBOT
         lda ROB_TMR : beq TROBOK
         dec ROB_TMR : rts
-TROBOK  lda #20 : sta ROB_TMR
+TROBOK  lda #ROB_PERIOD-1 : sta ROB_TMR
         ldx #0
 TROBL   cpx #NUM_ACTORS : bcs TROBD
-        lda ACT_ALIVE,x : beq TROBN
+        lda ACT_ALIVE,x : cmp #1 : bne TROBN   ; dead, or dying in a laser
         txa : clc : adc #1 : cmp PLAYER_MODE : beq TROBN
         jsr ACTOR_PATROL_STEP
 TROBN   inx : bne TROBL
@@ -840,6 +964,7 @@ DRMLSR  cpy #NUM_LASERS : bcs DRMLSRD
         pla : tay
 DRMLSRN iny : bne DRMLSR
 DRMLSRD
+        jsr SNAP_ALL                 ; no gliding across a room change
         jmp ASSIGN_SPRITES           ; room changed: remap actors -> sprites
 
 ; ---------------------------------------------------------------------------

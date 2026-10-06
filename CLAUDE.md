@@ -40,7 +40,7 @@ The source is split into one orchestrator and eight state/data modules, all `!so
 | `src/popup.asm` | `DO_POPUP`, `SHOW_POPUP`, `SETUP_SEARCH`, `SETUP_DOOR_LOCKED`, popup strings |
 | `src/c64_walker_sprites.asm`, `src/c64_robot_sprites.asm`, `src/c64_drone_sprites.asm` | Multicolour sprite sets (player / walking robot / flying drone), `!source`d into the sprite block at `$3000`. All three have all four facings (robots need up/down too — the terminal lets you drive them in any direction) |
 | `src/charset.asm` | `TILE_COLORS` (256-byte tile→colour table) and `CHARSET` (custom 2K charset at `$2800`), generated from `graphics/*.s` — see "Custom Charset / Screen Art" |
-| `src/world.asm` | **Generated** by `tools/genworld.py` from `titan.yaml` (data only, no code): `NUM_*`/`ACTOR_*`/`ITEM_*`/`CFG_*` constants, `ROOM_*`/`TYPE_*`/`ACT_*`/`ITEM_*`/`DOOR_*`/`LASER_*`/`TERMZ_*`/`MAPHL_*` tables, `ROOM_MAP_n` screen-code data, and the runtime state arrays (`ACT_X/Y/TGT/ALIVE/DIR/ANIM`, `ITEM_STATE`, `LASER_STATE`, `SPR_SLOT_ACT`) |
+| `src/world.asm` | **Generated** by `tools/genworld.py` from `titan.yaml` (data only, no code): `NUM_*`/`ACTOR_*`/`ITEM_*`/`CFG_*` constants, `ROOM_*`/`TYPE_*`/`ACT_*`/`ITEM_*`/`DOOR_*`/`LASER_*`/`TERMZ_*`/`MAPHL_*` tables, `ROOM_MAP_n` screen-code data, and the runtime state arrays (`ACT_X/Y/TGT/ALIVE/DIR/ANIM`, `GL_PXL/PXH/PY`, `ITEM_STATE`, `LASER_STATE`, `SPR_SLOT_ACT`) |
 
 Other files:
 - `titan.yaml` — **the world definition** (rooms, robots, items, doors, lasers, terminals, start clock); the preferred place to change gameplay content
@@ -190,14 +190,20 @@ After every `CLS` the pointers are reset to `SPRP_PLAYER`/`SPRP_ROBOT`/`SPRP_DRO
 ### Actors and patrol AI
 All robots are rows in the generated `ACT_*` tables (the player is *not* in them; `PLAYER_MODE` maps "actor index+1" onto them for proxy mode). Static data per actor: `ACT_TYPE` (indexes `TYPE_SPRPTR`/`TYPE_COLOR`), `ACT_ROOM`, `ACT_SX/SY` (start), `ACT_WX0/WY0`/`ACT_WX1/WY1` (two patrol waypoints). Runtime state: `ACT_X/Y`, `ACT_TGT` (which waypoint it's heading for), `ACT_ALIVE`.
 
-`TICK_ROBOT` is called every game frame (shared 20-frame timer, `ROB_TMR`) and runs `ACTOR_PATROL_STEP` for every alive, non-player-driven actor — one step toward the current target waypoint (X axis first, then Y; on arrival the target flips). Actors in other rooms keep patrolling off-screen. Patrol paths are authored in `titan.yaml` not to cross lasers — the patrol AI does no hazard checks.
+`TICK_ROBOT` is called every game frame (shared `ROB_PERIOD` = 24-frame timer, `ROB_TMR`) and runs `ACTOR_PATROL_STEP` for every alive, non-player-driven actor — one step toward the current target waypoint (X axis first, then Y; on arrival the target flips). Actors in other rooms keep patrolling off-screen. Patrol paths are authored in `titan.yaml` not to cross lasers — the patrol AI does no hazard checks.
 
-**Sprite mapping:** `ASSIGN_SPRITES` (called from the end of `DRAW_ROOM`) scans the actor table for actors in `CUR_ROOM` and assigns them to hardware sprites 1–2 (`SPR_SLOT_ACT`, 2 bytes, `$FF`=empty), setting each slot's sprite pointer and colour from the actor's type. `UPDATE_ROBOT_SPRITES` positions both slots every frame with the shared `TILE_TO_PIXEL_X` formula (X pixel = `tile*24+28`, Y pixel = `tile*16+66`, per-slot `VIC_SP_MSB` bit — see the "Extended (9-bit) sprite X" gotcha) and disables the `VIC_SPEN` bit for any slot that is empty, dead, or out of the room. `genworld.py` rejects configs with more than 2 robots in one room.
+**Smooth movement (gliding).** Logic stays tile-based (`PLR_X/Y`, `ACT_X/Y` — collisions with walls/doors/lasers/terminals/items are all per tile), but sprites don't jump a whole tile (24×16 px) per step. Each sprite has its own pixel position in `GL_PXL`/`GL_PXH`/`GL_PY` (runtime arrays in `world.asm`, `NUM_ACTORS+1` long: slot = actor index, last slot `GL_PLAYER` = the human), and `GLIDE` (`game.asm`) moves it `GL_SX`/`GL_SY` px per frame toward the pixel position of its tile, clamping so it never overshoots. Speeds are matched to the step periods so a glide finishes just as the next step starts:
+- player, and a player-driven robot: one step per `MOVE_PERIOD` = 8 frames, glide `GL_FAST_X/Y` = 3/2 px per frame (24/8, 16/8) → continuous walking with no stop at each tile
+- patrolling robots: one step per `ROB_PERIOD` = 24 frames, glide `GL_SLOW_X/Y` = 1/1 px per frame (a vertical step finishes after 16 frames and waits)
+- `SNAP_ALL` (called by `DRAW_ROOM` — room change, respawn, redraws after terminal/map/popup) jumps every sprite straight to its tile, so nothing glides across a room change.
+If you change a step period, change the matching speeds (tile pitch / period) or the glide will lag behind or stall. Hardware sprite collisions (`$D01E`) use the glided positions, i.e. what's on screen. A robot that drives into a laser finishes its glide into the beam before it is destroyed (see "Lasers can be destroyed by a driven robot").
+
+**Sprite mapping:** `ASSIGN_SPRITES` (called from the end of `DRAW_ROOM`) scans the actor table for actors in `CUR_ROOM` and assigns them to hardware sprites 1–2 (`SPR_SLOT_ACT`, 2 bytes, `$FF`=empty), setting each slot's sprite pointer and colour from the actor's type. `UPDATE_ROBOT_SPRITES` glides and positions both slots every frame; the glide *targets* use the shared `TILE_TO_PIXEL_X` formula (X pixel = `tile*24+28`, Y pixel = `tile*16+66`, per-slot `VIC_SP_MSB` bit from `GL_PXH` — see the "Extended (9-bit) sprite X" gotcha) and disables the `VIC_SPEN` bit for any slot that is empty, dead, or out of the room. `genworld.py` rejects configs with more than 2 robots in one room.
 
 ### Lasers can be destroyed by a driven robot
 `LASER_STATE` (one byte per config laser, 0=active 1=destroyed) implements a one-way puzzle mechanic: driving any proxy-controlled robot into an active laser destroys both.
 - `LASER_AT` (`game.asm`) is the shared test — carry set if `NEWX/NEWY` is inside an active laser rect of the current room, returning the laser index in `Y`. `TRY_MOVE` (human) and `TRY_ACT` (driven robot) both call it on every attempted move.
-- On a robot hit, `ROBOT_LASER_DEATH` sets that actor's `ACT_ALIVE=0` (sprite hidden for good, patrol suspended forever) and that laser's `LASER_STATE=1` (it stops killing the human too), erases the beam from the screen (`ERASE_LASER`, below), flashes the border yellow via `BFLASH`, and resets `PLAYER_MODE=0` (control snaps back to human without waiting for the X key).
+- On a robot hit, `TRY_ACT` doesn't destroy it yet: it sets `ACT_ALIVE=2` ("dying") and remembers the laser in `PEND_LSR`. A dying robot ignores input (`MOVE_ACTOR`) and patrol (`TICK_ROBOT` only moves `ACT_ALIVE=1`), and keeps gliding onto the laser tile; once its sprite arrives, `UPD_DYING` (from `UPD_SLOT`) calls `ROBOT_LASER_DEATH`, which sets that actor's `ACT_ALIVE=0` (sprite hidden for good, patrol suspended forever) and that laser's `LASER_STATE=1` (it stops killing the human too), erases the beam from the screen (`ERASE_LASER`, below), flashes the border yellow via `BFLASH`, and resets `PLAYER_MODE=0` (control snaps back to human without waiting for the X key).
 - **Destroyed lasers disappear from the room art.** The room maps always have every laser drawn in, so `genworld.py` precomputes per laser a patch list (`LASER_ART_n`, via `LASER_ART_LO/HI`): every cell under the laser rect (its tiles' sprite footprint ±1 char row, to catch the emitters) whose screen code is in `art.laser_tiles` in `titan.yaml`, with its replacement — the char on both sides if they match (so a beam crossing a wall leaves the wall continuous), else `art.floor_tile`. `ERASE_LASER` (Y = laser index) writes those cells + their `TILE_COLORS` colour; it runs from `ROBOT_LASER_DEATH` and at the end of `DRAW_ROOM` for every destroyed laser in `CUR_ROOM` (so room changes / popup / map / terminal redraws keep it erased; `RESET_ROUND` re-arms lasers before redrawing, so a respawn brings the beam back). The build warns if a laser has no `laser_tiles` under it — usually art and config have drifted apart. New laser glyphs in the charset must be added to `laser_tiles`.
 - The terminal blocks re-linking to a destroyed splicer: `TERM_LINK_SPLICER` in `terminal.asm` checks `ACT_ALIVE+ACTOR_BOT3312` and shows `TMSG_DEAD` instead of linking if it's already gone.
 
@@ -237,7 +243,7 @@ $08  REACT_TEMP   reactor temperature 0-99
 $09  REACT_CNT    reactor drift counter
 $0A  REACT_JIT    reactor jitter sub-counter
 $0B  LFSR_ST      8-bit LFSR state for noise
-$0C  MOVE_TMR     player movement throttle
+$0C  MOVE_TMR     player movement throttle (one step per MOVE_PERIOD = 8 frames)
 $0D  TICK_FLAG    set by raster IRQ each frame
 $0E  BFLASH       border flash countdown
 $0F  KEY_U        up key flag
@@ -267,7 +273,9 @@ $29  PLR_DIR      player facing (DIR_DOWN/UP/LEFT/RIGHT = 0-3)
 $2A  PLR_ANIM     player walk frame (0=rest 1=walk1 2=walk2)
 $2B  ANIM_CNT     free-running game-frame counter (hover animation)
 $2C  SND_KIND     sound effect playing: 0=death sweep 1=laser zap
-$2D  ROB_TMR      robot movement timer (shared by all actors, 20-frame period)
+$2D  ROB_TMR      robot movement timer (shared by all actors, ROB_PERIOD = 24 frames)
+$2E  GL_SX        GLIDE speed X, px/frame (smooth movement)
+$2F  GL_SY        GLIDE speed Y, px/frame
 $31  PLAYER_MODE  0=human (PLR_X/Y)  else actor index+1 (proxy mode, ACT_X/Y)
 $32  KEY_X        X key flag (exit robot proxy mode)
 $33  POPUP_ST     popup close edge-detector (0=opener held, 1=armed, 2=pressed)
@@ -276,7 +284,7 @@ $35  KEY_SPC      space key flag (search, and enter terminal — see Keyboard ma
 $36  JOY_NEW      joystick 2 bits newly pressed this frame (set in MAIN_LOOP)
 ```
 
-Free zero-page slots: `$2E-$30`, `$37+`. Per-robot positions, laser/item state etc. moved to RAM arrays at the end of `src/world.asm` (`ACT_X/Y/TGT/ALIVE`, `ITEM_STATE`, `LASER_STATE`, `SPR_SLOT_ACT`) — indexed with `,x`, sized by the config.
+Free zero-page slots: `$30`, `$37+`. Per-robot positions, laser/item state etc. moved to RAM arrays at the end of `src/world.asm` (`ACT_X/Y/TGT/ALIVE`, `ITEM_STATE`, `LASER_STATE`, `SPR_SLOT_ACT`) — indexed with `,x`, sized by the config.
 
 ## Room Map
 

@@ -55,7 +55,9 @@ POPUP_ST   = $33   ; popup: 0=waiting for opening space to be released, 1=armed
 JOY_PREV   = $34   ; joystick 2 bits held last frame (1=pressed, bits 0-4)
 KEY_SPC    = $35   ; space key flag (search / enter terminal)
 JOY_NEW    = $36   ; joystick 2 bits newly pressed this frame (U/D/L/R/fire)
-; free zero-page slots: $2E-$30
+GL_SX      = $2E   ; GLIDE speed X (px/frame)
+GL_SY      = $2F   ; GLIDE speed Y (px/frame)
+; free zero-page slots: $30
 ; Robot positions, laser/item state etc. live in RAM arrays declared at the
 ; end of src/world.asm (ACT_X/Y, ACT_ALIVE, ITEM_STATE, LASER_STATE, ...).
 
