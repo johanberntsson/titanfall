@@ -1,8 +1,8 @@
 ; =============================================================================
 ; POPUP STATE (GAME_STATE = 6)
 ; =============================================================================
-; Small popup box shown over the room art (rows 8-13; room/HUD/status stay
-; visible around it) — used both for "found item" messages (SETUP_SEARCH,
+; Small popup box shown over the room art (rows 8-13, columns 4-35; the
+; room/HUD/status stay visible around it) — used both for "found item" messages (SETUP_SEARCH,
 ; space key) and the locked room 2 exit door (SETUP_DOOR_LOCKED). Time and
 ; robots are paused for free: DO_GAME (and hence TICK_CLOCK/TICK_ROBOT)
 ; simply isn't called while GAME_STATE=6.
@@ -64,45 +64,31 @@ SETUP_DOOR_LOCKED
 
 ; ---------------------------------------------------------------------------
 ; SHOW_POPUP — draw the popup box with the message row pointed to by
-; PTR/PTR+1 (must be exactly 40 PETSCII bytes), switch to state 6.
+; PTR/PTR+1 (40 PETSCII bytes, of which columns 4-35 are drawn), switch to
+; state 6.
 ; ---------------------------------------------------------------------------
 SHOW_POPUP
         lda #6 : sta GAME_STATE
         lda #0 : sta POPUP_ST          ; opening space is still held down
         lda #$00 : sta VIC_SPEN
 
-        ldx #39
-SPROW8  lda SBOX_TOP,x : jsr PET2SCREEN : sta SCRN+8*40,x
-        lda #LTGREEN : sta CRAM+8*40,x
-        dex : bpl SPROW8
-
-        ldx #39
-SPROW9  lda SBOX_BLK,x : jsr PET2SCREEN : sta SCRN+9*40,x
-        lda #LTGREEN : sta CRAM+9*40,x
-        dex : bpl SPROW9
-
-        ldy #39
-SPROW10 lda (PTR),y : jsr PET2SCREEN : sta SCRN+10*40,y
-        lda #YELLOW : sta CRAM+10*40,y
-        dey : bpl SPROW10
-
-        ldx #39
-SPROW11 lda SBOX_BLK,x : jsr PET2SCREEN : sta SCRN+11*40,x
-        lda #LTGREEN : sta CRAM+11*40,x
-        dex : bpl SPROW11
-
-        ldx #39
-SPROW12 lda SBOX_HNT,x : jsr PET2SCREEN : sta SCRN+12*40,x
-        lda #DGRAY : sta CRAM+12*40,x
-        dex : bpl SPROW12
-
-        ldx #39
-SPROW13 lda SBOX_BOT,x : jsr PET2SCREEN : sta SCRN+13*40,x
-        lda #LTGREEN : sta CRAM+13*40,x
-        dex : bpl SPROW13
-        lda #4  : sta FR_L               ; box sides are columns 4 and 35
-        lda #35 : sta FR_R
+        lda #4  : sta DR_L : sta FR_L    ; draw only the box (columns
+        lda #35 : sta DR_R : sta FR_R    ;  4-35): the room stays visible
+        lda #YELLOW : sta TMP2           ; message row first (DRAW_ROWS
+        lda #10 : jsr DRAW_ROW           ;  reuses PTR)
+        lda #<SBOX_ROWS : ldy #>SBOX_ROWS : jsr DRAW_ROWS
+        lda #0  : sta DR_L
+        lda #39 : sta DR_R
         lda #LTGREEN : ldx #8 : ldy #13 : jmp FRAME_EDGES_LR
+
+; Rows of the popup box around the message (row 10): for DRAW_ROWS
+SBOX_ROWS
+        !byte 8,  LTGREEN, <SBOX_TOP, >SBOX_TOP
+        !byte 9,  LTGREEN, <SBOX_BLK, >SBOX_BLK
+        !byte 11, LTGREEN, <SBOX_BLK, >SBOX_BLK
+        !byte 12, DGRAY,   <SBOX_HNT, >SBOX_HNT
+        !byte 13, LTGREEN, <SBOX_BOT, >SBOX_BOT
+        !byte $FF
 
 ; =============================================================================
 ; Popup strings — all exactly 40 bytes

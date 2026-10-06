@@ -2,17 +2,10 @@
 #           OPEN
 # ------------------------
 
-The popups should not clear the screen left and right of the box, but instead keep the screen visible
-
 The top status bar should be changed to "HUMAN   00:00:00   Reactor[xxxx]". No % needed
 
 We don't need to define the terminal hitbox in titan.yaml. We can find the terminal tile
 in the map file and define where it's activated from that
-
-The sprites are centered, and the walls are always on the left/top side of the tile. It
-means that the current wall detection is wrong. The player sprite can go one tile closer
-when to the right of a wall, but should of course not be able to go further left since the
-wall is in the way.
 
 The death effect when hitting a laser is fine, but when you hit a robot there's a flash and a
 sound effect, then you are moved to the start position, and then there's another flash. The
@@ -34,6 +27,13 @@ to close popups and the intro screen - this is still allowed to register the key
 # ------------------------
 #           DONE
 # ------------------------
+
+The sprites are centered, and the walls are always on the left/top side of the tile. It
+means that the current wall detection is wrong. The player sprite can go one tile closer
+when to the right of a wall, but should of course not be able to go further left since the
+wall is in the way.
+
+The popups should not clear the screen left and right of the box, but instead keep the screen visible
 
 Add joystick support as an alternative.
   - space for terminal mode instead of "t"

@@ -304,7 +304,12 @@ FREDONE rts
 ; colour for the whole row at PTR2. DRAW_ROWS: A/Y = lo/hi of a row list
 ; of (screen row, colour, string lo, string hi) entries ended by $FF.
 ; DRAW_ROW/PAINT_ROW/DRAW_ROWS preserve X; clobber A/Y/TMP (+TMP2/PTR).
+; DR_L/DR_R limit them to a column window (the string is still 40 bytes,
+; only its cols DR_L..DR_R are drawn) — whoever narrows it restores 0/39.
 ; =============================================================================
+DR_L    !byte 0
+DR_R    !byte 39
+
 ROW_PTR
         asl : asl : asl : sta TMP        ; row*8 (< 256 for rows 0-24)
         lda #0 : sta PTR2+1
@@ -316,16 +321,19 @@ ROW_PTR
 
 DRAW_ROW
         jsr ROW_PTR
-        ldy #39
+        ldy DR_R
 DRWL    lda (PTR),y : jsr PET2SCREEN : sta (PTR2),y
+        cpy DR_L : beq DRWE
         dey : bpl DRWL
-        lda TMP2
+DRWE    lda TMP2
 PAINT_ROW
         pha
         lda PTR2+1 : clc : adc #>(CRAM-SCRN) : sta PTR2+1
-        pla : ldy #39
-PRWL    sta (PTR2),y : dey : bpl PRWL
-        lda PTR2+1 : sec : sbc #>(CRAM-SCRN) : sta PTR2+1
+        pla : ldy DR_R
+PRWL    sta (PTR2),y
+        cpy DR_L : beq PRWE
+        dey : bpl PRWL
+PRWE    lda PTR2+1 : sec : sbc #>(CRAM-SCRN) : sta PTR2+1
         rts
 
 DRAW_ROWS
