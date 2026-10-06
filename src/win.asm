@@ -111,6 +111,7 @@ WROW13  lda SCR_BORDER_BOTTOM,x : jsr PET2SCREEN : sta SCRN+520,x
         lda #GREEN : sta CRAM+520,x
         dex : bpl WROW13
 
+        lda #GREEN : ldx #3 : ldy #13 : jsr FRAME_EDGES
         jsr WIN_BLINK_ON
         rts
 

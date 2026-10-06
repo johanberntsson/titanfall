@@ -100,7 +100,9 @@ SPROW12 lda SBOX_HNT,x : jsr PET2SCREEN : sta SCRN+12*40,x
 SPROW13 lda SBOX_BOT,x : jsr PET2SCREEN : sta SCRN+13*40,x
         lda #LTGREEN : sta CRAM+13*40,x
         dex : bpl SPROW13
-        rts
+        lda #4  : sta FR_L               ; box sides are columns 4 and 35
+        lda #35 : sta FR_R
+        lda #LTGREEN : ldx #8 : ldy #13 : jmp FRAME_EDGES_LR
 
 ; =============================================================================
 ; Popup strings — all exactly 40 bytes

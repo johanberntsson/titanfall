@@ -266,6 +266,40 @@ CLSP    lda #CH_SPC : sta (PTR),y
         rts
 
 ; =============================================================================
+; FRAME_EDGES — box rows are drawn one colour per row, so the frame's "|"
+; ends pick up each row's text colour. Call this after drawing a box to
+; repaint its two side columns in the frame colour.
+; A = frame colour, X = first screen row, Y = last screen row; FRAME_EDGES
+; uses columns 0 and 39, FRAME_EDGES_LR the columns preset in FR_L/FR_R.
+; Clobbers A/X/Y/TMP/TMP2/PTR2.
+; =============================================================================
+FR_L    !byte 0
+FR_R    !byte 39
+FR_LAST !byte 0
+
+FRAME_EDGES
+        pha
+        lda #0  : sta FR_L
+        lda #39 : sta FR_R
+        pla
+FRAME_EDGES_LR
+        sta TMP                          ; colour
+        stx TMP2                         ; first row
+        sty FR_LAST
+        lda #<CRAM : sta PTR2
+        lda #>CRAM : sta PTR2+1
+        ldx #0                           ; row of PTR2
+FREL    cpx TMP2 : bcc FRENEXT
+        lda TMP
+        ldy FR_L : sta (PTR2),y
+        ldy FR_R : sta (PTR2),y
+FRENEXT cpx FR_LAST : beq FREDONE
+        lda PTR2 : clc : adc #40 : sta PTR2
+        bcc FRENC : inc PTR2+1
+FRENC   inx : bne FREL
+FREDONE rts
+
+; =============================================================================
 ; PET2SCREEN — convert PETSCII (A) to C64 screen code (A)
 ; $20-$3F → same  |  $40-$5F → -$40  |  $60-$7F → -$20
 ; $A0-$BF → -$40  |  $C0-$FF → -$80  |  others  → unchanged

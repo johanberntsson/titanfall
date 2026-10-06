@@ -115,6 +115,7 @@ GOROW13 lda SCR_BORDER_BOTTOM,x : jsr PET2SCREEN : sta SCRN+520,x
         lda #RED : sta CRAM+520,x
         dex : bpl GOROW13
 
+        lda #RED : ldx #3 : ldy #13 : jsr FRAME_EDGES
         jsr GO_BLINK_ON
         rts
 

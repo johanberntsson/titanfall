@@ -241,11 +241,11 @@ TDSEL4  lda #GREEN
         beq TDSELA
         cpx #1 : beq TDSELB
         cpx #2 : beq TDSELC
-        sta TERM_ROW3+3 : bne TDSELX
-TDSELA  sta TERM_ROW0+3 : bne TDSELX
-TDSELB  sta TERM_ROW1+3 : bne TDSELX
+        sta TERM_ROW3+3 : jmp TDSELX    ; (jmp, not bne: sta sets no flags,
+TDSELA  sta TERM_ROW0+3 : jmp TDSELX    ;  so a bne here fell through and
+TDSELB  sta TERM_ROW1+3 : jmp TDSELX    ;  drew '>' on the next rows too)
 TDSELC  sta TERM_ROW2+3
-TDSELX  rts
+TDSELX  lda #LTGREEN : ldx #4 : ldy #15 : jmp FRAME_EDGES  ; box rows 4-15
 
 ; =============================================================================
 ; Terminal strings — all exactly 40 bytes

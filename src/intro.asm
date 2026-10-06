@@ -94,6 +94,7 @@ DIRS19  lda SCR_BORDER_BOTTOM,x : jsr PET2SCREEN : sta SCRN+760,x
         lda #DGRAY : sta CRAM+760,x
         dex : bpl DIRS19
 
+        lda #DGRAY : ldx #10 : ldy #19 : jsr FRAME_EDGES
         jsr BLINK_ON
         rts
 
