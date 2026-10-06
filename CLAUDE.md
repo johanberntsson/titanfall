@@ -81,13 +81,14 @@ The SYS address in `!pet` must be kept in sync manually if the header ever chang
 | Address | Purpose |
 |---------|---------|
 | `$0801` | BASIC stub (SYS 2064) |
-| `$0810` | Entry point / code start (code + `TILE_COLORS` end before `$2800` — **only ~150 bytes left**, see the TILE_COLORS gotcha) |
+| `$0810` | Entry point / code start (code + `TILE_COLORS` end before `$2800` — ~650 bytes left, see the TILE_COLORS gotcha) |
+| `$0340–$0397` | Tape buffer, reused as `SP_BUF` (screen + colour cells under the small search popup) |
 | `$0400–$07FF` | Screen RAM (default VIC bank) |
 | `$2800–$2FFF` | `CHARSET` — custom 2K room-art charset (see below) |
 | `$D800–$DBFF` | Colour RAM |
 | `$07F8` | Sprite pointer table (end of screen RAM — **must be restored after every CLS call**) |
 | `$3000–$38FF` | Sprite frames (36 × 64 bytes, pointers `$C0–$E3`): player 12, robot 12, drone 12 — see "Sprites" |
-| `$3900` | `TITLE_SCR`/`TITLE_COL` intro logo (640 bytes), then the generated world data (`src/world.asm`): tables, room maps, wall grids, runtime state arrays — grows with content (ends ~`$4C7B` today), must stay below `$C000` |
+| `$3900` | `TITLE_SCR`/`TITLE_COL` intro logo (640 bytes), then the generated world data (`src/world.asm`): tables, room maps, wall grids, runtime state arrays — grows with content (ends ~`$4C85` today), must stay below `$C000` |
 | `$C000–$CFFF` | Licence to Kill SID music (init `$C000`, play `$C127`; loaded by exomizer) |
 
 ## Core Design Constraints
@@ -109,10 +110,10 @@ When implementing code, always respect these C64 hardware limits:
 | 0 | Intro | Title screen, tagline, blinking "press fire" prompt |
 | 1 | Game | Playfield with HUD, player sprite, room map, countdown clock, reactor meter |
 | 2 | Game over | Red border + descending-pitch sound, then game-over screen |
-| 3 | Terminal | Full-screen drone selection menu (Space near terminal; time paused; sprite hidden) |
+| 3 | Terminal | Terminal menu: this room's robots, view map, logoff (fire next to a terminal; time paused; sprites hidden) |
 | 4 | Win | Mission complete screen (reached via bottom exit in room 2) |
 | 5 | Map | Sector map overlay (terminal's "view map" entry; time paused; sprite hidden; fire/any key returns to the terminal) |
-| 6 | Popup | "Found item" or "door locked" popup (Space at a search spot, or blocked at a locked door; time/robots paused; a fresh Space press closes it — see the popup section) |
+| 6 | Popup | "Found item" or "door locked" popup (end of a held-fire search that found something, or blocked at a locked door; time/robots paused; a fresh fire/Space press closes it — see the popup section) |
 
 **Stack discipline:** The state machine uses fall-through / `jmp` between states, not `jsr`/`rts`. `MAIN_LOOP` is entered by falling through from init code, never by `jsr`. State transitions use `jmp SETUP_*` not `jsr`, so the return address on the stack is always the one from `DISPATCH`'s `jsr TICK_*`. Never `jsr` into anything that falls into `MAIN_LOOP`.
 
@@ -144,7 +145,7 @@ Key state to track:
 
 ## Rooms
 
-Rooms are defined in `titan.yaml`; `CUR_ROOM` (`$25`) indexes the generated `ROOM_*` tables. Two rooms are currently configured (room1: terminal, laser wall at X=9, search spot at (14,5), left door to room2; room2: right door back, locked bottom exit to the win screen).
+Rooms are defined in `titan.yaml`; `CUR_ROOM` (`$25`) indexes the generated `ROOM_*` tables. Two rooms are currently configured (room1: two terminals, laser wall at X=9, search spot at (14,5), left door to room2; room2: one terminal, right door back, locked bottom exit to the win screen). The art lives in one vchar64 project, `graphics/titan.vchar64proj`.
 
 Movement is fully table-driven (`MOVE_PLAYER`/`TRY_MOVE` in `game.asm`):
 - **Bounds:** each room has its own `ROOM_MAXX`/`ROOM_MAXY` (default and maximum 19/10, the full 20×11-tile room; walls in the art do the real limiting).
@@ -304,7 +305,7 @@ Interior walls are derived from the room art at build time (see "Interior walls"
 | Feature | Config (titan.yaml) | Colour |
 |---------|---------------------|--------|
 | Laser wall | room1 laser rect X=9, Y 0–10 — kills player on contact, unless destroyed (`LASER_STATE`) | Lt Red (visual) |
-| Terminals | two in room1, found in the art: zones X 0–2 and X 16–18, Y 0–2 (the consoles top left / top right); press fire | Lt Green (visual) |
+| Terminals | found in the art: room1 zones X 0–2 and X 16–18, room2 zone X 16–18, all Y 0–2 (the consoles against the top wall); press fire | Lt Green (visual) |
 | Room 1 ↔ room 2 doorway | door rects at x=-1 (room1) / x=20 (room2), Y 5–6 | — |
 | Win exit | room2 door rect y=11, X 6–10, `leads_to: exit`, `key: red_card` — locked popup without the card | — |
 
@@ -345,7 +346,7 @@ Room/HUD art is authored with **vchar64** (charset + screen + colour editor). `g
 ### Code growth can silently corrupt TILE_COLORS/CHARSET — watch for ACME warnings
 `TILE_COLORS` (256 bytes, in `src/charset.asm`) has no fixed address — it starts wherever the code before it (all of `titanfall.asm` + every `!source`d module) happens to end, and `CHARSET` right after it is pinned to a fixed, 2K-aligned address (`* = $2800`). If code+`TILE_COLORS` ever grows past that fixed address, ACME does **not** fail the build — it prints `Warning - ... Segment starts inside another one, overwriting it.` and silently truncates the tail of `TILE_COLORS`, whose bytes get overwritten by the start of `CHARSET`. Since most room tiles use screen codes in the `$80s`-`$A0s`, this corrupts colour lookups for most of the room art (tiles render in wrong/black colours) while leaving the charset bitmaps themselves intact — exactly the "graphics look horrible, wrong colours" symptom, with no build error to point at it.
 - **Always check `make`'s full output for `Warning` lines, not just for a nonzero exit code** — a successful build can still have silently corrupted data.
-- To check headroom: `acme -f cbm -o /tmp/g.prg -l /tmp/labels.txt src/titanfall.asm` then `grep TILE_COLORS /tmp/labels.txt` — its start address + 256 must stay under `CHARSET`'s fixed address. **As of 2026-10-06 `TILE_COLORS` starts at `$258D`, leaving ~370 bytes.** Unrolled 40-byte row-copy loops are the usual bloat: prefer a `DRAW_ROWS` table (see "Screen Art") for new screens.
+- To check headroom: `acme -f cbm -o /tmp/g.prg -l /tmp/labels.txt src/titanfall.asm` then `grep TILE_COLORS /tmp/labels.txt` — its start address + 256 must stay under `CHARSET`'s fixed address. **As of 2026-10-06 `TILE_COLORS` starts at `$2478`, leaving ~650 bytes.** Unrolled 40-byte row-copy loops are the usual bloat: prefer a `DRAW_ROWS` table (see "Screen Art") for new screens.
 - Keep *data* out of the code area where possible: the intro logo, sprites and all generated world data already live above the charset (`$3000+`); prefer that for new tables/strings too.
 - `CHARSET` was moved from `$2000` to `$2800` for exactly this reason (code had grown ~173 bytes past the old boundary); this freed a full extra 2KB of headroom. If it happens again, the same fix applies — bump `CHARSET`'s `* =` (emitted by `tools/gencharset.py`) to the next free 2K-aligned address (the sprite block at `$3000` and the world data after it would have to move up too) and update `VIC_VMCSB`'s value in `titanfall.asm` to match (`$D018 = (screen_base/1024)*16 + (charset_base/2048)*2`; `$0400`/`$2800` → `$1A`).
 
@@ -457,6 +458,8 @@ The world is **config-driven**: rooms (bounds, player start, vchar64 map), robot
 
 Presentation (as of 2026-10-06): multicolour animated sprites with 4-way facing (walker player, walking robots in room 1, hovering drone in room 2), smooth gliding movement between tiles, a PETSCII block-letter title logo + author line on the intro, rounded PETSCII frames with uniform frame colours on every box (intro, game over, win, terminal, popups, sector map), and a working reactor thermometer tied to the countdown. The obvious visual glitches (robots over the terminal, wrong spawn in room 2, walking through walls, blank reactor HUD, terminal cursor on several rows) are fixed.
 
+Controls and interface (as of 2026-10-06): the game is fully joystick-driven (keyboard still works as an alternative). Fire opens a terminal (any console in the art), selects in menus, ends a robot link, and — held — searches, Impossible Mission style (small "searching" / "nothing here" box by the player, the big popup on a find; time and robots keep running). The terminal menu lists the robots in the current room (generated, with `locked:`/destroyed states), then "view map" and "logoff"; there is no map key. HUD: mode left, reactor gauge centred, clock right. A robot catching the player and walking into a laser give the same single death (the player slides onto the beam first); the laser beams flicker via the charset. Everything about positions is on a 2×2-char (16×16 px) tile grid; walls, terminals, the laser-erase patches, the sector map and the charset are all generated at build time from the art and the doors.
+
 ## What's Not Yet Implemented
 
 - Robot abilities: every linkable robot drives the same way (any of them would burn out a laser); the per-type capabilities from the design (loader immune to lasers, splicer through ducts, centurion armed) aren't implemented. The room-1 sentry is `locked: true` so the splicer stays the puzzle's key
@@ -466,5 +469,5 @@ Presentation (as of 2026-10-06): multicolour animated sprites with 4-way facing 
 - The reactor gauge is display-only — nothing happens when it's in the red (an idea: make it a real hazard)
 - Room 2's drone patrols only X 3–11, leaving the right third of the room unguarded
 - Furniture is walk-through (not in `art.solid_tiles`); walls only check the sprite's feet, so the upper body overlaps wall art in the oblique view (intended)
-- The code area is nearly full (~150 bytes before `CHARSET` at `$2800`) — move the charset up before the next big feature (see the TILE_COLORS gotcha)
-- `graphics/aaa-*` files (an alternative vchar64 project/export) are untracked and not referenced by the build
+- Every terminal shows the same menu (the current room's robots, map, logoff); there's no per-terminal behaviour yet (e.g. a terminal that only reaches certain robots or unlocks something)
+- The code area has ~650 bytes left before `CHARSET` at `$2800` — keep new tables/strings in generated data above `$3000` where possible (see the TILE_COLORS gotcha)
