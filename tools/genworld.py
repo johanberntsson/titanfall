@@ -134,6 +134,32 @@ def wall_grid(mapdata, maxx, maxy, solid_tiles):
     return grid
 
 
+def find_terminals(mapdata, terminal_tiles):
+    """Terminals in a room map: each 4-connected group of terminal chars.
+
+    Returns one (col0, row0, col1, row1) map-char rectangle per terminal.
+    """
+    seen, found = set(), []
+    rows = ROOM_MAP_BYTES // 40
+    for r in range(rows):
+        for c in range(40):
+            if (r, c) in seen or mapdata[r * 40 + c] not in terminal_tiles:
+                continue
+            todo, cells = [(r, c)], []
+            seen.add((r, c))
+            while todo:
+                cr, cc = todo.pop()
+                cells.append((cr, cc))
+                for nr, nc in ((cr + 1, cc), (cr - 1, cc), (cr, cc + 1), (cr, cc - 1)):
+                    if (0 <= nr < rows and 0 <= nc < 40 and (nr, nc) not in seen
+                            and mapdata[nr * 40 + nc] in terminal_tiles):
+                        seen.add((nr, nc))
+                        todo.append((nr, nc))
+            found.append((min(c for _, c in cells), min(r for r, _ in cells),
+                          max(c for _, c in cells), max(r for r, _ in cells)))
+    return found
+
+
 def patrol_path(x, y, tx, ty):
     """Tiles visited by ACTOR_PATROL_STEP walking (x,y) -> (tx,ty): X first."""
     tiles = []
@@ -398,6 +424,7 @@ def main():
     floor_tile = int(art["floor_tile"])
     solid_tiles = {int(t) for t in art.get("solid_tiles") or []}
     laser_tiles = {int(t) for t in art.get("laser_tiles") or []}
+    terminal_tiles = {int(t) for t in art.get("terminal_tiles") or []}
     if not laser_tiles:
         die("art.laser_tiles must list the laser beam/emitter screen codes")
     termz = {k: [] for k in ("room", "x1", "y1", "x2", "y2")}
@@ -466,10 +493,18 @@ def main():
                 mapdata, {k: int(l[k]) for k in ("x1", "y1", "x2", "y2")},
                 laser_tiles, floor_tile, f"room {rname} laser {li + 1}"))
 
-        for t in room.get("terminals") or []:
+        # terminals come from the art: every group of terminal chars is one
+        # terminal, usable from its own tiles and the tiles around them
+        if "terminals" in room:
+            die(f"room {rname}: terminals: is obsolete - terminals are found "
+                f"in the room art (art.terminal_tiles)")
+        for c0, r0, c1, r1 in find_terminals(read_vchar64_map(room["vchar64_map"]),
+                                             terminal_tiles):
             termz["room"].append(ri)
-            for k in ("x1", "y1", "x2", "y2"):
-                termz[k].append(int(t[k]))
+            termz["x1"].append(max(0, c0 // 2 - 1))
+            termz["y1"].append(max(0, r0 // 2 - 1))
+            termz["x2"].append(min(room["_maxx"], c1 // 2 + 1))
+            termz["y2"].append(min(room["_maxy"], r1 // 2 + 1))
 
         for d in room.get("doors") or []:
             at = d["at"]
@@ -541,6 +576,13 @@ def main():
                for y in range(termz["y1"][ti], termz["y2"][ti] + 1)
                for x in range(termz["x1"][ti], termz["x2"][ti] + 1)):
             die(f"terminal zone #{ti} in room {rooms[ri]['name']} is entirely inside walls")
+    for ii, (ri, x, y) in item_pos.items():
+        for ti in range(len(termz["room"])):
+            if (termz["room"][ti] == ri and termz["x1"][ti] <= x <= termz["x2"][ti]
+                    and termz["y1"][ti] <= y <= termz["y2"][ti]):
+                die(f"item {list(item_index)[ii]!r} at ({x},{y}) is next to a terminal "
+                    f"in room {rooms[ri]['name']}: fire there opens the terminal, "
+                    f"so it could never be searched for")
 
 
     map_scr, map_col, map_hl = build_map(rooms, room_index[start_room], map_doors)
@@ -681,7 +723,10 @@ def main():
         o.append("        !byte $00,$ff")
     o.append("")
 
-    o.append("; ---- terminal zones (press space inside to open the terminal) ----")
+    o.append("; ---- terminal zones (fire inside to open the terminal), found in the art ----")
+    for ti in range(len(termz["room"])):
+        o.append(f"; terminal {ti}: room {rooms[termz['room'][ti]]['name']}, tiles "
+                 f"x {termz['x1'][ti]}-{termz['x2'][ti]}, y {termz['y1'][ti]}-{termz['y2'][ti]}")
     for name, key in (("TERMZ_ROOM", "room"), ("TERMZ_X1", "x1"), ("TERMZ_Y1", "y1"),
                       ("TERMZ_X2", "x2"), ("TERMZ_Y2", "y2")):
         o.append(tbl(name, [byte(v, "termz") for v in termz[key]]))
@@ -744,7 +789,8 @@ def main():
     with open(out_path, "w", encoding="ascii") as f:
         f.write("\n".join(o))
     print(f"genworld: wrote {out_path}: {len(rooms)} rooms, {len(act['type'])} actors, "
-          f"{len(items)} items, {len(door['room'])} doors, {len(laser['room'])} lasers")
+          f"{len(items)} items, {len(door['room'])} doors, {len(laser['room'])} lasers, "
+          f"{len(termz['room'])} terminals")
 
 
 if __name__ == "__main__":

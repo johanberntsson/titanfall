@@ -1,9 +1,11 @@
 # =============================================================================
 # TITAN Fall — world configuration
 #
-# This file defines the game world: rooms, robots, items, lasers, terminals
-# and doors. tools/genworld.py turns it into src/world.asm (data tables only,
-# no code) as part of the build — run `make` after editing.
+# This file defines the game world: rooms, robots, items, lasers and doors.
+# tools/genworld.py turns it into src/world.asm (data tables only, no code)
+# as part of the build — run `make` after editing. Walls and terminals are
+# found in the room art (see art: below), and the sector map is drawn from
+# the doors.
 #
 # Coordinates are tile coordinates. One tile = 2x2 characters of room art
 # (16x16 px), so a room is 20x11 tiles: tile (x, y) covers map columns
@@ -30,6 +32,9 @@ art:
   # the build computes the wall map from the art and rejects starts,
   # patrols, items or door arrivals inside a wall.
   solid_tiles: [0x84, 0x85, 0x86, 0x87, 0x88, 0x89, 0x8a, 0x8b]
+  # Terminal chars. Every group of these in a room's art is a terminal,
+  # used with fire from its own tiles or any tile next to them.
+  terminal_tiles: [0x8c, 0x8d, 0x8e, 0x8f]
 
 # Actor types: name, sprite set (src/c64_*_sprites.asm, included by src/titanfall.asm),
 # colour, and AI routine used while computer-controlled. "human" is reserved
@@ -94,8 +99,6 @@ rooms:
         at: {x: 14, y: 5}
     lasers:
       - {x1: 9, y1: 0, x2: 9, y2: 10}  # vertical laser wall; splicer can burn it out
-    terminals:
-      - {x1: 1, y1: 1, x2: 2, y2: 2}   # in front of the console; press space
     doors:
       - at: {x1: -1, y1: 5, x2: -1, y2: 6}   # left wall opening
         leads_to: room2
