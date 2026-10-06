@@ -16,9 +16,9 @@ GO_GO
         lda #$00   : sta VIC_SPEN
         lda #0     : sta BLINK_TMR : sta BLINK_ST
         jsr CLS
-        lda #$FD   : sta SPRPTR
-        lda #$FC   : sta SPRPTR+1
-        lda #$FE   : sta SPRPTR+2
+        lda #SPRP_PLAYER : sta SPRPTR
+        lda #SPRP_ROBOT  : sta SPRPTR+1
+        lda #SPRP_DRONE  : sta SPRPTR+2
         jsr DRAW_INTRO_SCREEN
         jmp MAIN_LOOP
 
@@ -53,9 +53,9 @@ SETUP_GAMEOVER
         lda #0     : sta BLINK_TMR : sta BLINK_ST
 
         jsr CLS
-        lda #$FD   : sta SPRPTR
-        lda #$FC   : sta SPRPTR+1
-        lda #$FE   : sta SPRPTR+2
+        lda #SPRP_PLAYER : sta SPRPTR
+        lda #SPRP_ROBOT  : sta SPRPTR+1
+        lda #SPRP_DRONE  : sta SPRPTR+2
 
         ldx #39    ; row 3: top border (RED)
 GOROW03 lda SCR_BORDER_TOP,x : jsr PET2SCREEN : sta SCRN+120,x

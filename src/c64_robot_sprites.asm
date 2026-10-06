@@ -3,7 +3,7 @@
 ; $D027+n (sprite colour, %10) = cyan (3) -> visor/lights; change it per robot
 ; enable multicolor in $D01C
 ; order: down rest/w1/w2, up rest/w1/w2, left rest/w1/w2, right rest/w1/w2
-; align to 64 bytes (e.g. * = $2000 -> sprite pointers 128..139)
+; placed 64-byte aligned by src/titanfall.asm (sprite block at $3000)
 
 robot_down_rest:
     !byte $00,$28,$00,$00,$14,$00,$01,$ff,$40,$03,$ff,$c0,$01,$aa,$40,$03

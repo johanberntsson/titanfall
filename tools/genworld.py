@@ -76,6 +76,42 @@ def read_vchar64_map(path):
     return data
 
 
+def laser_art_patches(mapdata, l, laser_tiles, floor_tile, what):
+    """Screen cells to repaint when laser l (tile rect) is destroyed.
+
+    Scans the room-map window covered by the laser's tiles (the sprite
+    footprint of each tile, plus one char row above/below to catch emitters)
+    for laser_tiles. Each hit becomes the tile on both sides of it if those
+    match (a beam crossing a wall keeps the wall continuous), else floor.
+    Returns [(map offset, new screen code), ...].
+    """
+    def tile_cols(x):           # sprite X pixel tile*24+28 -> screen pixel tile*24+4
+        return (x * 24 + 4) // 8, (x * 24 + 4 + 23) // 8
+    def tile_rows(y):           # sprite Y pixel tile*16+66 -> map pixel tile*16
+        return (y * 16) // 8, (y * 16 + 20) // 8
+    c0, r0 = tile_cols(l["x1"])[0], tile_rows(l["y1"])[0] - 1
+    c1, r1 = tile_cols(l["x2"])[1], tile_rows(l["y2"])[1] + 1
+    c0, c1 = max(c0, 0), min(c1, 39)
+    r0, r1 = max(r0, 0), min(r1, ROOM_MAP_BYTES // 40 - 1)
+    patches = []
+    for r in range(r0, r1 + 1):
+        for c in range(c0, c1 + 1):
+            off = r * 40 + c
+            if mapdata[off] not in laser_tiles:
+                continue
+            left = mapdata[off - 1] if c > 0 else floor_tile
+            right = mapdata[off + 1] if c < 39 else floor_tile
+            new = left if left == right and left not in laser_tiles else floor_tile
+            patches.append((off, new))
+    if not patches:
+        print(f"genworld: warning: {what}: no laser_tiles found in the room art "
+              f"under it (map rows {r0}-{r1}, cols {c0}-{c1}) - nothing will be "
+              f"erased when it is destroyed", file=sys.stderr)
+    if len(patches) > 85:
+        die(f"{what}: too many laser chars to erase ({len(patches)} > 85)")
+    return patches
+
+
 def main():
     if len(sys.argv) != 3:
         die("usage: genworld.py <titan.yaml> <world.asm>")
@@ -113,9 +149,21 @@ def main():
     # ---- actor types ---------------------------------------------------
     types = cfg.get("actor_types") or die("config needs an actor_types section")
     type_index = {name: i for i, name in enumerate(types)}
-    type_sprite, type_color = [], []
+    if "human" not in types:
+        die("actor_types needs a human entry (the player sprite)")
+    type_sprite, type_color, type_dir0, type_anim = [], [], [], []
     for name, t in types.items():
-        type_sprite.append(t["sprite"])  # label; ACME computes /64 pointer
+        type_sprite.append(t["sprite"])  # label of first frame; ACME computes /64
+        # frame sets: 3 frames per facing, facings down/up/left/right; a
+        # 2-direction type only has the left/right groups assembled
+        dirs = int(t.get("directions", 4))
+        if dirs not in (2, 4):
+            die(f"actor type {name}: directions must be 2 (left/right) or 4")
+        type_dir0.append(4 - dirs)       # first facing present (DIR_DOWN or DIR_LEFT)
+        anim = str(t.get("anim", "walk"))
+        if anim not in ("walk", "hover"):
+            die(f"actor type {name}: anim must be walk or hover")
+        type_anim.append(1 if anim == "hover" else 0)
         color = str(t.get("color", "ltgray")).lower()
         if color not in C64_COLORS:
             die(f"actor type {name}: unknown color {color!r}")
@@ -145,6 +193,12 @@ def main():
     item_pos = {}                       # item index -> (room, x, y)
     door = {k: [] for k in ("room", "x1", "y1", "x2", "y2", "dest", "ax", "ay", "key")}
     laser = {k: [] for k in ("room", "x1", "y1", "x2", "y2")}
+    laser_art = []                      # per laser: [(map offset, new char), ...]
+    art = cfg.get("art") or die("config needs an art section (floor_tile, laser_tiles)")
+    floor_tile = int(art["floor_tile"])
+    laser_tiles = {int(t) for t in art.get("laser_tiles") or []}
+    if not laser_tiles:
+        die("art.laser_tiles must list the laser beam/emitter screen codes")
     termz = {k: [] for k in ("room", "x1", "y1", "x2", "y2")}
 
     for ri, room in enumerate(rooms):
@@ -187,10 +241,15 @@ def main():
                 die(f"item {iname!r} placed more than once")
             item_pos[ii] = (ri, int(thing["at"]["x"]), int(thing["at"]["y"]))
 
-        for l in room.get("lasers") or []:
+        for li, l in enumerate(room.get("lasers") or []):
             laser["room"].append(ri)
             for k in ("x1", "y1", "x2", "y2"):
                 laser[k].append(int(l[k]))
+            mapdata = read_vchar64_map(room.get("vchar64_map")
+                                       or die(f"room {rname}: needs vchar64_map"))
+            laser_art.append(laser_art_patches(
+                mapdata, {k: int(l[k]) for k in ("x1", "y1", "x2", "y2")},
+                laser_tiles, floor_tile, f"room {rname} laser {li + 1}"))
 
         for t in room.get("terminals") or []:
             termz["room"].append(ri)
@@ -245,12 +304,16 @@ def main():
         o.append(f"ACTOR_{rid.upper()} = {ai}   ; actor index")
     for iname, ii in item_index.items():
         o.append(f"ITEM_{iname.upper()} = {ii}   ; item index")
+    for tname, ti in type_index.items():
+        o.append(f"ATYPE_{tname.upper()} = {ti}   ; actor type index")
     o.append("")
 
     o.append("; ---- actor types (indexed by ACT_TYPE) ----")
     o.append("TYPE_SPRPTR     ; sprite pointer byte (sprite data address / 64)")
     o.append("        !byte " + ",".join(f"{s}/64" for s in type_sprite))
     o.append(tbl("TYPE_COLOR", type_color, "sprite colour"))
+    o.append(tbl("TYPE_DIR0", type_dir0, "first facing with frames (0=all 4, 2=left/right only)"))
+    o.append(tbl("TYPE_ANIM", type_anim, "0=walk (steps animate) 1=hover (always animating)"))
     o.append("")
 
     o.append("; ---- rooms ----")
@@ -336,6 +399,17 @@ def main():
     for name, key in (("LASER_ROOM", "room"), ("LASER_X1", "x1"), ("LASER_Y1", "y1"),
                       ("LASER_X2", "x2"), ("LASER_Y2", "y2")):
         o.append(tbl(name, [byte(v, name) for v in laser[key]]))
+    o.append("; screen cells ERASE_LASER repaints once a laser is destroyed: entries of")
+    o.append("; (map offset lo, hi, new screen code), terminated by a $ff hi byte")
+    o.append("LASER_ART_LO")
+    o.append("        !byte " + (",".join(f"<LASER_ART_{i}" for i in range(len(laser_art))) or "0"))
+    o.append("LASER_ART_HI")
+    o.append("        !byte " + (",".join(f">LASER_ART_{i}" for i in range(len(laser_art))) or "0"))
+    for i, patches in enumerate(laser_art):
+        o.append(f"LASER_ART_{i}")
+        for off, ch in patches:
+            o.append(f"        !byte ${off & 0xff:02x},${off >> 8:02x},${ch:02x}   ; row {off // 40}, col {off % 40}")
+        o.append("        !byte $00,$ff")
     o.append("")
 
     o.append("; ---- terminal zones (press space inside to open the terminal) ----")
@@ -360,6 +434,8 @@ def main():
     o.append("ACT_Y       !fill NUM_ACTORS")
     o.append("ACT_TGT     !fill NUM_ACTORS    ; current patrol target waypoint (0/1)")
     o.append("ACT_ALIVE   !fill NUM_ACTORS    ; 0 = destroyed (hidden, no patrol/link)")
+    o.append("ACT_DIR     !fill NUM_ACTORS    ; facing (DIR_*)")
+    o.append("ACT_ANIM    !fill NUM_ACTORS    ; walk frame 0=rest 1=walk1 2=walk2")
     o.append("ITEM_STATE  !fill NUM_ITEMS+1   ; 0=hidden 1=carried 2=used (+1 pads the empty case)")
     o.append("LASER_STATE !fill NUM_LASERS+1  ; 0=active 1=destroyed")
     o.append("SPR_SLOT_ACT !fill 2            ; actor shown by hw sprite 1/2, $ff = none")

@@ -16,20 +16,41 @@ game:
   start_time: "05:47:33"        # countdown clock at mission start (h:mm:ss)
   death_penalty_minutes: 30     # time lost per death (Impossible Mission style)
 
-# Actor types: name, sprite data label (defined in src/titanfall.asm), sprite
+# Room-art screen codes the game needs to know about (shared charset, see
+# graphics/). When a laser is destroyed its beam/emitter chars under the laser
+# rectangle are repainted: with the char on both sides if they match (a beam
+# crossing a wall keeps the wall), else with floor_tile.
+art:
+  floor_tile: 0x80
+  laser_tiles: [0x81, 0x82, 0x83]      # beam, top emitter, bottom emitter
+
+# Actor types: name, sprite set (src/c64_*_sprites.asm, included by src/titanfall.asm),
 # colour, and AI routine used while computer-controlled. "human" is reserved
 # for the player and never appears in a room's robot list.
 actor_types:
+  # sprite:     label of the type's first frame (src/c64_*_sprites.asm); frames
+  #             follow as 3 per facing (rest/walk1/walk2), facings in
+  #             down/up/left/right order
+  # directions: 4 = down/up/left/right, 2 = left/right only (the type's
+  #             down/up frames aren't assembled; vertical moves keep facing)
+  # anim:       walk = animates while stepping, hover = always animating
+  # color:      the multicolour sprite's own colour (%10 pixels); black and
+  #             light grey are shared by all sprites ($D025/$D026)
   human:
-    sprite: SPR_PLAYER
-    color: cyan
+    sprite: sprite_down_rest
+    color: ltred
   sentry:
-    sprite: SPR_ROBOT
+    sprite: robot_down_rest
     color: orange
     ai: patrol
   splicer:
-    sprite: SPR_ROBOT2
+    sprite: robot_down_rest
     color: green
+    ai: patrol
+  drone:
+    sprite: drone_down_hover
+    anim: hover
+    color: yellow
     ai: patrol
 
 # Hidden items. Key order defines the item index (ITEM_* equates in world.asm).
@@ -74,7 +95,7 @@ rooms:
     player_start: {x: 8, y: 5}
     map_view: {row: 9, col: 20, width: 12, height: 5}
     robots:
-      - type: sentry
+      - type: drone
         start: {x: 2, y: 5}
         patrol: [{x: 2, y: 5}, {x: 7, y: 5}]
     doors:

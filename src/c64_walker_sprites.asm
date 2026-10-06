@@ -4,7 +4,7 @@
 ; shared colours match the robot sprites, so both can be on screen together
 ; set multicolor mode for the sprite in $D01C
 ; order: down rest/w1/w2, up rest/w1/w2, left rest/w1/w2, right rest/w1/w2
-; align this block to 64 bytes (e.g. * = $2000 -> sprite pointers 128..139)
+; placed 64-byte aligned by src/titanfall.asm (sprite block at $3000)
 
 sprite_down_rest:
     !byte $00,$55,$00,$01,$55,$40,$01,$aa,$40,$02,$69,$80,$02,$aa,$80,$00

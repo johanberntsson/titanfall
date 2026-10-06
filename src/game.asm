@@ -6,8 +6,6 @@
 ; DO_GAME — called each frame in state 1
 ; ---------------------------------------------------------------------------
 DO_GAME
-        jsr SOUND_TICK          ; always tick sound, even during death wait
-
         lda DEATH_TMR
         beq GAME_ALIVE
         dec DEATH_TMR
@@ -24,10 +22,11 @@ GAME_ALIVE
         jmp MAIN_LOOP
 GA_CLOCKOK
         jsr TICK_REACTOR
+        inc ANIM_CNT            ; drives the always-on hover animation
         jsr TICK_ROBOT
         jsr READ_KEYS
         jsr MOVE_PLAYER
-        lda GAME_STATE : cmp #4 : bcs GAME_TICK_DONE  ; win/map triggered this frame
+        lda GAME_STATE : cmp #1 : bne GAME_TICK_DONE  ; terminal/win/map/popup entered this frame
         jsr UPDATE_SPRITE0
         jsr UPDATE_ROBOT_SPRITES
         jsr CHECK_SPRITE_HIT
@@ -79,15 +78,21 @@ RESET_ROUND
         lda #0   : sta BFLASH
         lda #0   : sta SND_TMR
         lda #0   : sta PLAYER_MODE
+        lda #DIR_DOWN : sta PLR_DIR
+        lda #0   : sta PLR_ANIM
 
         ; all actors back at their start positions, alive, heading for
-        ; patrol waypoint 1; all lasers back on
+        ; patrol waypoint 1, standing still facing their type's first
+        ; direction; all lasers back on
         ldx #0
 RSRACT  cpx #NUM_ACTORS : bcs RSRACTD
         lda ACT_SX,x : sta ACT_X,x
         lda ACT_SY,x : sta ACT_Y,x
         lda #1 : sta ACT_TGT,x
         lda #1 : sta ACT_ALIVE,x
+        lda #0 : sta ACT_ANIM,x
+        ldy ACT_TYPE,x
+        lda TYPE_DIR0,y : sta ACT_DIR,x
         inx : bne RSRACT
 RSRACTD
         ldx #0
@@ -98,9 +103,9 @@ RSRLSRD
         lda #20  : sta ROB_TMR
 
         jsr CLS
-        lda #$FD   : sta SPRPTR
-        lda #$FC   : sta SPRPTR+1
-        lda #$FE   : sta SPRPTR+2
+        lda #SPRP_PLAYER : sta SPRPTR
+        lda #SPRP_ROBOT  : sta SPRPTR+1
+        lda #SPRP_DRONE  : sta SPRPTR+2
         jsr DRAW_HUD_STATIC
         jsr DRAW_ROOM
 
@@ -408,6 +413,9 @@ RKDONE  rts
 ; triggers the transition (or the locked popup / win screen).
 ; Directions are tried in U,D,L,R order; a wall-blocked direction falls
 ; through to the next pressed one, anything else ends the move.
+; Each attempt turns the sprite to face that way (even into a wall); a
+; committed step advances the walk frame, and a tick with no step (nothing
+; pressed, or every pressed direction walled off) drops back to the rest pose.
 ; =============================================================================
 MOVE_PLAYER
         lda MOVE_TMR : beq MOVEGO
@@ -418,20 +426,23 @@ MOVEGO  lda #8 : sta MOVE_TMR
         jmp MOVE_ACTOR
 MOVEHUM
         lda KEY_U : beq MPD
-        jsr MPSET : dec NEWY
+        lda #DIR_UP : jsr MPSET : dec NEWY
         jsr TRY_MOVE : bcs MPDONE
 MPD     lda KEY_D : beq MPL
-        jsr MPSET : inc NEWY
+        lda #DIR_DOWN : jsr MPSET : inc NEWY
         jsr TRY_MOVE : bcs MPDONE
 MPL     lda KEY_L : beq MPR
-        jsr MPSET : dec NEWX
+        lda #DIR_LEFT : jsr MPSET : dec NEWX
         jsr TRY_MOVE : bcs MPDONE
-MPR     lda KEY_R : beq MPDONE
-        jsr MPSET : inc NEWX
-        jsr TRY_MOVE
+MPR     lda KEY_R : beq MPIDLE
+        lda #DIR_RIGHT : jsr MPSET : inc NEWX
+        jsr TRY_MOVE : bcs MPDONE
+MPIDLE  lda #0 : sta PLR_ANIM        ; no step this tick: rest pose
 MPDONE  rts
 
-MPSET   lda PLR_X : sta NEWX
+; MPSET — A = facing for this attempt; NEWX/NEWY = current position
+MPSET   sta PLR_DIR
+        lda PLR_X : sta NEWX
         lda PLR_Y : sta NEWY
         rts
 
@@ -449,13 +460,20 @@ TMXOK   lda NEWY : cmp ROOM_MAXY,x : bcc TMYOK : beq TMYOK
 TMYOK   jsr LASER_AT : bcc TMCOMMIT
         ; stepped into an active laser — death, move not committed
         lda #RED  : sta VIC_BRDCOL
-        lda #100  : sta DEATH_TMR
-        jsr SOUND_DEATH_START
+        lda #ZAP_LEN : sta DEATH_TMR ; respawn the moment the zap ends
+        jsr SOUND_ZAP_START
         sec : rts
 TMCOMMIT
         lda NEWX : sta PLR_X
         lda NEWY : sta PLR_Y
+        jsr PLR_STEP_ANIM
         sec : rts
+
+; PLR_STEP_ANIM — a step was taken: alternate walk1/walk2 (rest -> walk1)
+PLR_STEP_ANIM
+        lda PLR_ANIM : cmp #1 : beq PSA2
+        lda #1 : sta PLR_ANIM : rts
+PSA2    lda #2 : sta PLR_ANIM : rts
 
 ; ---------------------------------------------------------------------------
 ; TRY_DOOR — NEWX/NEWY is outside the walkable range: scan this room's doors.
@@ -490,7 +508,8 @@ DENGO   sta CUR_ROOM
         sta PLR_X
 DENAY   lda DOOR_AY,x : cmp #$FF : beq DENDRW
         sta PLR_Y
-DENDRW  jsr DRAW_ROOM
+DENDRW  jsr PLR_STEP_ANIM            ; walking through the doorway is a step
+        jsr DRAW_ROOM
         sec : rts
 
 ; =============================================================================
@@ -502,20 +521,23 @@ DENDRW  jsr DRAW_ROOM
 MOVE_ACTOR
         ldx PLAYER_MODE : dex
         lda KEY_U : beq MAD
-        jsr MASET : dec NEWY
+        lda #DIR_UP : jsr MASET : dec NEWY
         jsr TRY_ACT : bcs MADONE
 MAD     lda KEY_D : beq MAL
-        jsr MASET : inc NEWY
+        lda #DIR_DOWN : jsr MASET : inc NEWY
         jsr TRY_ACT : bcs MADONE
 MAL     lda KEY_L : beq MAR
-        jsr MASET : dec NEWX
+        lda #DIR_LEFT : jsr MASET : dec NEWX
         jsr TRY_ACT : bcs MADONE
-MAR     lda KEY_R : beq MADONE
-        jsr MASET : inc NEWX
-        jsr TRY_ACT
+MAR     lda KEY_R : beq MAIDLE
+        lda #DIR_RIGHT : jsr MASET : inc NEWX
+        jsr TRY_ACT : bcs MADONE
+MAIDLE  lda #0 : sta ACT_ANIM,x      ; no step this tick: rest pose
 MADONE  rts
 
-MASET   lda ACT_X,x : sta NEWX
+; MASET — X = actor, A = facing for this attempt; NEWX/NEWY = its position
+MASET   jsr ACT_FACE
+        lda ACT_X,x : sta NEWX
         lda ACT_Y,x : sta NEWY
         rts
 
@@ -530,6 +552,7 @@ TAXOK   lda NEWY : cmp ROOM_MAXY,y : bcc TAYOK : beq TAYOK
         clc : rts
 TAYOK   lda NEWX : sta ACT_X,x
         lda NEWY : sta ACT_Y,x
+        jsr ACT_STEP_ANIM
         jsr LASER_AT : bcc TAOK
         jsr ROBOT_LASER_DEATH
 TAOK    sec : rts
@@ -554,11 +577,14 @@ LANONE  clc : rts
 ; =============================================================================
 ; ROBOT_LASER_DEATH — X = actor, Y = laser (from LASER_AT). The robot is
 ; destroyed for good and the laser burns out with it, so it no longer hurts
-; the human either. Control snaps back to human immediately.
+; the human either, and its chars are repainted as floor (ERASE_LASER).
+; Control snaps back to human immediately.
 ; =============================================================================
 ROBOT_LASER_DEATH
         lda #0   : sta ACT_ALIVE,x
         lda #1   : sta LASER_STATE,y
+        jsr ERASE_LASER              ; beam/emitters vanish from the room art
+        jsr SOUND_ZAP_START
         lda #YELLOW : sta VIC_BRDCOL
         lda #15  : sta BFLASH
         lda #0   : sta PLAYER_MODE
@@ -568,6 +594,10 @@ ROBOT_LASER_DEATH
 ; UPDATE_SPRITE0
 ; =============================================================================
 UPDATE_SPRITE0
+        lda PLR_DIR : sta TMP
+        lda PLR_ANIM : sta TMP2
+        ldx #ATYPE_HUMAN : jsr FRAME_PTR
+        sta SPRPTR
         lda PLR_X : jsr TILE_TO_PIXEL_X
         sta VIC_SP0X
         bcs SPRMSB
@@ -629,6 +659,11 @@ UPD_SLOT
         lda ACT_ROOM,x : cmp CUR_ROOM : bne UPDSOFF
         lda ACT_X,x : sta NEWX
         lda ACT_Y,x : sta NEWY
+        lda ACT_DIR,x : sta TMP
+        lda ACT_ANIM,x : sta TMP2
+        lda ACT_TYPE,x : tax
+        jsr FRAME_PTR                    ; (preserves Y)
+        sta SPRPTR+1,y
         lda VIC_SPEN : ora SLOT_ORBIT,y : sta VIC_SPEN
         lda NEWX : jsr TILE_TO_PIXEL_X   ; (preserves Y, clobbers TMP/TMP2)
         ldx SLOT_REGOFF,y
@@ -682,7 +717,7 @@ CHECK_SPRITE_HIT
         lda DEATH_TMR : bne SPRHITOK
         lda TMP : and #$01 : beq SPRHITOK
         lda #RED : sta VIC_BRDCOL
-        lda #100 : sta DEATH_TMR
+        lda #DEATH_LEN : sta DEATH_TMR  ; respawn the moment the sweep ends
         jsr SOUND_DEATH_START
 SPRHITOK rts
 
@@ -718,13 +753,56 @@ APSW0   lda ACT_WX0,x : sta NEWX
         lda ACT_WY0,x : sta NEWY
 APSGO   lda ACT_X,x : cmp NEWX : beq APSY
         bcs APSXL
-        inc ACT_X,x : rts
-APSXL   dec ACT_X,x : rts
+        inc ACT_X,x : lda #DIR_RIGHT : jmp APSSTEP
+APSXL   dec ACT_X,x : lda #DIR_LEFT : jmp APSSTEP
 APSY    lda ACT_Y,x : cmp NEWY : beq APSFLIP
         bcs APSYU
-        inc ACT_Y,x : rts
-APSYU   dec ACT_Y,x : rts
+        inc ACT_Y,x : lda #DIR_DOWN : jmp APSSTEP
+APSYU   dec ACT_Y,x : lda #DIR_UP
+APSSTEP jsr ACT_FACE
+        jmp ACT_STEP_ANIM
 APSFLIP lda ACT_TGT,x : eor #1 : sta ACT_TGT,x
+        lda #0 : sta ACT_ANIM,x      ; pause at the waypoint in the rest pose
+        rts
+
+; ---------------------------------------------------------------------------
+; ACT_FACE — X = actor, A = DIR_*. Turns the actor to face that way, unless
+; its type has no frames for it (DIR < TYPE_DIR0: a left/right-only type
+; keeps its last horizontal facing while moving up/down). Preserves X/A;
+; clobbers Y.
+; ---------------------------------------------------------------------------
+ACT_FACE
+        ldy ACT_TYPE,x
+        cmp TYPE_DIR0,y : bcc AFNO
+        sta ACT_DIR,x
+AFNO    rts
+
+; ACT_STEP_ANIM — X = actor took a step: alternate walk1/walk2 (rest -> walk1)
+ACT_STEP_ANIM
+        lda ACT_ANIM,x : cmp #1 : beq ASA2
+        lda #1 : sta ACT_ANIM,x : rts
+ASA2    lda #2 : sta ACT_ANIM,x : rts
+
+; ---------------------------------------------------------------------------
+; FRAME_PTR — X = actor type, TMP = facing (DIR_*), TMP2 = walk frame (0-2).
+; Returns A = sprite pointer for that frame:
+;   TYPE_SPRPTR + (facing - TYPE_DIR0)*3 + frame
+; A "hover" type (TYPE_ANIM=1) ignores TMP2 and loops hover/move1/hover/
+; move2 off ANIM_CNT instead (8 frames per pose), so it is always moving.
+; Preserves Y; clobbers TMP/TMP2.
+; ---------------------------------------------------------------------------
+FRAME_PTR
+        lda TYPE_ANIM,x : beq FPWALK
+        lda ANIM_CNT
+        lsr : lsr : lsr : lsr        ; C = bit 3 (odd pose), A = cnt>>4
+        bcc FPHREST
+        and #1 : adc #0              ; C=1: A = bit 4 + 1 -> move1 / move2
+        sta TMP2 : jmp FPWALK
+FPHREST lda #0 : sta TMP2            ; even pose: hover
+FPWALK  lda TMP : sec : sbc TYPE_DIR0,x : sta TMP   ; facing group 0-3
+        asl : adc TMP                ; *3 (C clear: group <= 3)
+        adc TMP2
+        clc : adc TYPE_SPRPTR,x
         rts
 
 ; =============================================================================
@@ -750,7 +828,44 @@ DRMCPG  jsr COL_BYTE : iny : bne DRMCPG
         dex : bne DRMCPG
         ldy #0
 DRMCTAIL jsr COL_BYTE : iny : cpy #112 : bcc DRMCTAIL
+
+        ; the map data always has every laser drawn in: erase the ones in
+        ; this room that are already destroyed
+        ldy #0
+DRMLSR  cpy #NUM_LASERS : bcs DRMLSRD
+        lda LASER_STATE,y : beq DRMLSRN
+        lda LASER_ROOM,y : cmp CUR_ROOM : bne DRMLSRN
+        tya : pha
+        jsr ERASE_LASER
+        pla : tay
+DRMLSRN iny : bne DRMLSR
+DRMLSRD
         jmp ASSIGN_SPRITES           ; room changed: remap actors -> sprites
+
+; ---------------------------------------------------------------------------
+; ERASE_LASER — Y = laser index. Repaints the laser's beam/emitter chars on
+; screen (+ their colour RAM from TILE_COLORS) using the patch list
+; genworld.py computed from the room art (LASER_ART_n: map offset lo/hi +
+; new screen code per entry, $ff hi byte ends it). Only call it while that
+; laser's room is on screen. Preserves X; clobbers A/Y/PTR/PTR2/TMP.
+; ---------------------------------------------------------------------------
+ERASE_LASER
+        txa : pha
+        lda LASER_ART_LO,y : sta PTR
+        lda LASER_ART_HI,y : sta PTR+1
+        ldy #0
+ELSL    lda (PTR),y : clc : adc #<(SCRN+80) : sta PTR2   ; map offset -> screen
+        iny : lda (PTR),y : bmi ELSDONE                  ; ($ff = end)
+        adc #>(SCRN+80) : sta PTR2+1                     ; (C from the low add)
+        iny : lda (PTR),y                                ; new screen code
+        iny : sty TMP
+        ldy #0 : sta (PTR2),y
+        tax : lda TILE_COLORS,x : tax
+        lda PTR2+1 : clc : adc #>(CRAM-SCRN) : sta PTR2+1 ; same cell in colour RAM
+        txa : sta (PTR2),y
+        ldy TMP : jmp ELSL
+ELSDONE pla : tax
+        rts
 
 DRMSETPTR
         ldx CUR_ROOM
@@ -810,11 +925,24 @@ STAT_TMPL
         !pet "r:0 x=00 y=0 item:            joy/wasd  "
 
 ; =============================================================================
-; SID DEATH SOUND
-; Voice 1 sawtooth, descending pitch sweep over ~50 frames.
+; SID SOUND EFFECTS — voice 1, one effect at a time. While SND_TMR > 0,
+; RASTER_IRQ calls SOUND_TICK instead of the music player (in every game
+; state, so an effect can't freeze if the state changes mid-sound — e.g.
+; Space straight into the terminal right after the splicer burns out).
+; SOUND_TICK runs inside the IRQ: it may only touch A (the KERNAL IRQ
+; entry/exit saves and restores A/X/Y) and SND_* — never TMP/PTR etc.
+;   SND_KIND 0 = death: sawtooth, descending pitch sweep over ~50 frames
+;            1 = zap:   laser "bzzzt" — a low raspy pulse buzz alternating
+;                       every frame with a noise crackle, a one-frame gate
+;                       drop every 8 frames for the stutter, fading out
+;                       over the last 15 frames
 ; =============================================================================
+ZAP_LEN   = 40                  ; frames; also the laser-death pause
+DEATH_LEN = 50                  ; frames; also the robot-collision death pause
+
 SOUND_DEATH_START
-        lda #50    : sta SND_TMR
+        lda #0     : sta SND_KIND
+        lda #DEATH_LEN : sta SND_TMR
 
         lda #$00   : sta $D405      ; attack=0, decay=0
         lda #$F0   : sta $D406      ; sustain=15, release=0
@@ -825,15 +953,31 @@ SOUND_DEATH_START
         lda #$21   : sta $D404      ; sawtooth + gate on
         rts
 
+SOUND_ZAP_START
+        lda #1       : sta SND_KIND
+        lda #ZAP_LEN : sta SND_TMR
+
+        lda #$00   : sta $D405      ; attack=0, decay=0
+        lda #$F0   : sta $D406      ; sustain=15, release=0
+        lda #$0F   : sta $D418      ; master volume full
+        lda #$00   : sta $D402      ; pulse width $0200 (12.5%): thin and
+        lda #$02   : sta $D403      ;  harmonic-rich, i.e. raspy
+
+        lda #$00   : sta $D400      ; $0480 ≈ 68Hz — mains-hum territory
+        lda #$04   : sta $D401
+        lda #$41   : sta $D404      ; pulse + gate on
+        rts
+
 SOUND_TICK
         lda SND_TMR
         beq SNDOUT
 
         dec SND_TMR
-        lda SND_TMR
         beq SNDOFF
+        lda SND_KIND : bne ZAP_TICK
 
         ; Frequency = SND_TMR * 8 + $0200
+        lda SND_TMR
         asl : asl : asl
         sta $D400               ; freq lo
         lda SND_TMR
@@ -845,3 +989,20 @@ SOUND_TICK
 SNDOFF  lda #$20 : sta $D404
         lda #$0F : sta $D418
 SNDOUT  rts
+
+ZAP_TICK
+        lda SND_TMR : cmp #16 : bcs ZTWAVE
+        sta $D418               ; fade: volume = frames left (15..1)
+ZTWAVE  lda SND_TMR : and #7 : cmp #3 : beq ZTGAP
+        lda SND_TMR : lsr : bcc ZTBUZZ
+        ; odd frame: noise crackle, pitch jittered ($20xx-$2Fxx)
+        lda LFSR_ST : eor SND_TMR : and #$0F : ora #$20 : sta $D401
+        lda #$81 : sta $D404    ; noise + gate
+        rts
+ZTBUZZ  ; even frame: the buzz, ~60-90Hz with random fine jitter
+        lda LFSR_ST : eor SND_TMR : sta $D400
+        and #$01 : ora #$04 : sta $D401
+        lda #$41 : sta $D404    ; pulse + gate
+        rts
+ZTGAP   lda #$40 : sta $D404    ; gate off for one frame: the stutter
+        rts

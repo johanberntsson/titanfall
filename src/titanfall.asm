@@ -31,10 +31,10 @@ PTR2       = $16
 TMP        = $18
 TMP2       = $19
 GAME_STATE = $1A   ; 0=intro  1=game  2=gameover  3=terminal  4=win  5=map  6=popup
-DEATH_TMR  = $1B   ; countdown after laser hit
+DEATH_TMR  = $1B   ; death pause countdown (= length of the death sound)
 BLINK_TMR  = $1C   ; blink counter
 BLINK_ST   = $1D   ; 0=text visible  1=hidden
-SND_TMR    = $1E   ; death sound frame counter (0=silent)
+SND_TMR    = $1E   ; sound effect frame counter (0=silent, music plays)
 TERM_SEL   = $1F   ; terminal: selected drone row (0-3)
 TERM_TMR   = $20   ; terminal: link confirmation countdown
 NEAR_TERM  = $21   ; non-zero when player is adjacent to terminal
@@ -44,6 +44,10 @@ CUR_ROOM   = $25   ; current room index (into world.asm ROOM_* tables)
 KEY_MAP    = $26   ; M key flag (open map)
 NEWX       = $27   ; candidate tile X for the move being attempted
 NEWY       = $28   ; candidate tile Y (MOVE_PLAYER/MOVE_ACTOR/patrol scratch)
+PLR_DIR    = $29   ; player facing (DIR_*)
+PLR_ANIM   = $2A   ; player walk frame: 0=rest 1=walk1 2=walk2
+ANIM_CNT   = $2B   ; free-running game-frame counter (hover animation)
+SND_KIND   = $2C   ; sound effect playing: 0=death sweep 1=laser zap
 ROB_TMR    = $2D   ; robot movement timer (shared by all actors)
 PLAYER_MODE = $31  ; 0=human (control PLR_X/Y)  else actor index+1 (proxy mode)
 KEY_X      = $32   ; X key flag (exit robot proxy mode)
@@ -51,7 +55,7 @@ POPUP_ST   = $33   ; popup: 0=waiting for opening space to be released, 1=armed
 JOY_PREV   = $34   ; joystick 2 bits held last frame (1=pressed, bits 0-4)
 KEY_SPC    = $35   ; space key flag (search / enter terminal)
 JOY_NEW    = $36   ; joystick 2 bits newly pressed this frame (U/D/L/R/fire)
-; free zero-page slots: $29-$2C, $2E-$30
+; free zero-page slots: $2E-$30
 ; Robot positions, laser/item state etc. live in RAM arrays declared at the
 ; end of src/world.asm (ACT_X/Y, ACT_ALIVE, ITEM_STATE, LASER_STATE, ...).
 
@@ -61,9 +65,15 @@ JOY_NEW    = $36   ; joystick 2 bits newly pressed this frame (U/D/L/R/fire)
 SCRN       = $0400
 CRAM       = $D800
 SPRPTR     = $07F8
-SPRDAT0    = $3F40   ; 64-byte aligned — $3F40/64=$FD
-SPRDAT1    = $3F00   ; 64-byte aligned — $3F00/64=$FC
-SPRDAT2    = $3F80   ; 64-byte aligned — $3F80/64=$FE
+SPRP_PLAYER = sprite_down_rest/64   ; default pointers written after CLS
+SPRP_ROBOT  = robot_down_rest/64    ; (ASSIGN_SPRITES / FRAME_PTR set the
+SPRP_DRONE  = drone_down_hover/64   ;  real per-frame values in game state)
+
+; facings — also the frame-group order inside each sprite set
+DIR_DOWN   = 0
+DIR_UP     = 1
+DIR_LEFT   = 2
+DIR_RIGHT  = 3
 
 VIC_SP0X   = $D000
 VIC_SP0Y   = $D001
@@ -156,11 +166,13 @@ SIDCLR  lda #0
         lda #$0E : sta $0291            ; stop KERNAL IRQ resetting charset
 
         ; Sprite pointers and config
-        lda #$FD   : sta SPRPTR         ; spr0 → $3F40
-        lda #$FC   : sta SPRPTR+1       ; spr1 → $3F00
-        lda #$FE   : sta SPRPTR+2       ; spr2 → $3F80
-        lda #CYAN  : sta VIC_SPCOL0     ; player; slots 1-2 set by ASSIGN_SPRITES
-        lda #$00   : sta $D01C
+        lda #SPRP_PLAYER : sta SPRPTR
+        lda #SPRP_ROBOT  : sta SPRPTR+1
+        lda #SPRP_DRONE  : sta SPRPTR+2
+        lda TYPE_COLOR+ATYPE_HUMAN : sta VIC_SPCOL0  ; slots 1-2 set by ASSIGN_SPRITES
+        lda #$07   : sta $D01C          ; sprites 0-2 multicolour
+        lda #DGRAY : sta $D025          ; MC0 (%01) — outlines
+        lda #LTGRAY : sta $D026         ; MC1 (%11) — shared light grey
         lda #$00   : sta $D01D
         lda #$00   : sta $D017
 
@@ -193,9 +205,9 @@ SHOW_INTRO
         lda #0     : sta BLINK_ST
 
         jsr CLS
-        lda #$FD   : sta SPRPTR
-        lda #$FC   : sta SPRPTR+1
-        lda #$FE   : sta SPRPTR+2
+        lda #SPRP_PLAYER : sta SPRPTR
+        lda #SPRP_ROBOT  : sta SPRPTR+1
+        lda #SPRP_DRONE  : sta SPRPTR+2
         jsr DRAW_INTRO_SCREEN
 
         ; ---- fall into MAIN_LOOP ----
@@ -275,9 +287,11 @@ P2S_OUT rts
 RASTER_IRQ
         lda #$01 : sta VIC_IRQ
         lda #$01 : sta TICK_FLAG
-        lda SND_TMR : bne RIRQ_SKIP    ; skip music while death sound plays
+        lda SND_TMR : beq RIRQ_MUSIC   ; sound effect playing: it owns
+        jsr SOUND_TICK                 ;  the SID, music waits (game.asm)
+        jmp $EA31
+RIRQ_MUSIC
         jsr $C127                      ; music play
-RIRQ_SKIP
         jmp $EA31
 
 ; =============================================================================
@@ -304,92 +318,20 @@ SCR_BORDER_BOTTOM  !pet G_RD_LL, G_HORIZ_BAR, G_HORIZ_BAR, G_HORIZ_BAR, G_HORIZ_
         !source "src/charset.asm"
 
 ; =============================================================================
-; Sprite 1 — robot enemy, at $3F00 (pointer $FC)
-; Top-down drone: square head, wide shoulders, split legs
+; Sprites — multicolour, 64-byte frames, packed from $3000 (right after the
+; charset; pointers $C0+). Shared colours: $D025 (MC0) = black, $D026 (MC1)
+; = light grey; the per-sprite colour comes from TYPE_COLOR. Each actor type
+; points at its first frame (sprite: in titan.yaml); frames follow as
+; rest/walk1/walk2 (or hover/move1/move2) per facing, facings in
+; down/up/left/right order — FRAME_PTR in game.asm picks the frame.
+; Every set has all 4 facings (12 frames).
 ; =============================================================================
-        * = $3F00
-SPR_ROBOT
-        !byte $0F,$F0,$00   ; row  0  head top
-        !byte $0F,$F0,$00   ; row  1
-        !byte $0F,$F0,$00   ; row  2
-        !byte $06,$60,$00   ; row  3  eye row
-        !byte $0F,$F0,$00   ; row  4
-        !byte $0F,$F0,$00   ; row  5  head bottom
-        !byte $3F,$FC,$00   ; row  6  shoulder
-        !byte $3F,$FC,$00   ; row  7
-        !byte $3F,$FC,$00   ; row  8  body
-        !byte $3F,$FC,$00   ; row  9
-        !byte $3F,$FC,$00   ; row 10
-        !byte $1F,$F8,$00   ; row 11  waist
-        !byte $0F,$F0,$00   ; row 12
-        !byte $0E,$E0,$00   ; row 13  legs
-        !byte $0E,$E0,$00   ; row 14
-        !byte $0E,$E0,$00   ; row 15
-        !byte $0E,$E0,$00   ; row 16
-        !byte $0E,$E0,$00   ; row 17
-        !byte $0E,$E0,$00   ; row 18
-        !byte $1E,$F0,$00   ; row 19  feet
-        !byte $1E,$F0,$00   ; row 20
-        !byte $00           ; byte 63
-
-; =============================================================================
-; Sprite 0 — player, at $3F40 (pointer $FD)
-; Top-down person: oval head, shoulders+torso, two legs
-; =============================================================================
-        * = $3F40
-SPR_PLAYER
-        !byte $00,$FC,$00   ; row  0  head top
-        !byte $03,$FF,$00   ; row  1
-        !byte $07,$FF,$80   ; row  2
-        !byte $0F,$FF,$C0   ; row  3
-        !byte $0F,$FF,$C0   ; row  4
-        !byte $0F,$FF,$C0   ; row  5
-        !byte $0F,$FF,$C0   ; row  6
-        !byte $07,$FF,$80   ; row  7
-        !byte $03,$FF,$00   ; row  8
-        !byte $00,$FC,$00   ; row  9  head bottom
-        !byte $00,$00,$00   ; row 10  neck gap
-        !byte $39,$F8,$E0   ; row 11  shoulders + torso
-        !byte $7D,$F9,$F0   ; row 12
-        !byte $7D,$F9,$F0   ; row 13
-        !byte $7D,$F9,$F0   ; row 14
-        !byte $39,$F8,$E0   ; row 15
-        !byte $00,$00,$00   ; row 16  waist gap
-        !byte $07,$9E,$00   ; row 17  legs
-        !byte $07,$9E,$00   ; row 18
-        !byte $07,$9E,$00   ; row 19
-        !byte $07,$9E,$00   ; row 20  feet
-        !byte $00           ; byte 63
-
-; =============================================================================
-; Sprite 2 — splicer robot, at $3F80 (pointer $FE)
-; Maintenance Splicer drone: diamond sensor head, hex torso, single tapering
-; tail/tread — visually distinct from the square-headed SPR_ROBOT.
-; =============================================================================
-        * = $3F80
-SPR_ROBOT2
-        !byte $00,$F0,$00   ; row  0  head tip
-        !byte $03,$FC,$00   ; row  1
-        !byte $0F,$FF,$00   ; row  2  widest
-        !byte $0F,$FF,$00   ; row  3
-        !byte $03,$FC,$00   ; row  4
-        !byte $00,$84,$00   ; row  5  sensor slit
-        !byte $00,$F0,$00   ; row  6  neck
-        !byte $01,$FC,$00   ; row  7  torso shoulder
-        !byte $03,$FE,$00   ; row  8  torso
-        !byte $02,$64,$00   ; row  9  torso vents
-        !byte $03,$FE,$00   ; row 10  torso
-        !byte $03,$FE,$00   ; row 11  torso
-        !byte $01,$FC,$00   ; row 12  torso taper
-        !byte $00,$7C,$00   ; row 13  waist
-        !byte $00,$38,$00   ; row 14  tail
-        !byte $00,$38,$00   ; row 15
-        !byte $00,$10,$00   ; row 16
-        !byte $00,$38,$00   ; row 17
-        !byte $00,$10,$00   ; row 18
-        !byte $00,$38,$00   ; row 19
-        !byte $00,$7C,$00   ; row 20  foot/tread
-        !byte $00           ; byte 63
+        * = $3000
+SPRITES_START
+        !source "src/c64_walker_sprites.asm"    ; player:  12 frames
+        !source "src/c64_robot_sprites.asm"     ; robot:   12 frames
+        !source "src/c64_drone_sprites.asm"     ; drone:   12 frames
+SPRITES_END
 
 ; =============================================================================
 ; World data — generated from titan.yaml by tools/genworld.py (make target).
