@@ -141,6 +141,9 @@ def main():
         die("game.start_time must look like \"05:47:33\"")
     if not (0 <= clk_m < 60 and 0 <= clk_s < 60):
         die("game.start_time: minutes/seconds must be 0-59")
+    if clk_h * 60 + clk_m < 1:
+        die("game.start_time must be at least 0:01:00 (the reactor gauge "
+            "scales by the starting minutes)")
     penalty = int(game.get("death_penalty_minutes", 30))
     if not 0 < penalty < 60:
         die("game.death_penalty_minutes must be 1-59 (APPLY_DEATH_PENALTY "

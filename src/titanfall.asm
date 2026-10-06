@@ -17,7 +17,7 @@ CLK_S      = $06
 CLK_TICK   = $07
 REACT_TEMP = $08
 REACT_CNT  = $09
-REACT_JIT  = $0A
+REACT_JIT  = $0A   ; reactor display flicker 0-3 (on top of REACT_TEMP)
 LFSR_ST    = $0B
 MOVE_TMR   = $0C
 TICK_FLAG  = $0D
@@ -119,6 +119,7 @@ CH_BAR  = $7C
 CH_LBRK = $5B
 CH_RBRK = $5D
 CH_HBLK = $A0
+CH_SOLID = $E0   ; solid block (ROM glyph; $A0 is a room tile in our charset)
 
 
 ; =============================================================================

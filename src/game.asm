@@ -68,7 +68,7 @@ RESET_ROUND
         lda #START_ROOM : sta CUR_ROOM
         lda ROOM_PSX+START_ROOM : sta PLR_X
         lda ROOM_PSY+START_ROOM : sta PLR_Y
-        lda #23  : sta REACT_TEMP
+        lda #0   : sta REACT_TEMP          ; set from the clock each frame
         lda #0   : sta REACT_CNT
         lda #0   : sta REACT_JIT
         lda #$A3 : sta LFSR_ST
@@ -194,34 +194,34 @@ HUDML2  lda LMODE_R,x : jsr PET2SCREEN : sta SCRN+9,x
         bpl HUDML2
 HUDMLDONE
 
-        lda REACT_TEMP
-        cmp #40 : bcc HUDBG
-        cmp #70 : bcc HUDBY
-        lda #LTRED  : !byte $2C
-HUDBG   lda #LTGREEN : !byte $2C
-HUDBY   lda #YELLOW
-        sta TMP2
-
-        ldy #7
-HUDBCLR lda #CH_SPC : sta SCRN+24,y
-        lda #DGRAY  : sta CRAM+24,y
-        dey
-        bpl HUDBCLR
-
-        lda REACT_TEMP : lsr : lsr : lsr : lsr
-        tax
-        beq HUDBD
+        ; reactor thermometer: 8 solid segments (cols 24-31), lit ones in
+        ; their zone colour (4 green, 2 yellow, 2 red), unlit ones dark grey
+        lda REACT_TEMP : clc : adc REACT_JIT     ; shown = base + flicker
+        cmp #100 : bcc HUDRV : lda #99
+HUDRV   sta TMP
+        ldx #0                                   ; lit = (shown+6)/12, 0-8
+        clc : adc #6
+HUDRDV  cmp #12 : bcc HUDRDD
+        sbc #12 : inx : bne HUDRDV
+HUDRDD  stx TMP2
         ldy #0
-HUDBF   lda #CH_EQ : sta SCRN+24,y
-        lda TMP2 : sta CRAM+24,y
-        iny : dex : bne HUDBF
-HUDBD
-        lda REACT_TEMP : jsr DEC3
+HUDBAR  lda #CH_SOLID : sta SCRN+24,y
+        lda #DGRAY
+        cpy TMP2 : bcs HUDBUL
+        lda REACT_ZONES,y
+HUDBUL  sta CRAM+24,y
+        iny : cpy #8 : bne HUDBAR
+
+        ldx TMP2 : dex : bpl HUDRNC : ldx #0     ; number: colour of the top
+HUDRNC  lda REACT_ZONES,x : pha                  ;  lit segment (green if none)
+        lda TMP : jsr DEC3                       ; (clobbers TMP/TMP2/X)
         lda DEC3BUF+0 : sta SCRN+33
         lda DEC3BUF+1 : sta SCRN+34
         lda DEC3BUF+2 : sta SCRN+35
-        lda TMP2 : sta CRAM+33 : sta CRAM+34 : sta CRAM+35
+        pla : sta CRAM+33 : sta CRAM+34 : sta CRAM+35
         rts
+
+REACT_ZONES !byte LTGREEN,LTGREEN,LTGREEN,LTGREEN,YELLOW,YELLOW,LTRED,LTRED
 
 LMODE_H !pet "human"
 LMODE_R !pet "robot"
@@ -275,20 +275,38 @@ TCKOUT  rts
 ; TICK_REACTOR
 ; =============================================================================
 TICK_REACTOR
+        ; The reactor tracks the countdown: REACT_TEMP = 99 - M*99/START,
+        ; with M = minutes left (CLK_H*60+CLK_M) and START = the starting
+        ; countdown in minutes — 0 at mission start, 99 as the clock runs
+        ; out (so a death penalty visibly heats it up). M*99/START is done as
+        ; M * REACT_K, REACT_K = 99*256/START precomputed at assembly time,
+        ; taking the high byte. REACT_JIT is a 0-3 flicker shown on top,
+        ; re-rolled from the LFSR every 8 frames (display only).
         lda LFSR_ST : asl : bcc RCTNFB : eor #$B8
 RCTNFB  sta LFSR_ST
-        inc REACT_JIT
-        lda REACT_JIT : and #$07 : bne RCTDR
-        lda LFSR_ST : and #$01 : beq RCTJDN
-        lda REACT_TEMP : cmp #99 : bcs RCTDR
-        inc REACT_TEMP : bne RCTDR
-RCTJDN  lda REACT_TEMP : beq RCTDR : dec REACT_TEMP
-RCTDR   inc REACT_CNT
-        lda REACT_CNT : cmp #180 : bcc RCTOUT
-        lda #0 : sta REACT_CNT
-        lda REACT_TEMP : cmp #99 : bcs RCTOUT
-        inc REACT_TEMP
-RCTOUT  rts
+        inc REACT_CNT
+        lda REACT_CNT : and #$07 : bne RCTCALC
+        lda LFSR_ST : and #$03 : sta REACT_JIT
+RCTCALC lda CLK_M : sta TMP              ; TMP/TMP2 = M (16-bit)
+        lda #0 : sta TMP2
+        ldx CLK_H : beq RCTMUL
+RCTHR   lda TMP : clc : adc #60 : sta TMP
+        bcc RCTHN : inc TMP2
+RCTHN   dex : bne RCTHR
+RCTMUL  lda #0 : sta PTR : sta PTR+1     ; PTR = M * REACT_K (16-bit;
+        ldx #16                          ;  M <= START keeps it <= 99*256)
+RCTML   asl PTR : rol PTR+1
+        asl TMP : rol TMP2 : bcc RCTMN
+        lda PTR : clc : adc #<REACT_K : sta PTR
+        lda PTR+1 : adc #>REACT_K : sta PTR+1
+RCTMN   dex : bne RCTML
+        lda #99 : sec : sbc PTR+1
+        bcs RCTSET : lda #0
+RCTSET  sta REACT_TEMP
+        rts
+
+REACT_START_M = CFG_CLK_H*60 + CFG_CLK_M
+REACT_K = (99*256 + REACT_START_M DIV 2) DIV REACT_START_M
 
 ; =============================================================================
 ; READ_KEYS

@@ -239,9 +239,9 @@ $04  CLK_H        countdown hours
 $05  CLK_M        countdown minutes
 $06  CLK_S        countdown seconds
 $07  CLK_TICK     jiffy counter (0-49, PAL)
-$08  REACT_TEMP   reactor temperature 0-99
-$09  REACT_CNT    reactor drift counter
-$0A  REACT_JIT    reactor jitter sub-counter
+$08  REACT_TEMP   reactor temperature 0-99, derived from the countdown each frame
+$09  REACT_CNT    reactor frame counter (flicker cadence)
+$0A  REACT_JIT    reactor display flicker 0-3, added to REACT_TEMP when drawn
 $0B  LFSR_ST      8-bit LFSR state for noise
 $0C  MOVE_TMR     player movement throttle (one step per MOVE_PERIOD = 8 frames)
 $0D  TICK_FLAG    set by raster IRQ each frame
@@ -306,6 +306,8 @@ Room art is purely visual — walls, lasers, doorways, and terminals are **not**
 ^      ^ ^   ^ ^      ^^       ^^  ^
 0      7 9  13 15    23 24    31 33 36
 ```
+
+The reactor gauge visualises the countdown (nothing in the game reads it back). `TICK_REACTOR` sets `REACT_TEMP = 99 − M·99/START` every frame, with `M = CLK_H*60+CLK_M` (minutes left) and `START` the starting countdown in minutes — 0% at mission start, 99% as the clock runs out, and a death penalty visibly heats it up. To avoid a runtime division it multiplies `M` by `REACT_K = 99*256/START` (an assembly-time constant from `CFG_CLK_H/M`) and takes the high byte; `genworld.py` rejects a `start_time` under one minute. It also re-rolls a 0–3 flicker (`REACT_JIT`) every 8 frames; the shown value is `REACT_TEMP+REACT_JIT` (capped 99). `DRAW_HUD_DYNAMIC` draws it as an 8-segment thermometer in columns 24–31: solid blocks (`CH_SOLID` = `$E0` — not `$A0`, which is a room tile in the custom charset), `(shown+6)/12` segments lit in their zone colour from `REACT_ZONES` (4 green, 2 yellow, 2 red), the rest dark gray. The percentage (columns 33–35) uses the colour of the topmost lit segment. Note `DEC3`/`DEC2` clobber `TMP`/`TMP2`/`X` — keep any colour you need across them on the stack (the old code kept it in `TMP2`, so the digits were coloured by their own character code — usually black).
 
 ## Visual Style
 
