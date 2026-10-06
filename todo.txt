@@ -2,19 +2,47 @@
 #           OPEN
 # ------------------------
 
-Need better sprites and in-between frames for animation
-
-Need smoother sprite movement. It's fine that they are defined in character resolution, but
-they should move between character postions in pixel steps so it looks better
-
-Change from cursor keys to WASD + space, and also add joystick support as an alternative.
+Add joystick support as an alternative.
   - space for terminal mode instead of "t"
-  - No keyboard presses needed for map mode. Terminal option?
-  - How to check inventory? Terminal option?
+  - Add map option in the terminal, don't use "m" key
+
+Actually, remove keyboard support. This is a joystick controlled game. The only exception is "any key"
+to close popups and the intro screen - this is still allowed to register the keyboard as an option.
+
+The popups should not clear the screen left and right of the box, but instead keep the screen visible
+
+The top status bar should be changed to "HUMAN   00:00:00   Reactor[xxxx]". No % needed
+
+We don't need to define the terminal hitbox in titan.yaml. We can find the terminal tile
+in the map file and define where it's activated from that
+
+The sprites are centered, and the walls are always on the left/top side of the tile. It
+means that the current wall detection is wrong. The player sprite can go one tile closer
+when to the right of a wall, but should of course not be able to go further left since the
+wall is in the way.
+
+The death effect when hitting a laser is fine, but when you hit a robot there's a flash and a
+sound effect, then you are moved to the start position, and then there's another flash. The
+first death effect can be replaced with the laser hit effect which is better, and the second
+should be removed - we don't want to interrupts.
+
+When searching we can use Impossible Misison like dynamics. You press the fire button and
+keep it pressed. Soon a small "Searching" popup appears near the player (this can be a sprite).
+After another second it changes to "nothing here" (can be on two lines to make it compact)
+and when you release the fire button it disappears. If you do find something it disappears and
+you get the popup instead, telling you what you find (like already implemented for the
+red card).
+
+I want to add two more sprites
 
 # ------------------------
 #           DONE
 # ------------------------
+
+Need better sprites and in-between frames for animation
+
+Need smoother sprite movement. It's fine that they are defined in character resolution, but
+they should move between character postions in pixel steps so it looks better
 
 Major refactor: world data is now generated from a config file. titan.yaml
 defines rooms (bounds, player start, vchar64 map, map-view box), robots

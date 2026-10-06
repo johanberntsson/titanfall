@@ -79,13 +79,13 @@ The SYS address in `!pet` must be kept in sync manually if the header ever chang
 | Address | Purpose |
 |---------|---------|
 | `$0801` | BASIC stub (SYS 2064) |
-| `$0810` | Entry point / code start (code + `TILE_COLORS` end before `$2800`) |
+| `$0810` | Entry point / code start (code + `TILE_COLORS` end before `$2800` — **only ~150 bytes left**, see the TILE_COLORS gotcha) |
 | `$0400–$07FF` | Screen RAM (default VIC bank) |
 | `$2800–$2FFF` | `CHARSET` — custom 2K room-art charset (see below) |
 | `$D800–$DBFF` | Colour RAM |
 | `$07F8` | Sprite pointer table (end of screen RAM — **must be restored after every CLS call**) |
 | `$3000–$38FF` | Sprite frames (36 × 64 bytes, pointers `$C0–$E3`): player 12, robot 12, drone 12 — see "Sprites" |
-| `$3900` | Generated world data (`src/world.asm`): tables, room maps, runtime state arrays — follows the sprite block, grows with content, must stay below `$C000` |
+| `$3900` | `TITLE_SCR`/`TITLE_COL` intro logo (640 bytes), then the generated world data (`src/world.asm`): tables, room maps, wall grids, runtime state arrays — grows with content (ends ~`$44A4` today), must stay below `$C000` |
 | `$C000–$CFFF` | Licence to Kill SID music (init `$C000`, play `$C127`; loaded by exomizer) |
 
 ## Core Design Constraints
@@ -136,7 +136,7 @@ The game has two distinct active modes sharing a single countdown timer:
 Key state to track:
 - Countdown timer (real-time; configurable penalty and respawn per human death, see "Death & Respawn"; Game Over only when the clock hits zero)
 - Inventory: `ITEM_STATE` array (0=hidden 1=carried 2=used), one byte per config item
-- Per-actor: `ACT_X/Y` (position), `ACT_TGT` (patrol waypoint), `ACT_ALIVE`
+- Per-actor: `ACT_X/Y` (tile position), `ACT_TGT` (patrol waypoint), `ACT_ALIVE` (0=destroyed 1=alive 2=dying — sliding into a laser), `ACT_DIR`/`ACT_ANIM` (facing, walk frame), `GL_PXL/PXH/PY` (glided sprite pixel position)
 - Per-laser: `LASER_STATE` (0=active 1=destroyed)
 - Active mode (human / drone) and which actor is linked (`PLAYER_MODE`)
 
@@ -285,7 +285,7 @@ $35  KEY_SPC      space key flag (search, and enter terminal — see Keyboard ma
 $36  JOY_NEW      joystick 2 bits newly pressed this frame (set in MAIN_LOOP)
 ```
 
-Free zero-page slots: `$30`, `$37+`. Per-robot positions, laser/item state etc. moved to RAM arrays at the end of `src/world.asm` (`ACT_X/Y/TGT/ALIVE`, `ITEM_STATE`, `LASER_STATE`, `SPR_SLOT_ACT`) — indexed with `,x`, sized by the config.
+Free zero-page slots: `$30`, `$37+`. Per-robot positions, laser/item state etc. moved to RAM arrays at the end of `src/world.asm` (`ACT_X/Y/TGT/ALIVE/DIR/ANIM`, `GL_PXL/PXH/PY`, `ITEM_STATE`, `LASER_STATE`, `SPR_SLOT_ACT`) — indexed with `,x`, sized by the config.
 
 ## Room Map
 
@@ -303,10 +303,11 @@ Interior walls are derived from the room art at build time (see "Interior walls"
 ## HUD Layout (row 0, 40 chars)
 
 ```
-00:00:00 human reactor:[========]  99%
+00:00:00 human reactor:[########]  99%
 ^      ^ ^   ^ ^      ^^       ^^  ^
 0      7 9  13 15    23 24    31 33 36
 ```
+(`#` = one thermometer segment, a solid block `$E0`; row 1 below the HUD is a full row of `CH_HBLK` in blue as a separator.)
 
 The reactor gauge visualises the countdown (nothing in the game reads it back). `TICK_REACTOR` sets `REACT_TEMP = 99 − M·89/START` every frame, with `M = CLK_H*60+CLK_M` (minutes left) and `START` the starting countdown in minutes — 10% at mission start (one green segment, clearly safe), 99% as the clock runs out, and a death penalty visibly heats it up. To avoid a runtime division it multiplies `M` by `REACT_K = REACT_SPAN*256/START` (`REACT_SPAN` = 89 = 99 − the starting 10%) (an assembly-time constant from `CFG_CLK_H/M`) and takes the high byte; `genworld.py` rejects a `start_time` under one minute. It also re-rolls a 0–3 flicker (`REACT_JIT`) every 8 frames; the shown value is `REACT_TEMP+REACT_JIT` (capped 99). `DRAW_HUD_DYNAMIC` draws it as an 8-segment thermometer in columns 24–31: solid blocks (`CH_SOLID` = `$E0` — not `$A0`, which is a room tile in the custom charset), `(shown+6)/12` segments lit in their zone colour from `REACT_ZONES` (4 green, 2 yellow, 2 red), the rest dark gray. The percentage (columns 33–35) uses the colour of the topmost lit segment. Note `DEC3`/`DEC2` clobber `TMP`/`TMP2`/`X` — keep any colour you need across them on the stack (the old code kept it in `TMP2`, so the digits were coloured by their own character code — usually black).
 
@@ -335,7 +336,8 @@ Room/HUD art is authored with **vchar64** (charset + screen + colour editor). `g
 ### Code growth can silently corrupt TILE_COLORS/CHARSET — watch for ACME warnings
 `TILE_COLORS` (256 bytes, in `src/charset.asm`) has no fixed address — it starts wherever the code before it (all of `titanfall.asm` + every `!source`d module) happens to end, and `CHARSET` right after it is pinned to a fixed, 2K-aligned address (`* = $2800`). If code+`TILE_COLORS` ever grows past that fixed address, ACME does **not** fail the build — it prints `Warning - ... Segment starts inside another one, overwriting it.` and silently truncates the tail of `TILE_COLORS`, whose bytes get overwritten by the start of `CHARSET`. Since most room tiles use screen codes in the `$80s`-`$A0s`, this corrupts colour lookups for most of the room art (tiles render in wrong/black colours) while leaving the charset bitmaps themselves intact — exactly the "graphics look horrible, wrong colours" symptom, with no build error to point at it.
 - **Always check `make`'s full output for `Warning` lines, not just for a nonzero exit code** — a successful build can still have silently corrupted data.
-- To check headroom: `acme -f cbm -o /tmp/g.prg -l /tmp/labels.txt src/titanfall.asm` then `grep TILE_COLORS /tmp/labels.txt` — its start address + 256 must stay under `CHARSET`'s fixed address.
+- To check headroom: `acme -f cbm -o /tmp/g.prg -l /tmp/labels.txt src/titanfall.asm` then `grep TILE_COLORS /tmp/labels.txt` — its start address + 256 must stay under `CHARSET`'s fixed address. **As of 2026-10-06 `TILE_COLORS` starts at `$266C`, leaving only ~150 bytes** — the next sizeable feature will need the move below first.
+- Keep *data* out of the code area where possible: the intro logo, sprites and all generated world data already live above the charset (`$3000+`); prefer that for new tables/strings too.
 - `CHARSET` was moved from `$2000` to `$2800` for exactly this reason (code had grown ~173 bytes past the old boundary); this freed a full extra 2KB of headroom. If it happens again, the same fix applies — bump `CHARSET`'s `* =` in `src/charset.asm` to the next free 2K-aligned address (the sprite block at `$3000` and the world data after it would have to move up too) and update `VIC_VMCSB`'s value in `titanfall.asm` to match (`$D018 = (screen_base/1024)*16 + (charset_base/2048)*2`; `$0400`/`$2800` → `$1A`).
 
 ### CLS wipes the sprite pointers
@@ -438,9 +440,11 @@ Star characters (`*`) in the game over / win titles are recoloured to YELLOW aft
 
 ## Current Status
 
-The core puzzle loop is in place and playable end-to-end: explore, take over the splicer via the terminal, destroy the laser with it, search for the access card, and reach the win screen through the now-unlockable room 2 door — with a real risk/reward death penalty (lose time + respawn) instead of an instant Game Over, and Game Over genuinely tied to the countdown clock hitting zero.
+The core puzzle loop is in place and playable end-to-end: explore, take over the splicer via the terminal, drive it into the laser (it slides into the beam, the beam vanishes from the art with a "bzzzt"), search for the access card, and reach the win screen through the now-unlockable room 2 door — with a real risk/reward death penalty (lose time + respawn) instead of an instant Game Over, and Game Over genuinely tied to the countdown clock hitting zero.
 
-The world is now **config-driven**: rooms (bounds, player start, vchar64 map), robots (type, start, patrol waypoints), items (position, label, found-text), doors (rect, destination, arrival position, key), lasers, terminal zones, the starting clock and the death penalty all live in `titan.yaml` and are compiled into `src/world.asm` data tables at build time. Adding a room = a vchar64 map export + a `rooms:` entry (plus, for now, hand-drawn sector-map art — see below). Adding an item, door, laser or robot is config-only.
+The world is **config-driven**: rooms (bounds, player start, vchar64 map), robots (type, start, patrol waypoints), items (position, label, found-text), doors (rect, destination, arrival position, key), lasers, terminal zones, the starting clock, the death penalty and the art codes (floor, laser, wall chars) all live in `titan.yaml` and are compiled into `src/world.asm` data tables at build time. Interior walls and the laser-erase patches are derived from the room art by `genworld.py`, which also rejects placements inside walls. Adding a room = a vchar64 map export + a `rooms:` entry (plus, for now, hand-drawn sector-map art — see below). Adding an item, door, laser or robot is config-only.
+
+Presentation (as of 2026-10-06): multicolour animated sprites with 4-way facing (walker player, walking robots in room 1, hovering drone in room 2), smooth gliding movement between tiles, a PETSCII block-letter title logo + author line on the intro, rounded PETSCII frames with uniform frame colours on every box (intro, game over, win, terminal, popups, sector map), and a working reactor thermometer tied to the countdown. The obvious visual glitches (robots over the terminal, wrong spawn in room 2, walking through walls, blank reactor HUD, terminal cursor on several rows) are fixed.
 
 ## What's Not Yet Implemented
 
@@ -449,3 +453,8 @@ The world is now **config-driven**: rooms (bounds, player start, vchar64 map), r
 - Item states `carried` vs `used` aren't distinguished yet — door keys accept either, nothing sets `used` (=2)
 - `ai:` in `titan.yaml` only accepts `patrol` (two-waypoint shuttle); no other AI routines exist yet
 - Max 2 robots per room (hardware sprites 1–2; enforced by `genworld.py`) — a sprite multiplexer is deliberately out of scope
+- The reactor gauge is display-only — nothing happens when it's in the red (an idea: make it a real hazard)
+- Room 2's drone patrols only X 2–7, leaving the right third of the (now full-width) room unguarded
+- Furniture is walk-through (not in `art.solid_tiles`); walls only check the sprite's feet, so the upper body overlaps wall art in the oblique view (intended)
+- The code area is nearly full (~150 bytes before `CHARSET` at `$2800`) — move the charset up before the next big feature (see the TILE_COLORS gotcha)
+- `graphics/aaa-*` files (an alternative vchar64 project/export) are untracked and not referenced by the build
