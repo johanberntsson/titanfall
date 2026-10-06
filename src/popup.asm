@@ -173,6 +173,28 @@ SETUP_DOOR_LOCKED
         jmp SHOW_POPUP
 
 ; ---------------------------------------------------------------------------
+; SETUP_WHERE — F2 "where am I" popup: room number and tile X/Y of whoever
+; the player is driving (human, or the proxy robot), patched into
+; SBOX_MSG_WHERE. Called (tail-jumped) from READ_KEYS.
+; ---------------------------------------------------------------------------
+SETUP_WHERE
+        lda CUR_ROOM : clc : adc #(CH_0+1) : sta SBW_ROOM
+        ldx PLAYER_MODE : beq SWHUM
+        dex
+        lda ACT_Y,x : sta NEWY       ; stash: DEC2 clobbers X and TMP/TMP2
+        lda ACT_X,x
+        jmp SWXY
+SWHUM   lda PLR_Y : sta NEWY
+        lda PLR_X
+SWXY    jsr DEC2                     ; X 0-19, Y 0-10: 2 digits each
+        lda TMP : sta SBW_X : lda TMP2 : sta SBW_X+1
+        lda NEWY : jsr DEC2
+        lda TMP : sta SBW_Y : lda TMP2 : sta SBW_Y+1
+        lda #<SBOX_MSG_WHERE : sta PTR
+        lda #>SBOX_MSG_WHERE : sta PTR+1
+        jmp SHOW_POPUP
+
+; ---------------------------------------------------------------------------
 ; SHOW_POPUP — draw the popup box with the message row pointed to by
 ; PTR/PTR+1 (40 PETSCII bytes, of which columns 4-35 are drawn), switch to
 ; state 6.
@@ -221,6 +243,10 @@ SBOX_TOP        !pet "    ", G_RD_UL
                 !pet G_RD_UR, "    "
 SBOX_BLK        !pet "    ", G_VERT_BAR, "                              ", G_VERT_BAR, "    "
 SBOX_MSG_LOCKED !pet "    ", G_VERT_BAR, "         door locked!         ", G_VERT_BAR, "    "
+SBOX_MSG_WHERE  !pet "    ", G_VERT_BAR, "     room "      ; digits patched
+SBW_ROOM        !pet "1   x="                               ;  by SETUP_WHERE
+SBW_X           !pet "00   y="
+SBW_Y           !pet "00     ", G_VERT_BAR, "    "
 SBOX_HNT        !pet "    ", G_VERT_BAR, "          press fire          ", G_VERT_BAR, "    "
 SBOX_BOT        !pet "    ", G_RD_LL
                 !fill 30, G_HORIZ_BAR

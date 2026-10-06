@@ -57,6 +57,7 @@ ROB_TMR    = $2D   ; robot movement timer (shared by all actors)
 PLAYER_MODE = $31  ; 0=human (control PLR_X/Y)  else actor index+1 (proxy mode)
 KEY_X      = $32   ; X key flag (exit robot proxy mode)
 POPUP_ST   = $33   ; popup: 0=waiting for opening space to be released, 1=armed
+F2_PREV    = $30   ; F2 held last game frame (edge detect for the where-am-I popup)
 JOY_PREV   = $34   ; joystick 2 bits held last frame (1=pressed, bits 0-4)
 KEY_SPC    = $35   ; fire/space freshly pressed this frame (READ_KEYS)
 JOY_NEW    = $36   ; joystick 2 bits newly pressed this frame (U/D/L/R/fire)

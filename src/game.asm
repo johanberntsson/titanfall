@@ -28,6 +28,7 @@ GA_CLOCKOK
 GA_NOLASER
         jsr TICK_ROBOT
         jsr READ_KEYS
+        lda GAME_STATE : cmp #1 : bne GAME_TICK_DONE  ; terminal/popup opened by a key
         jsr MOVE_PLAYER
         lda GAME_STATE : cmp #1 : bne GAME_TICK_DONE  ; terminal/win/map/popup entered this frame
         jsr UPDATE_SPRITE0
@@ -379,6 +380,23 @@ RKDN
         lda CIA1_PRB : and #$80 : bne RKXN
         lda #1 : sta KEY_X
 RKXN
+
+        ; F2 = shift + F1 (hard to hit by mistake): the "where am I" popup
+        ; with room and position (SETUP_WHERE). F1: col 0 (PA=$FE), row 4;
+        ; left shift: col 1 (PA=$FD), row 7; right shift: col 6 (PA=$BF),
+        ; row 4. Edge-detected via F2_PREV so holding it doesn't reopen the
+        ; popup straight after it closes.
+        lda #$FE : sta CIA1_PRA
+        lda CIA1_PRB : and #$10 : bne RKF2UP
+        lda #$FD : sta CIA1_PRA
+        lda CIA1_PRB : and #$80 : beq RKF2DN
+        lda #$BF : sta CIA1_PRA
+        lda CIA1_PRB : and #$10 : bne RKF2UP
+RKF2DN  lda F2_PREV : bne RKF2N          ; still held from the last popup
+        lda #1 : sta F2_PREV
+        jmp SETUP_WHERE                  ; tail call: back to GAME_ALIVE
+RKF2UP  lda #0 : sta F2_PREV
+RKF2N
 
         ; Space (search): col 7 (PA=$7F), row 4 (PB bit 4, active low)
         lda #$7F : sta CIA1_PRA
@@ -1058,21 +1076,6 @@ DRAW_STATUS
 DSTL    lda STAT_TMPL,x : jsr PET2SCREEN : sta SCRN+960,x
         lda #DGRAY : sta CRAM+960,x
         dex : bpl DSTL
-        lda CUR_ROOM : clc : adc #(CH_0+1) : sta SCRN+962
-        ; position of whoever the player is driving (human or proxy actor)
-        ldx PLAYER_MODE : beq DSTHUM
-        dex
-        lda ACT_Y,x : sta NEWY       ; stash: DEC2 clobbers X and TMP/TMP2
-        lda ACT_X,x
-        jmp DSTXY
-DSTHUM  lda PLR_Y : sta NEWY
-        lda PLR_X
-DSTXY   jsr DEC2                     ; X 0-19, Y 0-10: 2 digits each
-        lda TMP : sta SCRN+966 : lda TMP2 : sta SCRN+967
-        lda NEWY : jsr DEC2
-        lda TMP : sta SCRN+971 : lda TMP2 : sta SCRN+972
-        lda #LTGREEN : sta CRAM+962 : sta CRAM+966 : sta CRAM+967
-        sta CRAM+971 : sta CRAM+972
 
         ; item field: label of the first non-hidden item (12 chars, world.asm)
         ldx #0
@@ -1082,13 +1085,14 @@ DSTIL   cpx #NUM_ITEMS : bcs DSTOUT
 DSTIF   lda ITEM_LABEL_LO,x : sta PTR
         lda ITEM_LABEL_HI,x : sta PTR+1
         ldy #11
-DSTLL   lda (PTR),y : jsr PET2SCREEN : sta SCRN+979,y
-        lda #LTRED : sta CRAM+979,y
+DSTLL   lda (PTR),y : jsr PET2SCREEN : sta SCRN+967,y
+        lda #LTRED : sta CRAM+967,y
         dey : bpl DSTLL
 DSTOUT  rts
 
+; room and position moved to the F2 popup (SETUP_WHERE, popup.asm)
 STAT_TMPL
-        !pet "r:0 x=00 y=00 item:            joystick "
+        !pet " item:                                  "
 
 ; =============================================================================
 ; SID SOUND EFFECTS — voice 1, one effect at a time. While SND_TMR > 0,

@@ -2,28 +2,29 @@
 #           OPEN
 # ------------------------
 
-No need to write room and x/y all the time. Do this as a popup when pushing F2 (not likely
-to be pushed by mistake on a real C64) Remove "JOYSTICK" too from the bottom line.
+Add security codes (A and B) as something you can find (later) and something that is needed to take
+over robots. titan.yaml has to define what code is needed for each robot. Let's start with
+two basic security codes (A), and later we can hide more codes for people to find. 
+The bottom line could be "CODE: A 2 B 0    CARD: RED " instead (assuming we have found the red card
+and have two A type codes). If a code is used in the terminal we decrease the count of course.
+And if we don't have a code we'll get a poup in the terminal saying so.
 
-Add security codes as something you can find and something that is needed to take over
-robots. titan.yaml has to define what code is needed for each robot. Let's start with
-two basic security codes (A), and later we can hide more codes for people to find.
-
-The bottom line could be "CODE: A 2 B 0    CARD: RED BLUE" instead. 
-
-Robots should have at least two speeds, normal and fast
 
 I'm made two new sprites for later
 
 More interesting robot AI. For example,
-1 someone that rushes towards you when you're in the line of sight
-2 someone that can shoot at you
-3 someone that has the laser like Impossible Mission
+The robot in room 2 rushes towards you when you're in the line of sight. This means that Robots should have at least two speeds, normal and fast. If you leave the line of sight it goes back to the normal speed and behaviour
+
+2 someone that can shoot at you (using the bolt sprite)
+3 someone that has a laser field like Impossible Mission (using the force filed sprite)
 
 
 # ------------------------
 #           DONE
 # ------------------------
+
+No need to write room and x/y all the time. Do this as a popup when pushing F2 (not likely
+to be pushed by mistake on a real C64) Remove "JOYSTICK" too from the bottom line.
 
 We don't need to define the terminal hitbox in titan.yaml. We can find the terminal tile
 in the map file and define where it's activated from that
