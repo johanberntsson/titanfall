@@ -76,12 +76,17 @@ rooms:
     # bounds: {max_x: 19, max_y: 10}   # optional; default is the whole room
     player_start: {x: 6, y: 4}
     map_view: {row: 9, col: 2, width: 12, height: 4}   # highlight box on the sector map
+    # Robots: name is shown in the terminal menu (max 22 chars; default: id
+    # or type); locked: true lists it there but refuses the link.
     robots:
       - type: sentry
+        name: bot-5150  sentry
+        locked: true
         start: {x: 3, y: 7}
         patrol: [{x: 3, y: 7}, {x: 6, y: 7}]
       - id: bot3312                    # referenced by the terminal menu (ACTOR_BOT3312)
         type: splicer
+        name: bot-3312  splicer
         start: {x: 11, y: 4}
         patrol: [{x: 11, y: 4}, {x: 14, y: 4}]   # y=3 at x=14 is inside a wall
     things:
@@ -102,6 +107,7 @@ rooms:
     map_view: {row: 9, col: 20, width: 12, height: 5}
     robots:
       - type: drone
+        name: bot-8808  drone
         start: {x: 3, y: 5}
         patrol: [{x: 3, y: 5}, {x: 11, y: 5}]
     doors:

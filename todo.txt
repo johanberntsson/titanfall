@@ -2,13 +2,6 @@
 #           OPEN
 # ------------------------
 
-Add joystick support as an alternative.
-  - space for terminal mode instead of "t"
-  - Add map option in the terminal, don't use "m" key
-
-Actually, remove keyboard support. This is a joystick controlled game. The only exception is "any key"
-to close popups and the intro screen - this is still allowed to register the keyboard as an option.
-
 The popups should not clear the screen left and right of the box, but instead keep the screen visible
 
 The top status bar should be changed to "HUMAN   00:00:00   Reactor[xxxx]". No % needed
@@ -35,9 +28,16 @@ red card).
 
 I want to add two more sprites
 
+Perhaps remove keyboard support. This is a joystick controlled game. The only exception is "any key"
+to close popups and the intro screen - this is still allowed to register the keyboard as an option.
+
 # ------------------------
 #           DONE
 # ------------------------
+
+Add joystick support as an alternative.
+  - space for terminal mode instead of "t"
+  - Add map option in the terminal, don't use "m" key
 
 Need better sprites and in-between frames for animation
 

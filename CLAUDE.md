@@ -36,7 +36,7 @@ The source is split into one orchestrator and eight state/data modules, all `!so
 | `src/gameover.asm` | `DO_GAMEOVER`, `SETUP_GAMEOVER`, `GO_BLINK` helpers, strings |
 | `src/win.asm` | `DO_WIN`, `SETUP_WIN`, `WIN_BLINK` helpers, strings |
 | `src/terminal.asm` | `SETUP_TERMINAL`, `DO_TERMINAL`, `TERM_DRAW_SEL`, `CLEAR_ROOM`, strings |
-| `src/map.asm` | `DO_MAP`, `SETUP_MAP`, map strings |
+| `src/map.asm` | `DO_MAP`, `SETUP_MAP`, `MAP_ROWS`, map strings |
 | `src/popup.asm` | `DO_POPUP`, `SHOW_POPUP`, `SETUP_SEARCH`, `SETUP_DOOR_LOCKED`, popup strings |
 | `src/c64_walker_sprites.asm`, `src/c64_robot_sprites.asm`, `src/c64_drone_sprites.asm` | Multicolour sprite sets (player / walking robot / flying drone), `!source`d into the sprite block at `$3000`. All three have all four facings (robots need up/down too — the terminal lets you drive them in any direction) |
 | `src/charset.asm` | `TILE_COLORS` (256-byte tile→colour table) and `CHARSET` (custom 2K charset at `$2800`), generated from `graphics/*.s` — see "Custom Charset / Screen Art" |
@@ -104,12 +104,12 @@ When implementing code, always respect these C64 hardware limits:
 
 | Value | State | Description |
 |-------|-------|-------------|
-| 0 | Intro | Title screen, tagline, blinking "press any key" prompt |
+| 0 | Intro | Title screen, tagline, blinking "press fire" prompt |
 | 1 | Game | Playfield with HUD, player sprite, room map, countdown clock, reactor meter |
 | 2 | Game over | Red border + descending-pitch sound, then game-over screen |
 | 3 | Terminal | Full-screen drone selection menu (Space near terminal; time paused; sprite hidden) |
 | 4 | Win | Mission complete screen (reached via bottom exit in room 2) |
-| 5 | Map | Sector map overlay (M key; time paused; sprite hidden; any key to return) |
+| 5 | Map | Sector map overlay (terminal's "view map" entry; time paused; sprite hidden; fire/any key returns to the terminal) |
 | 6 | Popup | "Found item" or "door locked" popup (Space at a search spot, or blocked at a locked door; time/robots paused; a fresh Space press closes it — see the popup section) |
 
 **Stack discipline:** The state machine uses fall-through / `jmp` between states, not `jsr`/`rts`. `MAIN_LOOP` is entered by falling through from init code, never by `jsr`. State transitions use `jmp SETUP_*` not `jsr`, so the return address on the stack is always the one from `DISPATCH`'s `jsr TICK_*`. Never `jsr` into anything that falls into `MAIN_LOOP`.
@@ -126,11 +126,11 @@ The game has two distinct active modes sharing a single countdown timer:
 2. **Robot/proxy mode** — activated at mainframe terminals; the human sprite freezes and the player controls a drone remotely
 
 `PLAYER_MODE` (`$31`) implements this generically: **0 = human control, otherwise (actor index + 1) = that actor is player-driven**. Robots are entries in the generated actor tables (`ACT_*` in `world.asm`); the splicer is `ACTOR_BOT3312` (equate from `id: bot3312` in `titan.yaml`).
-- Selecting bot-3312 in the terminal (`TERM_LINK_SPLICER` in `terminal.asm`) sets `PLAYER_MODE=ACTOR_BOT3312+1` and jumps straight back into gameplay via the shared `TERM_ABORT` exit path — no extra confirmation keypress.
+- Selecting a robot in the terminal (`TERM_ROBOT` in `terminal.asm`) sets `PLAYER_MODE=actor+1` and jumps straight back into gameplay via the shared `TERM_ABORT` exit path — no extra confirmation press — unless the robot is destroyed (`TMSG_DEAD`) or `locked: true` in `titan.yaml` (`ACT_LOCK`, `TMSG_LCK`). See "Terminal menu".
 - While `PLAYER_MODE≠0`, `MOVE_PLAYER` (`game.asm`) dispatches to `MOVE_ACTOR`, which moves `ACT_X/Y` of actor `PLAYER_MODE-1` — WASD/joystick drive the robot, clamped to its own room's `ROOM_MAXX/Y` bounds; no doorway checks (robots can't leave their room); the human sprite stays frozen at its last `PLR_X/Y`. Driving into an active laser destroys both robot and laser — see "Lasers can be destroyed by a driven robot".
 - `TICK_ROBOT` skips the patrol step for the player-driven actor (index+1 == `PLAYER_MODE`) so the AI doesn't fight manual control.
 - `CHECK_SPRITE_HIT` ignores player-sprite collisions while `PLAYER_MODE≠0` (the human is standing safely at the terminal); it still reads `VIC_SPCOLL` every frame regardless of mode so the hardware latch doesn't accumulate a stale hit for when control returns to human.
-- The **X key** (`KEY_X`, checked at the end of `READ_KEYS`) exits proxy mode at any time, setting `PLAYER_MODE=0` back to human control. It is the only way out mid-link: both Space actions (terminal and search) are gated on `PLAYER_MODE=0` — a player-driven robot can't use equipment, and the frozen human still standing in the terminal zone must not re-trigger the terminal. The terminal menu's **logoff** entry (`TERM_LOGOFF`) still clears `PLAYER_MODE` but is only reachable in human mode.
+- **Fire** (a fresh press, `JOY_NEW`) or the **X key** (`KEY_X`), checked at `RKXCHK` at the end of `READ_KEYS`, exits proxy mode at any time, setting `PLAYER_MODE=0` back to human control. Fire is free for this because both fire/Space actions (terminal and search) are gated on `PLAYER_MODE=0` — a player-driven robot can't use equipment, and the frozen human still standing in the terminal zone must not re-trigger the terminal.
 - `DRAW_HUD_DYNAMIC` and `DRAW_STATUS` both branch on `PLAYER_MODE` to show "robot"/`ACT_X/Y` instead of "human"/`PLR_X/Y`.
 
 Key state to track:
@@ -156,7 +156,7 @@ Doorway transitions call `DRAW_ROOM`, which blits 22×40 chars via the `ROOM_MAP
 
 - **New room:** author the art in vchar64 (22×40, shared charset — see `graphics/README.txt`), export the map as ASM, add a `rooms:` entry in `titan.yaml` (name, `vchar64_map`, `player_start`, `map_view`; `bounds` optional) plus doors linking it to its neighbours (a door in each direction of travel, one per room). Until the sector-map art is generated, also extend the `MAP_R*` strings in `src/map.asm` by hand.
 - **New hidden item:** add an entry under `items:` (label ≤12 chars, found_text ≤30 chars) and place it with a `things:` entry in a room. Lock any door with `key: <item>`.
-- **New robot:** add a `robots:` entry in a room (`type`, `start`, two-point `patrol`; ≤2 robots per room). Give it an `id:` if code needs to reference it (emitted as `ACTOR_<ID>`). A new *type* needs an `actor_types:` entry, a sprite data block in `titanfall.asm` (64-byte aligned, referenced by label), and — until more AI exists — `ai: patrol`.
+- **New robot:** add a `robots:` entry in a room (`type`, `start`, two-point `patrol`, optional terminal `name:` ≤22 chars and `locked: true`; ≤2 robots per room). It appears in the terminal menu of its room automatically. Give it an `id:` if code needs to reference it (emitted as `ACTOR_<ID>`). A new *type* needs an `actor_types:` entry, a sprite data block in `titanfall.asm` (64-byte aligned, referenced by label), and — until more AI exists — `ai: patrol`.
 - **New laser / terminal zone:** one line under the room's `lasers:` / `terminals:`.
 - Check the room art visually matches the config rectangles — only walls are validated against the art (placements inside walls fail the build); lasers/doors/terminals are not.
 
@@ -204,9 +204,9 @@ If you change a step period, change the matching speeds (tile pitch / period) or
 ### Lasers can be destroyed by a driven robot
 `LASER_STATE` (one byte per config laser, 0=active 1=destroyed) implements a one-way puzzle mechanic: driving any proxy-controlled robot into an active laser destroys both.
 - `LASER_AT` (`game.asm`) is the shared test — carry set if `NEWX/NEWY` is inside an active laser rect of the current room, returning the laser index in `Y`. `TRY_MOVE` (human) and `TRY_ACT` (driven robot) both call it on every attempted move.
-- On a robot hit, `TRY_ACT` doesn't destroy it yet: it sets `ACT_ALIVE=2` ("dying") and remembers the laser in `PEND_LSR`. A dying robot ignores input (`MOVE_ACTOR`) and patrol (`TICK_ROBOT` only moves `ACT_ALIVE=1`), and keeps gliding onto the laser tile; once its sprite arrives, `UPD_DYING` (from `UPD_SLOT`) calls `ROBOT_LASER_DEATH`, which sets that actor's `ACT_ALIVE=0` (sprite hidden for good, patrol suspended forever) and that laser's `LASER_STATE=1` (it stops killing the human too), erases the beam from the screen (`ERASE_LASER`, below), flashes the border yellow via `BFLASH`, and resets `PLAYER_MODE=0` (control snaps back to human without waiting for the X key).
+- On a robot hit, `TRY_ACT` doesn't destroy it yet: it sets `ACT_ALIVE=2` ("dying") and remembers the laser in `PEND_LSR`. A dying robot ignores input (`MOVE_ACTOR`) and patrol (`TICK_ROBOT` only moves `ACT_ALIVE=1`), and keeps gliding onto the laser tile; once its sprite arrives, `UPD_DYING` (from `UPD_SLOT`) calls `ROBOT_LASER_DEATH`, which sets that actor's `ACT_ALIVE=0` (sprite hidden for good, patrol suspended forever) and that laser's `LASER_STATE=1` (it stops killing the human too), erases the beam from the screen (`ERASE_LASER`, below), flashes the border yellow via `BFLASH`, and resets `PLAYER_MODE=0` (control snaps back to human without waiting for fire).
 - **Destroyed lasers disappear from the room art.** The room maps always have every laser drawn in, so `genworld.py` precomputes per laser a patch list (`LASER_ART_n`, via `LASER_ART_LO/HI`): every cell under the laser rect (its tiles' 2×2 chars ±1 char row, to catch the emitters) whose screen code is in `art.laser_tiles` in `titan.yaml`, with its replacement — the char on both sides if they match (so a beam crossing a wall leaves the wall continuous), else `art.floor_tile`. `ERASE_LASER` (Y = laser index) writes those cells + their `TILE_COLORS` colour; it runs from `ROBOT_LASER_DEATH` and at the end of `DRAW_ROOM` for every destroyed laser in `CUR_ROOM` (so room changes / popup / map / terminal redraws keep it erased; `RESET_ROUND` re-arms lasers before redrawing, so a respawn brings the beam back). The build warns if a laser has no `laser_tiles` under it — usually art and config have drifted apart. New laser glyphs in the charset must be added to `laser_tiles`.
-- The terminal blocks re-linking to a destroyed splicer: `TERM_LINK_SPLICER` in `terminal.asm` checks `ACT_ALIVE+ACTOR_BOT3312` and shows `TMSG_DEAD` instead of linking if it's already gone.
+- The terminal blocks re-linking to a destroyed robot: its menu row is dark grey and tagged "destroyed", and `TERM_ROBOT` shows `TMSG_DEAD` instead of linking.
 
 ### Sprite collision
 `CHECK_SPRITE_HIT` reads `VIC_SPCOLL` (`$D01E`) each frame after all three sprites are positioned. Bit 0 (sprite 0 / player) non-zero means the player overlapped any other enabled sprite. Response mirrors laser death: red border, `DEATH_TMR = DEATH_LEN`, `SOUND_DEATH_START` (the falling sweep; a laser death plays the zap with `DEATH_TMR = ZAP_LEN`). `$D01E` is cleared by the hardware on read. (With only 2 sprites the old code checked `bits 0-1`; with 3 sprites a robot-vs-robot collision could set bit 1 or 2 without the player involved, so only bit 0 is checked now.)
@@ -229,7 +229,7 @@ Dying (laser or sprite collision, `DEATH_TMR` counting down to 0 in `DO_GAME`) n
 - Unlike terminal/map, the popup does **not** `CLEAR_ROOM` first — `SHOW_POPUP` only overwrites rows 8-13 with a small bordered box, so the room art stays visible underneath. `DO_POPUP` erases it on close by calling `DRAW_ROOM` (full redraw) rather than restoring specific rows.
 - Time and robot patrol are paused for free, the same way terminal/map already pause them: `DO_GAME` (and hence `TICK_CLOCK`/`TICK_ROBOT`) simply isn't called while `GAME_STATE=6`.
 - `ITEM_STATE` is reset only in `SETUP_GAME` (fresh game), not in `RESET_ROUND` — carried items are inventory and survive a death/respawn, unlike the actor/laser state that `RESET_ROUND` does reset.
-- `DRAW_STATUS` shows `item:` plus the first non-hidden item's 12-char label (`label:` in `titan.yaml`, in `LTRED`) in the status line.
+- `DRAW_STATUS` (row 24: room, 2-digit X/Y of whoever is driven, item) shows `item:` plus the first non-hidden item's 12-char label (`label:` in `titan.yaml`, in `LTRED`) in the status line.
 
 ## Zero Page Map
 
@@ -260,14 +260,13 @@ $1B  DEATH_TMR    frames remaining after laser/robot hit (as long as the death s
 $1C  BLINK_TMR    blink frame counter
 $1D  BLINK_ST     blink state (0=visible 1=hidden)
 $1E  SND_TMR      sound effect countdown (0=silent, music plays)
-$1F  TERM_SEL     terminal selected drone row (0-3)
-$20  TERM_TMR     terminal link confirmation countdown
+$1F  TERM_SEL     terminal selected menu entry (0..TERM_N-1)
+$20  (free — was TERM_TMR)
 $21  NEAR_TERM    non-zero when player is adjacent to terminal
 $22  (free — was KEY_F1/T key flag, removed when terminal entry moved to Space/KEY_SPC)
-$23  KEY_RET      Return key flag
-$24  KEY_ESC      F7/Escape key flag
+$23/$24 ROWS_PTR  DRAW_ROWS row-list pointer
 $25  CUR_ROOM     current room index (into world.asm ROOM_* tables)
-$26  KEY_MAP      M key flag (open map)
+$26  (free — was KEY_MAP)
 $27  NEWX         candidate tile X for the move being attempted
 $28  NEWY         candidate tile Y (MOVE_PLAYER/MOVE_ACTOR/patrol/sprite scratch)
 $29  PLR_DIR      player facing (DIR_DOWN/UP/LEFT/RIGHT = 0-3)
@@ -278,14 +277,14 @@ $2D  ROB_TMR      robot movement timer (shared by all actors, ROB_PERIOD = 16 fr
 $2E  GL_SX        GLIDE speed X, px/frame (smooth movement)
 $2F  GL_SY        GLIDE speed Y, px/frame
 $31  PLAYER_MODE  0=human (PLR_X/Y)  else actor index+1 (proxy mode, ACT_X/Y)
-$32  KEY_X        X key flag (exit robot proxy mode)
+$32  KEY_X        X key flag (exit robot proxy mode; fire does the same)
 $33  POPUP_ST     popup close edge-detector (0=opener held, 1=armed, 2=pressed)
 $34  JOY_PREV     joystick 2 bits held last frame (1=pressed; 0 U 1 D 2 L 3 R 4 fire)
 $35  KEY_SPC      space key flag (search, and enter terminal — see Keyboard matrix gotcha)
 $36  JOY_NEW      joystick 2 bits newly pressed this frame (set in MAIN_LOOP)
 ```
 
-Free zero-page slots: `$30`, `$37+`. Per-robot positions, laser/item state etc. moved to RAM arrays at the end of `src/world.asm` (`ACT_X/Y/TGT/ALIVE/DIR/ANIM`, `GL_PXL/PXH/PY`, `ITEM_STATE`, `LASER_STATE`, `SPR_SLOT_ACT`) — indexed with `,x`, sized by the config.
+Free zero-page slots: `$20`, `$26`, `$30`, `$37+`. Per-robot positions, laser/item state etc. moved to RAM arrays at the end of `src/world.asm` (`ACT_X/Y/TGT/ALIVE/DIR/ANIM`, `GL_PXL/PXH/PY`, `ITEM_STATE`, `LASER_STATE`, `SPR_SLOT_ACT`) — indexed with `,x`, sized by the config.
 
 ## Room Map
 
@@ -296,7 +295,7 @@ Interior walls are derived from the room art at build time (see "Interior walls"
 | Feature | Config (titan.yaml) | Colour |
 |---------|---------------------|--------|
 | Laser wall | room1 laser rect X=9, Y 0–10 — kills player on contact, unless destroyed (`LASER_STATE`) | Lt Red (visual) |
-| Terminal | room1 terminal zone X 1–2, Y 1–2 (in front of the console, top left); press space | Lt Green (visual) |
+| Terminal | room1 terminal zone X 1–2, Y 1–2 (in front of the console, top left); press fire | Lt Green (visual) |
 | Room 1 ↔ room 2 doorway | door rects at x=-1 (room1) / x=20 (room2), Y 5–6 | — |
 | Win exit | room2 door rect y=11, X 6–10, `leads_to: exit`, `key: red_card` — locked popup without the card | — |
 
@@ -336,7 +335,7 @@ Room/HUD art is authored with **vchar64** (charset + screen + colour editor). `g
 ### Code growth can silently corrupt TILE_COLORS/CHARSET — watch for ACME warnings
 `TILE_COLORS` (256 bytes, in `src/charset.asm`) has no fixed address — it starts wherever the code before it (all of `titanfall.asm` + every `!source`d module) happens to end, and `CHARSET` right after it is pinned to a fixed, 2K-aligned address (`* = $2800`). If code+`TILE_COLORS` ever grows past that fixed address, ACME does **not** fail the build — it prints `Warning - ... Segment starts inside another one, overwriting it.` and silently truncates the tail of `TILE_COLORS`, whose bytes get overwritten by the start of `CHARSET`. Since most room tiles use screen codes in the `$80s`-`$A0s`, this corrupts colour lookups for most of the room art (tiles render in wrong/black colours) while leaving the charset bitmaps themselves intact — exactly the "graphics look horrible, wrong colours" symptom, with no build error to point at it.
 - **Always check `make`'s full output for `Warning` lines, not just for a nonzero exit code** — a successful build can still have silently corrupted data.
-- To check headroom: `acme -f cbm -o /tmp/g.prg -l /tmp/labels.txt src/titanfall.asm` then `grep TILE_COLORS /tmp/labels.txt` — its start address + 256 must stay under `CHARSET`'s fixed address. **As of 2026-10-06 `TILE_COLORS` starts at `$2650`, leaving only ~175 bytes** — the next sizeable feature will need the move below first.
+- To check headroom: `acme -f cbm -o /tmp/g.prg -l /tmp/labels.txt src/titanfall.asm` then `grep TILE_COLORS /tmp/labels.txt` — its start address + 256 must stay under `CHARSET`'s fixed address. **As of 2026-10-06 `TILE_COLORS` starts at `$24F4`, leaving ~520 bytes.** Unrolled 40-byte row-copy loops are the usual bloat: prefer a `DRAW_ROWS` table (see "Screen Art") for new screens.
 - Keep *data* out of the code area where possible: the intro logo, sprites and all generated world data already live above the charset (`$3000+`); prefer that for new tables/strings too.
 - `CHARSET` was moved from `$2000` to `$2800` for exactly this reason (code had grown ~173 bytes past the old boundary); this freed a full extra 2KB of headroom. If it happens again, the same fix applies — bump `CHARSET`'s `* =` in `src/charset.asm` to the next free 2K-aligned address (the sprite block at `$3000` and the world data after it would have to move up too) and update `VIC_VMCSB`'s value in `titanfall.asm` to match (`$D018 = (screen_base/1024)*16 + (charset_base/2048)*2`; `$0400`/`$2800` → `$1A`).
 
@@ -374,15 +373,15 @@ W (up):            col 1 (PA=$FD), row 1 (PRB bit 1 = mask $02, active low)
 A (left):          col 1 (PA=$FD), row 2 (PRB bit 2 = mask $04, active low)
 S (down):          col 1 (PA=$FD), row 5 (PRB bit 5 = mask $20, active low)
 D (right):         col 2 (PA=$FB), row 2 (PRB bit 2 = mask $04, active low)
-M key (map):       col 4 (PA=$EF), row 4 (PRB bit 4 = mask $10, active low)
 X key (exit proxy):col 2 (PA=$FB), row 7 (PRB bit 7 = mask $80, active low)
 Space (search/terminal): col 7 (PA=$7F), row 4 (PRB bit 4 = mask $10, active low)
-Return:            col 1 (PA=$FD), row 1 (PRB bit 1 = mask $02, active low)
-F7 (exit):         col 7 (PA=$7F), row 4 (PRB bit 3 = mask $08, active low)
 ```
-Movement is WASD, not cursor keys. Joystick port 2 works alongside the keyboard: `READ_KEYS` first reads `CIA1_PRA` (`$DC00`) with `PRA=$FF` (no keyboard column selected; bits 0-4 = up/down/left/right/fire, active low) and ORs the directions into the same `KEY_U/D/L/R` flags (held = move). Fire is Space, but only on a *fresh* press: `MAIN_LOOP` polls port 2 once per frame into `JOY_PREV` (held bits) and `JOY_NEW` (bits newly pressed this frame, 1=pressed), and `READ_KEYS` sets `KEY_SPC` from `JOY_NEW` — otherwise fire still held from the terminal's logoff would re-enter the terminal on the next frame. (Port 1 would be `$DC01`, which collides with keyboard rows; it isn't read.) The `GETIN`-driven screens also take `JOY_NEW`: fire = "press any key" on intro/game over/win/map, and in the terminal menu fire = Return, up/down = cursor up/down. `DO_POPUP` polls fire directly with its own edge detector, alongside Space. Space does double duty: it enters the terminal inside a terminal zone (`TERMZ_*` tables) and searches on an item spot (`ITEM_*` tables) — keep these zones non-overlapping in `titan.yaml`, since the terminal check wins (it runs first in `READ_KEYS`). There used to be a dedicated T key for the terminal; it was removed in favor of reusing Space. If a key seems to trigger the wrong action, re-derive its column/row from the matrix table rather than guessing; `col`/`row` values that look adjacent (e.g. row 4 vs row 6) are an easy transcription error.
+**The game is fully playable with a joystick in port 2** (move, fire = search / use terminal / select / end a robot link / every "press fire" prompt); the keyboard is an alternative: WASD (not cursor keys), Space, X, and in the terminal Return/cursor up/down/F7. There is no map key — the map is a terminal entry. Joystick port 2 works alongside the keyboard: `READ_KEYS` first reads `CIA1_PRA` (`$DC00`) with `PRA=$FF` (no keyboard column selected; bits 0-4 = up/down/left/right/fire, active low) and ORs the directions into the same `KEY_U/D/L/R` flags (held = move). Fire is Space, but only on a *fresh* press: `MAIN_LOOP` polls port 2 once per frame into `JOY_PREV` (held bits) and `JOY_NEW` (bits newly pressed this frame, 1=pressed), and `READ_KEYS` sets `KEY_SPC` from `JOY_NEW` — otherwise fire still held from the terminal's logoff would re-enter the terminal on the next frame. (Port 1 would be `$DC01`, which collides with keyboard rows; it isn't read.) The `GETIN`-driven screens also take `JOY_NEW`: fire = "press fire" on intro/game over/win/map (any key also works), and in the terminal menu fire = Return, up/down = cursor up/down. `DO_POPUP` polls fire directly with its own edge detector, alongside Space. Space does double duty: it enters the terminal inside a terminal zone (`TERMZ_*` tables) and searches on an item spot (`ITEM_*` tables) — keep these zones non-overlapping in `titan.yaml`, since the terminal check wins (it runs first in `READ_KEYS`). There used to be a dedicated T key for the terminal; it was removed in favor of reusing Space. If a key seems to trigger the wrong action, re-derive its column/row from the matrix table rather than guessing; `col`/`row` values that look adjacent (e.g. row 4 vs row 6) are an easy transcription error.
 
-Terminal menu navigation uses `GETIN` (KERNAL keyboard buffer) for PETSCII codes: `$11`=cursor down, `$91`=cursor up, `$0D`=Return, `$88`=F7.
+Terminal menu keyboard navigation uses `GETIN` (KERNAL keyboard buffer) for PETSCII codes: `$11`=cursor down, `$91`=cursor up, `$0D`=Return, `$88`=F7 (leave). Space is deliberately not "select" there: the Space press that opened the terminal is still in the KERNAL buffer.
+
+### Terminal menu
+`SETUP_TERMINAL` builds the menu on entry from the actor tables: one entry per robot in `CUR_ROOM` (rows 8–9, at most 2 per room; text from the generated `ACT_TROW_n` row — `name:` from `titan.yaml`, plus "locked" for `locked: true`; a destroyed robot gets "destroyed" drawn over cols 28–36), then **view map** (row 11) and **logoff** (row 12). With no robots in the room, row 8 shows "no units in this sector". `TM_ACT`/`TM_ROW` (per entry: actor index or `TM_MAP`/`TM_LOGOFF`, and screen row) and `TERM_N` drive `TERM_DRAW_SEL` (colours, `>` marker) and `TERM_FIRE`. View map `jsr SETUP_MAP`s; leaving the map (`DO_MAP`) calls `SETUP_TERMINAL` again with `TERM_SEL` still on "view map" (`READ_KEYS` zeroes `TERM_SEL` before a fresh entry).
 
 ### Sprite data placement
 All sprite frames live in one block at `$3000` (see "Sprites"), which must stay inside VIC bank 0 and outside `$1000–$1FFF` (the VIC sees the character ROM there, not RAM). No runtime copy loop. Pointers are `address/64` — always computed from labels, never hard-coded.
@@ -418,6 +417,8 @@ Both set `$D418 = $0F` on start, and `SNDOFF` gates off and restores `$0F` at th
 
 Non-game screens (intro, game over, win) use a PETSCII box design: a bordered panel (rows 3–13 on game over / win, rows 12–21 under the logo and author line on the intro) drawn at 50 Hz by the relevant setup routine. All three share the subroutine `DRAW_INTRO_SCREEN` for the intro layout (called from `SHOW_INTRO`, the `DO_GAMEOVER` restart path, and the `DO_WIN` restart path).
 
+**Row lists.** `DRAW_ROWS` (`titanfall.asm`, A/Y = list address) draws a screen from a table of `(screen row, colour, string lo, string hi)` entries ended by `$FF` — the terminal (`TERM_ROWS`) and map (`MAP_ROWS`) use it instead of one unrolled copy loop per row. `DRAW_ROW` draws a single row (A = row, `PTR` = string, `TMP2` = colour), `PAINT_ROW` recolours the row at `PTR2`, `ROW_PTR` turns a row number into its screen address.
+
 ### Shared string labels (each exactly 40 bytes)
 - `SCR_BORDER_TOP` — rounded top border (`G_RD_UL` + 38 × `G_HORIZ_BAR` + `G_RD_UR`)
 - `SCR_BORDER_BOTTOM` — rounded bottom border (`G_RD_LL` + 38 × `G_HORIZ_BAR` + `G_RD_LR`)
@@ -446,7 +447,7 @@ Presentation (as of 2026-10-06): multicolour animated sprites with 4-way facing 
 
 ## What's Not Yet Implemented
 
-- Drone control for bot-7741 (loader) and bot-9901 (centurion) — only bot-3312 (splicer) is a real controllable proxy so far; the terminal menu itself (`TBOX_D0-D3` in `terminal.asm`) is still hardcoded, not generated from the actor tables, and selecting the other two is cosmetic (loader) or blocked (centurion, locked)
+- Robot abilities: every linkable robot drives the same way (any of them would burn out a laser); the per-type capabilities from the design (loader immune to lasers, splicer through ducts, centurion armed) aren't implemented. The room-1 sentry is `locked: true` so the splicer stays the puzzle's key
 - Sector map background art (`MAP_R8-R17` strings in `map.asm`) is still hand-drawn for the two current rooms; only the current-room highlight box is table-driven (`MAPHL_*` from `map_view:` in `titan.yaml`). A third room needs new map strings.
 - Item states `carried` vs `used` aren't distinguished yet — door keys accept either, nothing sets `used` (=2)
 - `ai:` in `titan.yaml` only accepts `patrol` (two-waypoint shuttle); no other AI routines exist yet

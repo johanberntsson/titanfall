@@ -135,4 +135,4 @@ ITR_M1      !pet G_VERT_BAR, "  mission: abort launch sequence      ", G_VERT_BA
 ITR_M2      !pet G_VERT_BAR, "  location: titan missile complex     ", G_VERT_BAR
 ITR_M3      !pet G_VERT_BAR, "  warning: launch in t-minus 5 hours  ", G_VERT_BAR
 
-TXT_PRESS   !pet "        press any key to start          "
+TXT_PRESS   !pet "         press fire to start            "

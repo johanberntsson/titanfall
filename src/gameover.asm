@@ -148,4 +148,4 @@ GO_M1       !pet G_VERT_BAR,"  operative terminated                ",G_VERT_BAR
 GO_M2       !pet G_VERT_BAR,"  titan launch sequence continues...  ",G_VERT_BAR
 GO_M3       !pet G_VERT_BAR,"  your mission has failed             ",G_VERT_BAR
 
-TXT_GOPRESS !pet "        press any key to retry          "
+TXT_GOPRESS !pet "         press fire to retry            "

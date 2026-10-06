@@ -315,7 +315,6 @@ REACT_K = (REACT_SPAN*256 + REACT_START_M DIV 2) DIV REACT_START_M
 ; =============================================================================
 READ_KEYS
         lda #0 : sta KEY_U : sta KEY_D : sta KEY_L : sta KEY_R
-        lda #0 : sta KEY_RET : sta KEY_ESC : sta KEY_MAP
         lda #0 : sta KEY_X
         lda #0 : sta KEY_SPC
 
@@ -353,24 +352,6 @@ RKAN
         lda #1 : sta KEY_R
 RKDN
 
-        ; Return: col 1 (PA=$FD), row 1 (PB bit 1, active low)
-        lda #$FD : sta CIA1_PRA
-        lda CIA1_PRB : and #$02 : bne RKRETN
-        lda #1 : sta KEY_RET
-RKRETN
-
-        ; F7: col 7 (PA=$7F), row 4 (PB bit 3, active low)
-        lda #$7F : sta CIA1_PRA
-        lda CIA1_PRB : and #$08 : bne RKESCN
-        lda #1 : sta KEY_ESC
-RKESCN
-
-        ; M key (map): col 4 (PA=$EF), row 4 (PB bit 4, active low)
-        lda #$EF : sta CIA1_PRA
-        lda CIA1_PRB : and #$10 : bne RKMN
-        lda #1 : sta KEY_MAP
-RKMN
-
         ; X key (exit robot proxy mode): col 2 (PA=$FB), row 7 (PB bit 7, active low)
         lda #$FB : sta CIA1_PRA
         lda CIA1_PRB : and #$80 : bne RKXN
@@ -386,25 +367,22 @@ RKSPCN
         ; Check proximity to a terminal zone (TERMZ_* tables) in this room.
         ; Human mode only: while proxying a robot the human sprite still
         ; stands in the zone, and space must not bounce back into the
-        ; terminal (the X key / logoff are the ways out of proxy mode).
+        ; terminal (fire / the X key end the link, see RKXCHK).
         lda #0 : sta NEAR_TERM
-        lda PLAYER_MODE : bne RKMAPCHK
+        lda PLAYER_MODE : bne RKSEARCHCHK
         ldx #0
-RKTL    cpx #NUM_TERMZONES : bcs RKMAPCHK
+RKTL    cpx #NUM_TERMZONES : bcs RKSEARCHCHK
         lda TERMZ_ROOM,x : cmp CUR_ROOM : bne RKTN
         lda PLR_X : cmp TERMZ_X1,x : bcc RKTN
         lda TERMZ_X2,x : cmp PLR_X : bcc RKTN
         lda PLR_Y : cmp TERMZ_Y1,x : bcc RKTN
         lda TERMZ_Y2,x : cmp PLR_Y : bcc RKTN
         lda #1 : sta NEAR_TERM
-        lda KEY_SPC : beq RKMAPCHK
+        lda KEY_SPC : beq RKSEARCHCHK
+        lda #0 : sta TERM_SEL
         jsr SETUP_TERMINAL
         rts
 RKTN    inx : bne RKTL
-RKMAPCHK
-        lda KEY_MAP : beq RKSEARCHCHK
-        jsr SETUP_MAP
-        rts
 RKSEARCHCHK
         ; Search (space): human mode only — a player-driven robot can't use
         ; equipment or search. Looks for a still-hidden item at the player's
@@ -421,8 +399,10 @@ RKSL    cpx #NUM_ITEMS : bcs RKXCHK
         rts
 RKSRN   inx : bne RKSL
 RKXCHK
+        ; End a robot link: a fresh fire press (fire is free in proxy mode —
+        ; a driven robot can't search or use terminals) or the X key.
         lda PLAYER_MODE : beq RKDONE
-        lda KEY_X : beq RKDONE
+        lda JOY_NEW : and #$10 : ora KEY_X : beq RKDONE
         lda #0 : sta PLAYER_MODE
 RKDONE  rts
 
@@ -1054,15 +1034,16 @@ DSTL    lda STAT_TMPL,x : jsr PET2SCREEN : sta SCRN+960,x
         ldx PLAYER_MODE : beq DSTHUM
         dex
         lda ACT_Y,x : sta NEWY       ; stash: DEC2 clobbers X and TMP/TMP2
-        lda ACT_X,x : jsr DEC2       ; X can reach 12 — 2 digits
+        lda ACT_X,x
+        jmp DSTXY
+DSTHUM  lda PLR_Y : sta NEWY
+        lda PLR_X
+DSTXY   jsr DEC2                     ; X 0-19, Y 0-10: 2 digits each
         lda TMP : sta SCRN+966 : lda TMP2 : sta SCRN+967
-        lda NEWY
-        jmp DSTYGO
-DSTHUM  lda PLR_X : jsr DEC2
-        lda TMP : sta SCRN+966 : lda TMP2 : sta SCRN+967
-        lda PLR_Y
-DSTYGO  clc : adc #CH_0 : sta SCRN+971
-        lda #LTGREEN : sta CRAM+962 : sta CRAM+966 : sta CRAM+967 : sta CRAM+971
+        lda NEWY : jsr DEC2
+        lda TMP : sta SCRN+971 : lda TMP2 : sta SCRN+972
+        lda #LTGREEN : sta CRAM+962 : sta CRAM+966 : sta CRAM+967
+        sta CRAM+971 : sta CRAM+972
 
         ; item field: label of the first non-hidden item (12 chars, world.asm)
         ldx #0
@@ -1072,13 +1053,13 @@ DSTIL   cpx #NUM_ITEMS : bcs DSTOUT
 DSTIF   lda ITEM_LABEL_LO,x : sta PTR
         lda ITEM_LABEL_HI,x : sta PTR+1
         ldy #11
-DSTLL   lda (PTR),y : jsr PET2SCREEN : sta SCRN+978,y
-        lda #LTRED : sta CRAM+978,y
+DSTLL   lda (PTR),y : jsr PET2SCREEN : sta SCRN+979,y
+        lda #LTRED : sta CRAM+979,y
         dey : bpl DSTLL
 DSTOUT  rts
 
 STAT_TMPL
-        !pet "r:0 x=00 y=0 item:            joy/wasd  "
+        !pet "r:0 x=00 y=00 item:            joystick "
 
 ; =============================================================================
 ; SID SOUND EFFECTS — voice 1, one effect at a time. While SND_TMR > 0,

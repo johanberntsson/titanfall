@@ -34,6 +34,8 @@ TILES_Y = 22 // 2
 MAX_ROBOTS_PER_ROOM = 2   # hardware sprites 1 and 2 (sprite 0 = player)
 LABEL_WIDTH = 12          # status-line item label field width
 MSG_INTERIOR = 30         # popup box interior width (matches SBOX_* strings)
+TERM_NAME_WIDTH = 22      # robot name in the terminal menu (cols 5-26; the
+                          # status word is drawn at cols 28-36)
 
 
 def die(msg):
@@ -223,7 +225,8 @@ def main():
         item_msgs.append(text.center(MSG_INTERIOR))   # framed when emitted
 
     # ---- walk rooms, flattening everything into parallel arrays --------
-    act = {k: [] for k in ("type", "room", "sx", "sy", "wx0", "wy0", "wx1", "wy1")}
+    act = {k: [] for k in ("type", "room", "sx", "sy", "wx0", "wy0", "wx1", "wy1", "lock")}
+    act_names = []                      # terminal menu name per actor
     actor_ids = {}
     item_pos = {}                       # item index -> (room, x, y)
     door = {k: [] for k in ("room", "x1", "y1", "x2", "y2", "dest", "ax", "ay", "key")}
@@ -262,6 +265,13 @@ def main():
             patrol = r.get("patrol") or [start, start]
             if len(patrol) != 2:
                 die(f"room {rname}: patrol must be exactly 2 waypoints")
+            aname = check_pet(str(r.get("name", r.get("id", tname))),
+                              f"room {rname} robot name")
+            if len(aname) > TERM_NAME_WIDTH:
+                die(f"room {rname}: robot name {aname!r} longer than "
+                    f"{TERM_NAME_WIDTH} chars")
+            act_names.append(aname)
+            act["lock"].append(1 if r.get("locked") else 0)
             act["type"].append(type_index[tname])
             act["room"].append(ri)
             act["sx"].append(int(start["x"]))
@@ -436,8 +446,17 @@ def main():
             ("ACT_WX0", "wx0", "patrol waypoint 0"),
             ("ACT_WY0", "wy0", ""),
             ("ACT_WX1", "wx1", "patrol waypoint 1"),
-            ("ACT_WY1", "wy1", "")):
+            ("ACT_WY1", "wy1", ""),
+            ("ACT_LOCK", "lock", "1 = terminal refuses to link (locked: true)")):
         o.append(tbl(name, [byte(v, name) for v in act[key]], comment))
+    o.append("ACT_TROW_LO     ; 40-char terminal menu row (name, locked tag)")
+    o.append("        !byte " + (",".join(f"<ACT_TROW_{i}" for i in range(len(act_names))) or "0"))
+    o.append("ACT_TROW_HI")
+    o.append("        !byte " + (",".join(f">ACT_TROW_{i}" for i in range(len(act_names))) or "0"))
+    for i, aname in enumerate(act_names):
+        row = ("    " + aname.ljust(TERM_NAME_WIDTH + 1)
+               + ("locked" if act["lock"][i] else "")).ljust(38)
+        o.append(f'ACT_TROW_{i} !pet G_VERT_BAR, "{row}", G_VERT_BAR')
     o.append("")
 
     o.append("; ---- items ----")

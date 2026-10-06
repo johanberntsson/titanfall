@@ -112,7 +112,7 @@ SBOX_TOP        !pet "    ", G_RD_UL
                 !pet G_RD_UR, "    "
 SBOX_BLK        !pet "    ", G_VERT_BAR, "                              ", G_VERT_BAR, "    "
 SBOX_MSG_LOCKED !pet "    ", G_VERT_BAR, "         door locked!         ", G_VERT_BAR, "    "
-SBOX_HNT        !pet "    ", G_VERT_BAR, "         press space          ", G_VERT_BAR, "    "
+SBOX_HNT        !pet "    ", G_VERT_BAR, "          press fire          ", G_VERT_BAR, "    "
 SBOX_BOT        !pet "    ", G_RD_LL
                 !fill 30, G_HORIZ_BAR
                 !pet G_RD_LR, "    "

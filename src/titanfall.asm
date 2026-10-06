@@ -35,13 +35,10 @@ DEATH_TMR  = $1B   ; death pause countdown (= length of the death sound)
 BLINK_TMR  = $1C   ; blink counter
 BLINK_ST   = $1D   ; 0=text visible  1=hidden
 SND_TMR    = $1E   ; sound effect frame counter (0=silent, music plays)
-TERM_SEL   = $1F   ; terminal: selected drone row (0-3)
-TERM_TMR   = $20   ; terminal: link confirmation countdown
+TERM_SEL   = $1F   ; terminal: selected menu entry (0..TERM_N-1)
 NEAR_TERM  = $21   ; non-zero when player is adjacent to terminal
-KEY_RET    = $23   ; Return key flag
-KEY_ESC    = $24   ; F7/Escape key flag (exit terminal)
+ROWS_PTR   = $23   ; $23/$24: DRAW_ROWS row-list pointer
 CUR_ROOM   = $25   ; current room index (into world.asm ROOM_* tables)
-KEY_MAP    = $26   ; M key flag (open map)
 NEWX       = $27   ; candidate tile X for the move being attempted
 NEWY       = $28   ; candidate tile Y (MOVE_PLAYER/MOVE_ACTOR/patrol scratch)
 PLR_DIR    = $29   ; player facing (DIR_*)
@@ -299,6 +296,50 @@ FRENEXT cpx FR_LAST : beq FREDONE
         bcc FRENC : inc PTR2+1
 FRENC   inx : bne FREL
 FREDONE rts
+
+; =============================================================================
+; Row drawing. ROW_PTR: A = screen row -> PTR2 = its screen address
+; (preserves X/Y). DRAW_ROW: A = screen row, PTR = 40-byte PETSCII string,
+; TMP2 = colour; leaves PTR2 = the row's screen address. PAINT_ROW: A =
+; colour for the whole row at PTR2. DRAW_ROWS: A/Y = lo/hi of a row list
+; of (screen row, colour, string lo, string hi) entries ended by $FF.
+; DRAW_ROW/PAINT_ROW/DRAW_ROWS preserve X; clobber A/Y/TMP (+TMP2/PTR).
+; =============================================================================
+ROW_PTR
+        asl : asl : asl : sta TMP        ; row*8 (< 256 for rows 0-24)
+        lda #0 : sta PTR2+1
+        lda TMP : asl : rol PTR2+1
+        asl : rol PTR2+1                 ; row*32, C clear
+        adc TMP : sta PTR2               ; + row*8 = row*40
+        lda PTR2+1 : adc #>SCRN : sta PTR2+1
+        rts
+
+DRAW_ROW
+        jsr ROW_PTR
+        ldy #39
+DRWL    lda (PTR),y : jsr PET2SCREEN : sta (PTR2),y
+        dey : bpl DRWL
+        lda TMP2
+PAINT_ROW
+        pha
+        lda PTR2+1 : clc : adc #>(CRAM-SCRN) : sta PTR2+1
+        pla : ldy #39
+PRWL    sta (PTR2),y : dey : bpl PRWL
+        lda PTR2+1 : sec : sbc #>(CRAM-SCRN) : sta PTR2+1
+        rts
+
+DRAW_ROWS
+        sta ROWS_PTR : sty ROWS_PTR+1
+DRSL    ldy #0 : lda (ROWS_PTR),y : bmi DRSDONE
+        pha
+        iny : lda (ROWS_PTR),y : sta TMP2
+        iny : lda (ROWS_PTR),y : sta PTR
+        iny : lda (ROWS_PTR),y : sta PTR+1
+        lda ROWS_PTR : clc : adc #4 : sta ROWS_PTR
+        bcc DRSNC : inc ROWS_PTR+1
+DRSNC   pla : jsr DRAW_ROW
+        jmp DRSL
+DRSDONE rts
 
 ; =============================================================================
 ; PET2SCREEN — convert PETSCII (A) to C64 screen code (A)

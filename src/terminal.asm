@@ -1,16 +1,19 @@
 ; =============================================================================
 ; TERMINAL STATE (GAME_STATE = 3)
 ; =============================================================================
-; Drone list screen row addresses (equates, not data)
-TERM_ROW0 = SCRN + 8*40
-TERM_ROW1 = SCRN + 9*40
-TERM_ROW2 = SCRN + 10*40
-TERM_ROW3 = SCRN + 12*40
-TERM_COL0 = CRAM + 8*40
-TERM_COL1 = CRAM + 9*40
-TERM_COL2 = CRAM + 10*40
-TERM_COL3 = CRAM + 12*40
-TERM_MSGROW = SCRN + 16*40
+; The menu is built on entry: one row per robot in the current room (rows
+; 8-9, from the generated ACT_TROW_* strings — at most 2 robots per room),
+; then "view map" (row 11) and "logoff" (row 12). TM_ACT says what each
+; entry does: an actor index (link to it), TM_MAP or TM_LOGOFF.
+TERM_MAX    = 4
+TM_MAP      = $FE
+TM_LOGOFF   = $FF
+TERM_RROW   = 8                         ; first robot row
+TERM_MSGROW = 16                        ; message row under the box
+
+TERM_N  !byte 0                         ; menu entries
+TM_ACT  !fill TERM_MAX                  ; per entry: actor, TM_MAP, TM_LOGOFF
+TM_ROW  !fill TERM_MAX                  ; per entry: screen row
 
 ; ---------------------------------------------------------------------------
 ; CLEAR_ROOM — blank rows 2-23 (SCRN+80..SCRN+959). Leaves HUD and footer.
@@ -35,166 +38,94 @@ CRMCTAIL lda #DGRAY : sta (PTR),y
         rts
 
 ; ---------------------------------------------------------------------------
-; SETUP_TERMINAL — draw terminal screen, switch to state 3
-; Called via jsr from READ_KEYS when T pressed near terminal.
+; SETUP_TERMINAL — draw the terminal screen, switch to state 3. Called via
+; jsr from READ_KEYS (fire/space in a terminal zone; TERM_SEL=0 first) and
+; from DO_MAP on its way back (TERM_SEL still on "view map").
 ; ---------------------------------------------------------------------------
 SETUP_TERMINAL
         lda #3 : sta GAME_STATE
-        lda #0 : sta TERM_SEL
-        lda #0 : sta TERM_TMR
         lda #$00 : sta VIC_SPEN
-
         jsr CLEAR_ROOM
+        lda #<TERM_ROWS : ldy #>TERM_ROWS : jsr DRAW_ROWS
 
-        ; Row 4: top border
-        ldx #39
-TSETB1  lda SCR_BORDER_TOP,x : jsr PET2SCREEN : sta SCRN+160,x
-        lda #LTGREEN : sta CRAM+160,x
-        dex : bpl TSETB1
-
-        ; Row 5: title
-        ldx #39
-TSETB2  lda TBOX_TTL,x : jsr PET2SCREEN : sta SCRN+200,x
-        lda #LTGREEN : sta CRAM+200,x
-        dex : bpl TSETB2
-
-        ; Row 6: subtitle
-        ldx #39
-TSETB3  lda TBOX_SUB,x : jsr PET2SCREEN : sta SCRN+240,x
-        lda #GREEN : sta CRAM+240,x
-        dex : bpl TSETB3
-
-        ; Row 7: blank interior
-        ldx #39
-TSETB4  lda SCR_BLANK,x : jsr PET2SCREEN : sta SCRN+280,x
-        lda #GREEN : sta CRAM+280,x
-        dex : bpl TSETB4
-
-        ; Rows 8-10: drone entries
-        ldx #39
-TSETD0  lda TBOX_D0,x : jsr PET2SCREEN : sta TERM_ROW0,x
-        lda #GREEN : sta TERM_COL0,x
-        dex : bpl TSETD0
-        ldx #39
-TSETD1  lda TBOX_D1,x : jsr PET2SCREEN : sta TERM_ROW1,x
-        lda #GREEN : sta TERM_COL1,x
-        dex : bpl TSETD1
-        ldx #39
-TSETD2  lda TBOX_D2,x : jsr PET2SCREEN : sta TERM_ROW2,x
-        lda #DGRAY : sta TERM_COL2,x
-        dex : bpl TSETD2
-
-        ; Row 11: blank
-        ldx #39
-TSETB5  lda SCR_BLANK,x : jsr PET2SCREEN : sta SCRN+440,x
-        lda #GREEN : sta CRAM+440,x
-        dex : bpl TSETB5
-
-        ; Row 12: logoff entry
-        ldx #39
-TSETD3  lda TBOX_D3,x : jsr PET2SCREEN : sta TERM_ROW3,x
-        lda #GREEN : sta TERM_COL3,x
-        dex : bpl TSETD3
-
-        ; Row 13: blank
-        ldx #39
-TSETB6  lda SCR_BLANK,x : jsr PET2SCREEN : sta SCRN+520,x
-        lda #GREEN : sta CRAM+520,x
-        dex : bpl TSETB6
-
-        ; Row 14: key hint
-        ldx #39
-TSETB7  lda TBOX_HNT,x : jsr PET2SCREEN : sta SCRN+560,x
-        lda #DGRAY : sta CRAM+560,x
-        dex : bpl TSETB7
-
-        ; Row 15: bottom border
-        ldx #39
-TSETB8  lda SCR_BORDER_BOTTOM,x : jsr PET2SCREEN : sta SCRN+600,x
-        lda #LTGREEN : sta CRAM+600,x
-        dex : bpl TSETB8
-
-        ; Clear message row (row 16)
-        ldx #39
-TSETM   lda #CH_SPC : sta TERM_MSGROW,x
-        dex : bpl TSETM
-
-        jsr TERM_DRAW_SEL
-        rts
+        ; robots in this room: one entry each, drawn over the "no units" row
+        lda #0 : sta TERM_N
+        ldx #0
+TSAL    cpx #NUM_ACTORS : bcs TSADONE
+        lda ACT_ROOM,x : cmp CUR_ROOM : bne TSAN
+        ldy TERM_N
+        txa : sta TM_ACT,y
+        tya : clc : adc #TERM_RROW : sta TM_ROW,y
+        inc TERM_N
+        pha
+        lda ACT_TROW_LO,x : sta PTR
+        lda ACT_TROW_HI,x : sta PTR+1
+        pla : jsr DRAW_ROW               ; colour comes from TERM_DRAW_SEL
+        lda ACT_ALIVE,x : bne TSAN
+        ldy #36                          ; destroyed: status at cols 28-36
+TSDL    lda TST_DEAD-28,y : jsr PET2SCREEN : sta (PTR2),y
+        dey : cpy #28 : bcs TSDL
+TSAN    inx : bne TSAL
+TSADONE
+        ldy TERM_N                       ; then view map, logoff
+        lda #TM_MAP : sta TM_ACT,y
+        lda #11 : sta TM_ROW,y
+        iny
+        lda #TM_LOGOFF : sta TM_ACT,y
+        lda #12 : sta TM_ROW,y
+        iny : sty TERM_N
+        jmp TERM_DRAW_SEL
 
 ; ---------------------------------------------------------------------------
 ; DO_TERMINAL — called each frame in state 3
 ; ---------------------------------------------------------------------------
 DO_TERMINAL
-        ; Joystick 2 first (fresh presses only): fire = Return, up/down =
-        ; cursor. Checked before GETIN so a character sitting in the KERNAL
+        ; Joystick 2 first (fresh presses only): fire = select, up/down =
+        ; move. Checked before GETIN so a character sitting in the KERNAL
         ; buffer (e.g. an emulator fire key that also types a key) can't
         ; route the frame into the keyboard branch and swallow the fire.
-        lda JOY_NEW : and #$10 : bne TERM_LINK
+        ; Keyboard: Return = select, cursor up/down, F7 = leave. (Not
+        ; space: the space that opened the terminal is still buffered.)
+        lda JOY_NEW : and #$10 : bne TERM_FIRE
         lda JOY_NEW : and #$01 : bne TERM_UP
         lda JOY_NEW : and #$02 : bne TERM_DOWN
-        ; GETIN returns PETSCII: F7=$88, Return=$0D, cursor up=$91, dn=$11
         jsr GETIN
-        bne DTGOT
-        jmp TERM_DONE
-DTGOT   cmp #$88 : bne DTNOTF7
-        jmp TERM_ABORT
-DTNOTF7 cmp #$0D : beq TERM_LINK
-        cmp #$85 : beq TERM_LINK
+        beq TERM_DONE
+        cmp #$88 : beq TERM_ABORT
+        cmp #$0D : beq TERM_FIRE
         cmp #$91 : beq TERM_UP
         cmp #$11 : beq TERM_DOWN
-        jmp TERM_DONE
+        bne TERM_DONE
 
 TERM_UP
-        lda TERM_SEL : bne TERM_UP_GO
-        jmp TERM_DONE
-TERM_UP_GO
+        lda TERM_SEL : beq TERM_DONE
         dec TERM_SEL
         jsr TERM_DRAW_SEL
         jmp TERM_DONE
 
 TERM_DOWN
-        lda TERM_SEL : cmp #3 : bcc TERM_DOWN_GO
-        jmp TERM_DONE
-TERM_DOWN_GO
-        inc TERM_SEL
+        ldx TERM_SEL : inx : cpx TERM_N : bcs TERM_DONE
+        stx TERM_SEL
         jsr TERM_DRAW_SEL
         jmp TERM_DONE
 
-TERM_LINK
-        lda TERM_SEL : cmp #3 : beq TERM_LOGOFF
-        cmp #2 : beq TERM_LOCKED
-        cmp #1 : beq TERM_LINK_SPLICER
-        ldx #39
-TLINK1  lda TMSG_OK,x : jsr PET2SCREEN : sta TERM_MSGROW,x
-        lda #LTGREEN : sta CRAM+(16*40),x
-        dex : bpl TLINK1
-        bne TERM_DONE
+TERM_FIRE
+        ldy TERM_SEL : ldx TM_ACT,y
+        cpx #TM_LOGOFF : beq TERM_ABORT
+        cpx #TM_MAP : bne TERM_ROBOT
+        jsr SETUP_MAP
+        jmp TERM_DONE
 
-; bot-3312 splicer: link the player into the splicer actor (ACTOR_BOT3312,
-; from titan.yaml via world.asm) and drop straight back into gameplay, now
-; piloting it — unless it's already been destroyed by the laser
-; (ACT_ALIVE=0), in which case show TMSG_DEAD.
-TERM_LINK_SPLICER
-        lda ACT_ALIVE+ACTOR_BOT3312 : bne TERM_LINK_SPLICER_OK
-        ldx #39
-TLSD1   lda TMSG_DEAD,x : jsr PET2SCREEN : sta TERM_MSGROW,x
-        lda #LTRED : sta CRAM+(16*40),x
-        dex : bpl TLSD1
-        bne TERM_DONE
-TERM_LINK_SPLICER_OK
-        lda #ACTOR_BOT3312+1 : sta PLAYER_MODE
-        jmp TERM_ABORT
-
-TERM_LOCKED
-        ldx #39
-TLOCK1  lda TMSG_LCK,x : jsr PET2SCREEN : sta TERM_MSGROW,x
-        lda #LTRED : sta CRAM+(16*40),x
-        dex : bpl TLOCK1
-        bne TERM_DONE
-
-TERM_LOGOFF
-        lda #0 : sta PLAYER_MODE
+; Link to robot X: drop straight back into gameplay, now piloting it
+; (PLAYER_MODE = actor+1) — unless it's destroyed or locked.
+TERM_ROBOT
+        lda #<TMSG_DEAD : ldy #>TMSG_DEAD
+        sta PTR : sty PTR+1
+        lda ACT_ALIVE,x : beq TERM_MSG
+        lda #<TMSG_LCK : sta PTR
+        lda #>TMSG_LCK : sta PTR+1
+        lda ACT_LOCK,x : bne TERM_MSG
+        inx : stx PLAYER_MODE
 TERM_ABORT
         lda #1 : sta GAME_STATE
         jsr DRAW_ROOM
@@ -202,61 +133,61 @@ TERM_ABORT
         lda #$07 : sta VIC_SPEN
         jsr UPDATE_SPRITE0
         jsr UPDATE_ROBOT_SPRITES
+        jmp TERM_DONE
+
+TERM_MSG                                ; PTR = message: show it in light red
+        lda #LTRED : sta TMP2
+        lda #TERM_MSGROW : jsr DRAW_ROW
 
 TERM_DONE
         jmp MAIN_LOOP
 
 ; ---------------------------------------------------------------------------
-; TERM_DRAW_SEL — redraw all 4 rows, highlight selected one
+; TERM_DRAW_SEL — recolour every entry and put the '>' on the selected one:
+; selected light green, destroyed robots dark grey, the rest green.
 ; ---------------------------------------------------------------------------
 TERM_DRAW_SEL
-        ldx #39
-        lda TERM_SEL : bne TDSEL1
-        lda #LTGREEN : !byte $2C
-TDSEL1  lda #GREEN
-        sta TERM_COL0,x : dex : bpl TDSEL1
+        ldx #0
+TDSL    cpx TERM_N : bcs TDSDONE
+        lda TM_ROW,x : jsr ROW_PTR
+        ldy #3
+        cpx TERM_SEL : bne TDSNS
+        lda #$3E : sta (PTR2),y          ; '>' (same code in PETSCII/screen)
+        lda #LTGREEN : bne TDSPAINT
+TDSNS   lda #CH_SPC : sta (PTR2),y
+        lda TM_ACT,x : bmi TDSGRN        ; view map / logoff
+        tay : lda ACT_ALIVE,y : bne TDSGRN
+        lda #DGRAY : bne TDSPAINT
+TDSGRN  lda #GREEN
+TDSPAINT jsr PAINT_ROW
+        inx : bne TDSL
+TDSDONE lda #LTGREEN : ldx #4 : ldy #15 : jmp FRAME_EDGES  ; box rows 4-15
 
-        ldx #39
-        lda TERM_SEL : cmp #1 : bne TDSEL2
-        lda #LTGREEN : !byte $2C
-TDSEL2  lda #GREEN
-        sta TERM_COL1,x : dex : bpl TDSEL2
-
-        ldx #39
-TDSEL3  lda #DGRAY : sta TERM_COL2,x : dex : bpl TDSEL3
-
-        ldx #39
-        lda TERM_SEL : cmp #3 : bne TDSEL4
-        lda #LTGREEN : !byte $2C
-TDSEL4  lda #GREEN
-        sta TERM_COL3,x : dex : bpl TDSEL4
-
-        lda #CH_SPC
-        sta TERM_ROW0+3
-        sta TERM_ROW1+3
-        sta TERM_ROW2+3
-        sta TERM_ROW3+3
-        lda #$3E                        ; PETSCII '>'
-        ldx TERM_SEL
-        beq TDSELA
-        cpx #1 : beq TDSELB
-        cpx #2 : beq TDSELC
-        sta TERM_ROW3+3 : jmp TDSELX    ; (jmp, not bne: sta sets no flags,
-TDSELA  sta TERM_ROW0+3 : jmp TDSELX    ;  so a bne here fell through and
-TDSELB  sta TERM_ROW1+3 : jmp TDSELX    ;  drew '>' on the next rows too)
-TDSELC  sta TERM_ROW2+3
-TDSELX  lda #LTGREEN : ldx #4 : ldy #15 : jmp FRAME_EDGES  ; box rows 4-15
+; Static rows of the terminal box: (screen row, colour, string), for DRAW_ROWS
+TERM_ROWS
+        !byte 4,  LTGREEN, <SCR_BORDER_TOP, >SCR_BORDER_TOP
+        !byte 5,  LTGREEN, <TBOX_TTL, >TBOX_TTL
+        !byte 6,  GREEN,   <TBOX_SUB, >TBOX_SUB
+        !byte 7,  GREEN,   <SCR_BLANK, >SCR_BLANK
+        !byte 8,  DGRAY,   <TBOX_NONE, >TBOX_NONE      ; robot rows draw over it
+        !byte 9,  GREEN,   <SCR_BLANK, >SCR_BLANK
+        !byte 10, GREEN,   <SCR_BLANK, >SCR_BLANK
+        !byte 11, GREEN,   <TBOX_MAP, >TBOX_MAP
+        !byte 12, GREEN,   <TBOX_OFF, >TBOX_OFF
+        !byte 13, GREEN,   <SCR_BLANK, >SCR_BLANK
+        !byte 14, DGRAY,   <TBOX_HNT, >TBOX_HNT
+        !byte 15, LTGREEN, <SCR_BORDER_BOTTOM, >SCR_BORDER_BOTTOM
+        !byte $FF
 
 ; =============================================================================
-; Terminal strings — all exactly 40 bytes
+; Terminal strings — box rows and messages exactly 40 bytes
 ; =============================================================================
 TBOX_TTL  !pet G_VERT_BAR, "  * sector drone network - terminal   ", G_VERT_BAR
 TBOX_SUB  !pet G_VERT_BAR, "  access verified. select unit:       ", G_VERT_BAR
-TBOX_D0   !pet G_VERT_BAR, "   [1] bot-7741  loader    available  ", G_VERT_BAR
-TBOX_D1   !pet G_VERT_BAR, "   [2] bot-3312  splicer   available  ", G_VERT_BAR
-TBOX_D2   !pet G_VERT_BAR, "   [3] bot-9901  centurion  locked    ", G_VERT_BAR
-TBOX_D3   !pet G_VERT_BAR, "   [ ] logoff                         ", G_VERT_BAR
-TBOX_HNT  !pet G_VERT_BAR, "   return=select   f7=exit            ", G_VERT_BAR
-TMSG_OK   !pet "  proxy link established. unit active   "
+TBOX_NONE !pet G_VERT_BAR, "    no units in this sector           ", G_VERT_BAR
+TBOX_MAP  !pet G_VERT_BAR, "    view map                          ", G_VERT_BAR
+TBOX_OFF  !pet G_VERT_BAR, "    logoff                            ", G_VERT_BAR
+TBOX_HNT  !pet G_VERT_BAR, "    fire=select    up/down=move       ", G_VERT_BAR
+TST_DEAD  !pet "destroyed"
 TMSG_LCK  !pet "  access denied. unit locked by titan.  "
 TMSG_DEAD !pet "  unit destroyed. link unavailable.     "
