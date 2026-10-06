@@ -31,6 +31,7 @@ The source is split into one orchestrator and eight state/data modules, all `!so
 |------|----------|
 | `src/titanfall.asm` | Constants, BASIC stub, entry point, `MAIN_LOOP`, `CLS`, `RASTER_IRQ`, shared strings, the sprite block; `!source`s all other modules including the generated `world.asm` |
 | `src/intro.asm` | `DO_INTRO`, `DRAW_INTRO_SCREEN`, `BLINK_ON/OFF`, intro strings |
+| `src/titanfall_title.asm` | `TITLE_SCR`/`TITLE_COL` — the 8-row "TITAN FALL" block-letter logo on the intro screen (data only; `!source`d after the sprite block, not in the code area). Reference image: `screenshots/titanfall_title.png` |
 | `src/game.asm` | `DO_GAME`, `SETUP_GAME`, HUD, clock, reactor, player/robot movement, sound |
 | `src/gameover.asm` | `DO_GAMEOVER`, `SETUP_GAMEOVER`, `GO_BLINK` helpers, strings |
 | `src/win.asm` | `DO_WIN`, `SETUP_WIN`, `WIN_BLINK` helpers, strings |
@@ -93,7 +94,7 @@ When implementing code, always respect these C64 hardware limits:
 
 - **CPU:** MOS 6510 (6502 derivative); assembler is **ACME** (not cc65, not KickAssembler)
 - **VIC-II sprites:** Exactly 8 hardware sprites available — the design intentionally avoids a sprite multiplexer
-- **Room layout:** 22 rows × 40 chars (custom charset, screen codes) per room; the walkable tile grid is per-room (`bounds:` in `titan.yaml` → `ROOM_MAXX/Y`) — room 2 is 10×10 (0–9 each axis), room 1 is 13×10 (X 0–12, Y 0–9); the extra X range reaches the room's actual right wall, which the shared 24px/tile pitch (see `TILE_TO_PIXEL_X`) doesn't cover in only 10 tiles
+- **Room layout:** 22 rows × 40 chars (custom charset, screen codes) per room; the walkable tile grid is per-room (`bounds:` in `titan.yaml` → `ROOM_MAXX/Y`) — both rooms are 13×10 (X 0–12, Y 0–9) since their art spans the full 40 columns; the 13th X tile reaches the room's actual right wall, which the shared 24px/tile pitch (see `TILE_TO_PIXEL_X`) doesn't cover in only 10 tiles
 - **Memory:** 64 KB total; code, data, and screen RAM must all fit within the standard C64 memory map
 - **SID chip:** 3 voices for audio
 
@@ -144,7 +145,7 @@ Key state to track:
 Rooms are defined in `titan.yaml`; `CUR_ROOM` (`$25`) indexes the generated `ROOM_*` tables. Two rooms are currently configured (room1: terminal, laser wall at X=6, search spot at (9,5), left door to room2; room2: right door back, locked bottom exit to the win screen).
 
 Movement is fully table-driven (`MOVE_PLAYER`/`TRY_MOVE` in `game.asm`):
-- **Bounds:** each room has its own `ROOM_MAXX`/`ROOM_MAXY` (room1 is 13 tiles wide, X 0–12; see the `TILE_TO_PIXEL_X` gotcha).
+- **Bounds:** each room has its own `ROOM_MAXX`/`ROOM_MAXY` (both current rooms are 13 tiles wide, X 0–12 — match `max_x` to the art's right wall when adding a room; see the `TILE_TO_PIXEL_X` gotcha).
 - **Doors** (`DOOR_*` tables) are rectangles *one tile outside* the walkable range (e.g. `x: -1` on a left wall, `y: 10` on a bottom wall, encoded `$FF`/`$0A`). A move landing inside a door rect triggers it: locked check first (`DOOR_KEY` = item index+1, 0=none; locked shows the popup and acts like a wall), then either the win screen (`DOOR_DEST=$FF`, `leads_to: exit`) or a room change (`DOOR_AX/AY` set the arrival position; `$FF` = keep current coordinate). Anything out of bounds that isn't a door is a wall.
 - **Lasers** (`LASER_*` tables) are rectangles inside the room; `LASER_AT` checks the attempted position against every active laser in the current room. The human dies without entering the tile; a player-driven robot enters the tile and `ROBOT_LASER_DEATH` destroys both robot and laser.
 
@@ -287,7 +288,7 @@ Room art is purely visual — walls, lasers, doorways, and terminals are **not**
 |---------|---------------------|--------|
 | Laser wall | room1 laser rect X=6, Y 0–9 — kills player on contact, unless destroyed (`LASER_STATE`) | Lt Red (visual) |
 | Terminal | room1 terminal zone X 1–3, Y 3–5; press space | Lt Green (visual) |
-| Room 1 ↔ room 2 doorway | door rects at x=-1 (room1) / x=10 (room2), Y 5–6 | — |
+| Room 1 ↔ room 2 doorway | door rects at x=-1 (room1) / x=13 (room2), Y 5–6 | — |
 | Win exit | room2 door rect y=10, X 4–6, `leads_to: exit`, `key: red_card` — locked popup without the card | — |
 
 ## HUD Layout (row 0, 40 chars)
@@ -404,7 +405,7 @@ Both set `$D418 = $0F` on start, and `SNDOFF` gates off and restores `$0F` at th
 
 ## Screen Art
 
-Non-game screens (intro, game over, win) use a PETSCII box design: rows 3–13 form a bordered panel drawn at 50 Hz by the relevant setup routine. All three share the subroutine `DRAW_INTRO_SCREEN` for the intro layout (called from `SHOW_INTRO`, the `DO_GAMEOVER` restart path, and the `DO_WIN` restart path).
+Non-game screens (intro, game over, win) use a PETSCII box design: a bordered panel (rows 3–13 on game over / win, rows 10–19 under the logo on the intro) drawn at 50 Hz by the relevant setup routine. All three share the subroutine `DRAW_INTRO_SCREEN` for the intro layout (called from `SHOW_INTRO`, the `DO_GAMEOVER` restart path, and the `DO_WIN` restart path).
 
 ### Shared string labels (each exactly 40 bytes)
 - `SCR_BORDER_TOP` — rounded top border (`G_RD_UL` + 38 × `G_HORIZ_BAR` + `G_RD_UR`)
@@ -413,12 +414,14 @@ Non-game screens (intro, game over, win) use a PETSCII box design: rows 3–13 f
 - `ITR_SEP` — `G_VERT_BAR  ==...==  G_VERT_BAR` separator (reused by all three screens)
 
 All string-copy loops call `jsr PET2SCREEN` to convert PETSCII to screen codes before writing to screen RAM. `PET2SCREEN` is defined in `src/titanfall.asm` after `CLS`.
-- `ITR_TITLE`, `ITR_TAG`, `ITR_M1`–`ITR_M3` — intro panel content
+- `ITR_TAG`, `ITR_M1`–`ITR_M3` — intro panel content (the intro has no title row in the box any more — the logo above it replaces it)
 - `GO_TITLE`, `GO_M1`–`GO_M3` — game over panel content
 - `WIN_TITLE`, `WIN_M1`–`WIN_M3` — win panel content
 - `TXT_PRESS`, `TXT_GOPRESS`, `TXT_WINPRESS` — blinking footer prompts
 
-Star characters (`*`) in each title are recoloured to YELLOW after the row loop by writing to individual CRAM addresses.
+Star characters (`*`) in the game over / win titles are recoloured to YELLOW after the row loop by writing to individual CRAM addresses.
+
+**Intro layout:** `DRAW_INTRO_SCREEN` copies the logo (`TITLE_SCR`/`TITLE_COL`, raw screen codes, no `PET2SCREEN`) into rows 1–8, draws the mission box in rows 10–19 (top border, blank, tagline, separator, blank, 3 mission lines, blank, bottom border), and `BLINK_ON`/`BLINK_OFF` blink the prompt on row 22 (`SCRN+880`). The logo's solid block is screen code 224 (`$E0`), not the usual 160 (`$A0`) — `$80–$A2` in the custom charset are room-art tiles, and `$E0` is the other all-ones glyph in the ROM font. Any new full-screen PETSCII art must likewise avoid `$80–$A2` (check `src/charset.asm`).
 
 ## Current Status
 

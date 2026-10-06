@@ -333,6 +333,8 @@ SPRITES_START
         !source "src/c64_drone_sprites.asm"     ; drone:   12 frames
 SPRITES_END
 
+        !source "src/titanfall_title.asm"     ; intro logo (data only)
+
 ; =============================================================================
 ; World data — generated from titan.yaml by tools/genworld.py (make target).
 ; Room maps, actor/item/door/laser/terminal tables and runtime state arrays.
