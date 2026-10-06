@@ -25,6 +25,12 @@ PET_SAFE = set("abcdefghijklmnopqrstuvwxyz0123456789 !?.,:;'()+-=*/<>[]#%&@")
 
 ROOM_MAP_BYTES = 22 * 40  # rows x cols of one room's screen-code data
 
+# The tile grid: one tile = 2x2 chars (16x16 px), so a room is 20 x 11 tiles
+# (X 0-19, Y 0-10). Wall rows are TILES_X bytes apart (WALL_AT: y*20+x, which
+# stays below 256 for the whole room).
+TILES_X = 40 // 2
+TILES_Y = 22 // 2
+
 MAX_ROBOTS_PER_ROOM = 2   # hardware sprites 1 and 2 (sprite 0 = player)
 LABEL_WIDTH = 12          # status-line item label field width
 MSG_INTERIOR = 30         # popup box interior width (matches SBOX_* strings)
@@ -79,18 +85,13 @@ def read_vchar64_map(path):
 def laser_art_patches(mapdata, l, laser_tiles, floor_tile, what):
     """Screen cells to repaint when laser l (tile rect) is destroyed.
 
-    Scans the room-map window covered by the laser's tiles (the sprite
-    footprint of each tile, plus one char row above/below to catch emitters)
-    for laser_tiles. Each hit becomes the tile on both sides of it if those
+    Scans the room-map window covered by the laser's tiles (2x2 chars per
+    tile, plus one char row above/below to catch emitters) for laser_tiles. Each hit becomes the tile on both sides of it if those
     match (a beam crossing a wall keeps the wall continuous), else floor.
     Returns [(map offset, new screen code), ...].
     """
-    def tile_cols(x):           # sprite X pixel tile*24+28 -> screen pixel tile*24+4
-        return (x * 24 + 4) // 8, (x * 24 + 4 + 23) // 8
-    def tile_rows(y):           # sprite Y pixel tile*16+66 -> map pixel tile*16
-        return (y * 16) // 8, (y * 16 + 20) // 8
-    c0, r0 = tile_cols(l["x1"])[0], tile_rows(l["y1"])[0] - 1
-    c1, r1 = tile_cols(l["x2"])[1], tile_rows(l["y2"])[1] + 1
+    c0, r0 = 2 * l["x1"], 2 * l["y1"] - 1
+    c1, r1 = 2 * l["x2"] + 1, 2 * l["y2"] + 2
     c0, c1 = max(c0, 0), min(c1, 39)
     r0, r1 = max(r0, 0), min(r1, ROOM_MAP_BYTES // 40 - 1)
     patches = []
@@ -113,20 +114,19 @@ def laser_art_patches(mapdata, l, laser_tiles, floor_tile, what):
 
 
 def wall_grid(mapdata, maxx, maxy, solid_tiles):
-    """Solid tiles of a room, judged by the art under the sprite's feet.
+    """Solid tiles of a room, judged by the art.
 
-    A sprite at tile (x, y) is drawn at screen pixel (x*24+4, y*16) of the
-    room area; its feet are the bottom-middle of the 24x21 sprite, i.e. map
-    chars cols 3x+1..3x+2, rows 2y+1..2y+2. The tile is solid if any of
-    those 4 chars is in solid_tiles. Returns grid[y][x] (bool).
+    Tile (x, y) is the 2x2 block of map chars cols 2x..2x+1, rows
+    2y..2y+1; the sprite standing on it has its feet on that block. The
+    tile is solid if any of those 4 chars is in solid_tiles. Returns
+    grid[y][x] (bool).
     """
     grid = []
     for y in range(maxy + 1):
         row = []
         for x in range(maxx + 1):
             cells = [mapdata[r * 40 + c]
-                     for r in (2 * y + 1, 2 * y + 2) for c in (3 * x + 1, 3 * x + 2)
-                     if r < ROOM_MAP_BYTES // 40 and c < 40]
+                     for r in (2 * y, 2 * y + 1) for c in (2 * x, 2 * x + 1)]
             row.append(any(ch in solid_tiles for ch in cells))
         grid.append(row)
     return grid
@@ -239,9 +239,12 @@ def main():
 
     for ri, room in enumerate(rooms):
         rname = room["name"]
-        b = room.get("bounds") or die(f"room {rname}: needs bounds")
-        room.setdefault("_maxx", int(b["max_x"]))
-        room.setdefault("_maxy", int(b["max_y"]))
+        b = room.get("bounds") or {}       # default: the whole 20x11 room
+        room["_maxx"] = int(b.get("max_x", TILES_X - 1))
+        room["_maxy"] = int(b.get("max_y", TILES_Y - 1))
+        if not (0 <= room["_maxx"] < TILES_X and 0 <= room["_maxy"] < TILES_Y):
+            die(f"room {rname}: bounds must lie within X 0-{TILES_X - 1}, "
+                f"Y 0-{TILES_Y - 1} (2x2-char tiles)")
 
         robots = room.get("robots") or []
         if len(robots) > MAX_ROBOTS_PER_ROOM:
@@ -329,8 +332,7 @@ def main():
             die(f"{what}: ({x},{y}) is outside room {room['name']}'s bounds")
         if walls[ri][y][x]:
             die(f"{what}: ({x},{y}) is inside a wall in room {room['name']} "
-                f"(wall art under the sprite's feet: map cols {3*x+1}-{3*x+2}, "
-                f"rows {2*y+1}-{2*y+2})")
+                f"(wall art in map cols {2*x}-{2*x+1}, rows {2*y}-{2*y+1})")
 
     for ri, room in enumerate(rooms):
         ps = room["player_start"]
@@ -499,8 +501,8 @@ def main():
         o.append(tbl(name, [byte(v, "termz") for v in termz[key]]))
     o.append("")
 
-    o.append("; ---- walls: per room, 16 bytes per tile row (y*16+x), 1 = solid ----")
-    o.append("; (from the art under each tile's feet -- see wall_grid in genworld.py)")
+    o.append(f"; ---- walls: per room, {TILES_X} bytes per tile row (y*{TILES_X}+x), 1 = solid ----")
+    o.append("; (from the 2x2 chars of each tile -- see wall_grid in genworld.py)")
     o.append("ROOM_WALL_LO")
     o.append("        !byte " + ",".join(f"<ROOM_WALLS_{i}" for i in range(len(rooms))))
     o.append("ROOM_WALL_HI")
@@ -508,7 +510,7 @@ def main():
     for i, grid in enumerate(walls):
         o.append(f"ROOM_WALLS_{i}      ; {rooms[i]['name']}")
         for y, row in enumerate(grid):
-            vals = [1 if b else 0 for b in row] + [0] * (16 - len(row))
+            vals = [1 if b else 0 for b in row] + [0] * (TILES_X - len(row))
             pic = "".join("#" if b else "." for b in row)
             o.append(f"        !byte {','.join(str(v) for v in vals)}   ; y={y} {pic}")
     o.append("")

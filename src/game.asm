@@ -589,15 +589,17 @@ TAOK    sec : rts
 
 ; =============================================================================
 ; WALL_AT — A = room, NEWX/NEWY = tile (in bounds). Carry set if the tile is
-; solid: genworld.py derives ROOM_WALLS_n (16 bytes per tile row, 1 = solid)
-; from the wall chars under the sprite's feet in the room art. Preserves X;
-; clobbers A/Y/PTR.
+; solid: genworld.py derives ROOM_WALLS_n (20 bytes per tile row, 1 = solid)
+; from the wall chars in each tile's 2x2 chars of room art. Preserves X;
+; clobbers A/Y/PTR/TMP.
 ; =============================================================================
 WALL_AT
         tay
         lda ROOM_WALL_LO,y : sta PTR
         lda ROOM_WALL_HI,y : sta PTR+1
-        lda NEWY : asl : asl : asl : asl : ora NEWX : tay
+        lda NEWY : asl : asl : sta TMP   ; y*4
+        asl : asl : adc TMP              ; + y*16 = y*20 (C clear: y <= 10)
+        adc NEWX : tay                   ; + x (max 10*20+19 = 219)
         lda (PTR),y : cmp #1             ; C = solid
         rts
 
@@ -760,20 +762,20 @@ UDNO    clc : rts
 ; Smooth movement. Game logic stays on tiles (PLR_X/Y, ACT_X/Y); each sprite
 ; has its own pixel position (GL_PXL/GL_PXH/GL_PY, slot = actor index, or
 ; GL_PLAYER for the human) that GLIDE moves toward its tile's pixel position
-; by GL_SX/GL_SY pixels per frame, so a one-tile step (24 x 16 px) is drawn
+; by GL_SX/GL_SY pixels per frame, so a one-tile step (16 x 16 px) is drawn
 ; as a slide instead of a jump. Speeds are matched to the step periods so a
 ; glide just finishes as the next step starts: the player (and a driven
-; robot) steps every MOVE_PERIOD=8 frames at 3/2 px per frame; patrolling
-; robots step every ROB_PERIOD=24 frames at 1 px per frame. GL_SNAP jumps
+; robot) steps every MOVE_PERIOD=8 frames at 2 px per frame; patrolling
+; robots step every ROB_PERIOD=16 frames at 1 px per frame. GL_SNAP jumps
 ; straight to the tile (DRAW_ROOM -> SNAP_ALL: room change, respawn,
 ; redraw after terminal/map/popup).
 ; =============================================================================
 MOVE_PERIOD = 8                 ; frames per player step
-ROB_PERIOD  = 24                ; frames per patrol step
-GL_FAST_X   = 3                 ; 24 px / 8 frames
+ROB_PERIOD  = 16                ; frames per patrol step
+GL_FAST_X   = 2                 ; 16 px / 8 frames
 GL_FAST_Y   = 2                 ; 16 px / 8 frames
-GL_SLOW_X   = 1                 ; 24 px / 24 frames
-GL_SLOW_Y   = 1                 ; 16 px / 16 frames (then waits)
+GL_SLOW_X   = 1                 ; 16 px / 16 frames
+GL_SLOW_Y   = 1                 ; 16 px / 16 frames
 GL_PLAYER   = NUM_ACTORS        ; glide slot of the human
 
 GLT_L   !byte 0                 ; GL_TARGET result: pixel X lo/hi, pixel Y
@@ -781,12 +783,14 @@ GLT_H   !byte 0
 GLT_Y   !byte 0
 
 ; GL_TARGET — NEWX/NEWY tile -> GLT_L/GLT_H/GLT_Y. Preserves X/Y.
+; Y pixel = tile*16+62: room row 0 is at sprite Y 66, and the sprite is
+; lifted 4 px so its feet (sprite line 19) sit on the tile's bottom line.
 GL_TARGET
         lda NEWX : jsr TILE_TO_PIXEL_X
         sta GLT_L
         lda #0 : rol : sta GLT_H
         lda NEWY : asl : asl : asl : asl
-        clc : adc #66 : sta GLT_Y
+        clc : adc #62 : sta GLT_Y
         rts
 
 ; GL_SNAP — X = glide slot, NEWX/NEWY = tile: jump straight there.
@@ -842,30 +846,17 @@ SNAPL   cpx #NUM_ACTORS : bcs SNAPD
 SNAPD   rts
 
 ; =============================================================================
-; TILE_TO_PIXEL_X — A=tile number. Returns pixel X low byte in A (store to
-; VIC_SPnX) and carry set if the true 9-bit value (tile*24+28) exceeds 255,
-; i.e. the sprite's extended/MSB X bit must be set. Shared by all three
-; UPDATE_SPRITE0/1/2 so any sprite can reach tiles that push X past 255.
-;
-; Computed as two 8-bit adds (tile*16 + tile*8, then +28); a plain "bcs"
-; after just the final add would miss overflow that happens on the *first*
-; add instead (true for any tile >= 11, where tile*24 alone already exceeds
-; 255) — see the "Extended (9-bit) sprite X" gotcha in CLAUDE.md. TMP/TMP2
-; are scratch.
+; TILE_TO_PIXEL_X — A = tile number (0-19). Returns the sprite pixel X low
+; byte in A (store to VIC_SPnX) and carry set if the 9-bit value tile*16+20
+; exceeds 255, i.e. the sprite's VIC_SP_MSB bit must be set (tiles 15-19).
+; The 24 px sprite is centred on the 16 px tile: room column 0 is at sprite
+; X 24, minus 4 px overhang on each side. Computed as (tile*8+10)*2 so the
+; only overflow is the final shift, which lands straight in carry.
 ; =============================================================================
 TILE_TO_PIXEL_X
-        sta TMP                          ; TMP = tile
-        asl : asl : asl : asl : sta TMP2 ; TMP2 = tile*16
-        lda TMP : asl : asl : asl        ; A = tile*8
-        clc : adc TMP2                   ; A = tile*24 (may overflow)
-        sta TMP                          ; TMP = low byte so far
-        lda #0 : adc #0 : sta TMP2       ; TMP2 = overflow bit from that add (0/1)
-        lda TMP : clc : adc #28          ; add baseline offset (may overflow again)
-        sta TMP                          ; TMP = final pixel-X low byte
-        lda TMP2 : adc #0                ; fold in any 2nd-add overflow (0/1 — the
-                                          ; two adds never both overflow for tile 0-12)
-        cmp #1                           ; carry set iff total overflow occurred
-        lda TMP                          ; A = final low byte (LDA doesn't touch carry)
+        asl : asl : asl                  ; tile*8 (< 256 for tile < 32)
+        clc : adc #10                    ; tile*8+10
+        asl                              ; *2 = tile*16+20, C = bit 8
         rts
 
 ; =============================================================================

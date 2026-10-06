@@ -94,7 +94,7 @@ When implementing code, always respect these C64 hardware limits:
 
 - **CPU:** MOS 6510 (6502 derivative); assembler is **ACME** (not cc65, not KickAssembler)
 - **VIC-II sprites:** Exactly 8 hardware sprites available — the design intentionally avoids a sprite multiplexer
-- **Room layout:** 22 rows × 40 chars (custom charset, screen codes) per room; the walkable tile grid is per-room (`bounds:` in `titan.yaml` → `ROOM_MAXX/Y`) — both rooms are 13×10 (X 0–12, Y 0–9) since their art spans the full 40 columns; the 13th X tile reaches the room's actual right wall, which the shared 24px/tile pitch (see `TILE_TO_PIXEL_X`) doesn't cover in only 10 tiles
+- **Room layout:** 22 rows × 40 chars (custom charset, screen codes) per room. **The tile — the unit of every coordinate in the game and in `titan.yaml` — is 2×2 chars (16×16 px)**, so a room is 20×11 tiles (X 0–19, Y 0–10); tile (x,y) covers map cols `2x..2x+1`, rows `2y..2y+1`. `bounds:` in `titan.yaml` (→ `ROOM_MAXX/Y`) is optional and defaults to the whole room; the outer walls of the art make the edge tiles solid anyway
 - **Memory:** 64 KB total; code, data, and screen RAM must all fit within the standard C64 memory map
 - **SID chip:** 3 voices for audio
 
@@ -142,19 +142,19 @@ Key state to track:
 
 ## Rooms
 
-Rooms are defined in `titan.yaml`; `CUR_ROOM` (`$25`) indexes the generated `ROOM_*` tables. Two rooms are currently configured (room1: terminal, laser wall at X=6, search spot at (9,5), left door to room2; room2: right door back, locked bottom exit to the win screen).
+Rooms are defined in `titan.yaml`; `CUR_ROOM` (`$25`) indexes the generated `ROOM_*` tables. Two rooms are currently configured (room1: terminal, laser wall at X=9, search spot at (14,5), left door to room2; room2: right door back, locked bottom exit to the win screen).
 
 Movement is fully table-driven (`MOVE_PLAYER`/`TRY_MOVE` in `game.asm`):
-- **Bounds:** each room has its own `ROOM_MAXX`/`ROOM_MAXY` (both current rooms are 13 tiles wide, X 0–12 — match `max_x` to the art's right wall when adding a room; see the `TILE_TO_PIXEL_X` gotcha).
+- **Bounds:** each room has its own `ROOM_MAXX`/`ROOM_MAXY` (default and maximum 19/10, the full 20×11-tile room; walls in the art do the real limiting).
 - **Doors** (`DOOR_*` tables) are rectangles *one tile outside* the walkable range (e.g. `x: -1` on a left wall, `y: 10` on a bottom wall, encoded `$FF`/`$0A`). A move landing inside a door rect triggers it: locked check first (`DOOR_KEY` = item index+1, 0=none; locked shows the popup and acts like a wall), then either the win screen (`DOOR_DEST=$FF`, `leads_to: exit`) or a room change (`DOOR_AX/AY` set the arrival position; `$FF` = keep current coordinate). Anything out of bounds that isn't a door is a wall.
-- **Interior walls** come from the room art, computed at build time: `genworld.py`'s `wall_grid` marks a tile solid if any of the 2×2 map chars under the sprite's *feet* at that tile (map cols `3x+1..3x+2`, rows `2y+1..2y+2` — the bottom-middle of the 24×21 sprite) is in `art.solid_tiles` in `titan.yaml` (`$84–$8B`, the wall glyphs). It emits `ROOM_WALLS_n` (16 bytes per tile row, index `y*16+x`, 1 = solid, with an ASCII picture of the grid in the comments) via `ROOM_WALL_LO/HI`; `WALL_AT` (A = room) looks a tile up, and both `TRY_MOVE` (human) and `TRY_ACT` (driven robot) treat a solid tile like a wall before checking lasers. The build **fails** if a player start, a robot start or any tile on a patrol path, an item, or a door arrival lands on a solid tile (or a terminal zone is all wall) — so new art and the config can't silently drift apart for walls. Furniture isn't solid unless its codes are added to `solid_tiles`.
+- **Interior walls** come from the room art, computed at build time: `genworld.py`'s `wall_grid` marks a tile solid if any of its 2×2 map chars (map cols `2x..2x+1`, rows `2y..2y+1` — where the sprite's feet stand) is in `art.solid_tiles` in `titan.yaml` (`$84–$8B`, the wall glyphs). It emits `ROOM_WALLS_n` (20 bytes per tile row, index `y*20+x` — max 219, so one byte index covers the room; 1 = solid, with an ASCII picture of the grid in the comments) via `ROOM_WALL_LO/HI`; `WALL_AT` (A = room) looks a tile up, and both `TRY_MOVE` (human) and `TRY_ACT` (driven robot) treat a solid tile like a wall before checking lasers. The build **fails** if a player start, a robot start or any tile on a patrol path, an item, or a door arrival lands on a solid tile (or a terminal zone is all wall) — so new art and the config can't silently drift apart for walls. Furniture isn't solid unless its codes are added to `solid_tiles`.
 - **Lasers** (`LASER_*` tables) are rectangles inside the room; `LASER_AT` checks the attempted position against every active laser in the current room. The human dies without entering the tile; a player-driven robot enters the tile and `ROBOT_LASER_DEATH` destroys both robot and laser.
 
 Doorway transitions call `DRAW_ROOM`, which blits 22×40 chars via the `ROOM_MAP_LO/HI` pointer tables and then calls `ASSIGN_SPRITES` to remap the new room's actors onto hardware sprites 1–2.
 
 ### Adding content (config-only recipes)
 
-- **New room:** author the art in vchar64 (22×40, shared charset — see `graphics/README.txt`), export the map as ASM, add a `rooms:` entry in `titan.yaml` (name, `vchar64_map`, `bounds`, `player_start`, `map_view`) plus doors linking it to its neighbours (a door in each direction of travel, one per room). Until the sector-map art is generated, also extend the `MAP_R*` strings in `src/map.asm` by hand.
+- **New room:** author the art in vchar64 (22×40, shared charset — see `graphics/README.txt`), export the map as ASM, add a `rooms:` entry in `titan.yaml` (name, `vchar64_map`, `player_start`, `map_view`; `bounds` optional) plus doors linking it to its neighbours (a door in each direction of travel, one per room). Until the sector-map art is generated, also extend the `MAP_R*` strings in `src/map.asm` by hand.
 - **New hidden item:** add an entry under `items:` (label ≤12 chars, found_text ≤30 chars) and place it with a `things:` entry in a room. Lock any door with `key: <item>`.
 - **New robot:** add a `robots:` entry in a room (`type`, `start`, two-point `patrol`; ≤2 robots per room). Give it an `id:` if code needs to reference it (emitted as `ACTOR_<ID>`). A new *type* needs an `actor_types:` entry, a sprite data block in `titanfall.asm` (64-byte aligned, referenced by label), and — until more AI exists — `ai: patrol`.
 - **New laser / terminal zone:** one line under the room's `lasers:` / `terminals:`.
@@ -191,21 +191,21 @@ After every `CLS` the pointers are reset to `SPRP_PLAYER`/`SPRP_ROBOT`/`SPRP_DRO
 ### Actors and patrol AI
 All robots are rows in the generated `ACT_*` tables (the player is *not* in them; `PLAYER_MODE` maps "actor index+1" onto them for proxy mode). Static data per actor: `ACT_TYPE` (indexes `TYPE_SPRPTR`/`TYPE_COLOR`), `ACT_ROOM`, `ACT_SX/SY` (start), `ACT_WX0/WY0`/`ACT_WX1/WY1` (two patrol waypoints). Runtime state: `ACT_X/Y`, `ACT_TGT` (which waypoint it's heading for), `ACT_ALIVE`.
 
-`TICK_ROBOT` is called every game frame (shared `ROB_PERIOD` = 24-frame timer, `ROB_TMR`) and runs `ACTOR_PATROL_STEP` for every alive, non-player-driven actor — one step toward the current target waypoint (X axis first, then Y; on arrival the target flips). Actors in other rooms keep patrolling off-screen. Patrol paths are authored in `titan.yaml` not to cross lasers — the patrol AI does no hazard checks.
+`TICK_ROBOT` is called every game frame (shared `ROB_PERIOD` = 16-frame timer, `ROB_TMR`) and runs `ACTOR_PATROL_STEP` for every alive, non-player-driven actor — one step toward the current target waypoint (X axis first, then Y; on arrival the target flips). Actors in other rooms keep patrolling off-screen. Patrol paths are authored in `titan.yaml` not to cross lasers — the patrol AI does no hazard checks.
 
-**Smooth movement (gliding).** Logic stays tile-based (`PLR_X/Y`, `ACT_X/Y` — collisions with walls/doors/lasers/terminals/items are all per tile), but sprites don't jump a whole tile (24×16 px) per step. Each sprite has its own pixel position in `GL_PXL`/`GL_PXH`/`GL_PY` (runtime arrays in `world.asm`, `NUM_ACTORS+1` long: slot = actor index, last slot `GL_PLAYER` = the human), and `GLIDE` (`game.asm`) moves it `GL_SX`/`GL_SY` px per frame toward the pixel position of its tile, clamping so it never overshoots. Speeds are matched to the step periods so a glide finishes just as the next step starts:
-- player, and a player-driven robot: one step per `MOVE_PERIOD` = 8 frames, glide `GL_FAST_X/Y` = 3/2 px per frame (24/8, 16/8) → continuous walking with no stop at each tile
-- patrolling robots: one step per `ROB_PERIOD` = 24 frames, glide `GL_SLOW_X/Y` = 1/1 px per frame (a vertical step finishes after 16 frames and waits)
+**Smooth movement (gliding).** Logic stays tile-based (`PLR_X/Y`, `ACT_X/Y` — collisions with walls/doors/lasers/terminals/items are all per tile), but sprites don't jump a whole tile (16×16 px) per step. Each sprite has its own pixel position in `GL_PXL`/`GL_PXH`/`GL_PY` (runtime arrays in `world.asm`, `NUM_ACTORS+1` long: slot = actor index, last slot `GL_PLAYER` = the human), and `GLIDE` (`game.asm`) moves it `GL_SX`/`GL_SY` px per frame toward the pixel position of its tile, clamping so it never overshoots. Speeds are matched to the step periods so a glide finishes just as the next step starts:
+- player, and a player-driven robot: one step per `MOVE_PERIOD` = 8 frames, glide `GL_FAST_X/Y` = 2/2 px per frame (16/8) → continuous walking with no stop at each tile
+- patrolling robots: one step per `ROB_PERIOD` = 16 frames, glide `GL_SLOW_X/Y` = 1/1 px per frame → continuous too
 - `SNAP_ALL` (called by `DRAW_ROOM` — room change, respawn, redraws after terminal/map/popup) jumps every sprite straight to its tile, so nothing glides across a room change.
 If you change a step period, change the matching speeds (tile pitch / period) or the glide will lag behind or stall. Hardware sprite collisions (`$D01E`) use the glided positions, i.e. what's on screen. A robot that drives into a laser finishes its glide into the beam before it is destroyed (see "Lasers can be destroyed by a driven robot").
 
-**Sprite mapping:** `ASSIGN_SPRITES` (called from the end of `DRAW_ROOM`) scans the actor table for actors in `CUR_ROOM` and assigns them to hardware sprites 1–2 (`SPR_SLOT_ACT`, 2 bytes, `$FF`=empty), setting each slot's sprite pointer and colour from the actor's type. `UPDATE_ROBOT_SPRITES` glides and positions both slots every frame; the glide *targets* use the shared `TILE_TO_PIXEL_X` formula (X pixel = `tile*24+28`, Y pixel = `tile*16+66`, per-slot `VIC_SP_MSB` bit from `GL_PXH` — see the "Extended (9-bit) sprite X" gotcha) and disables the `VIC_SPEN` bit for any slot that is empty, dead, or out of the room. `genworld.py` rejects configs with more than 2 robots in one room.
+**Sprite mapping:** `ASSIGN_SPRITES` (called from the end of `DRAW_ROOM`) scans the actor table for actors in `CUR_ROOM` and assigns them to hardware sprites 1–2 (`SPR_SLOT_ACT`, 2 bytes, `$FF`=empty), setting each slot's sprite pointer and colour from the actor's type. `UPDATE_ROBOT_SPRITES` glides and positions both slots every frame; the glide *targets* use the shared `TILE_TO_PIXEL_X` formula (X pixel = `tile*16+20` — the 24 px sprite centred on the 16 px tile — and Y pixel = `tile*16+62` — feet, sprite line 19, on the tile's bottom line; per-slot `VIC_SP_MSB` bit from `GL_PXH`, needed for tiles 15–19 — see the "Extended (9-bit) sprite X" gotcha) and disables the `VIC_SPEN` bit for any slot that is empty, dead, or out of the room. `genworld.py` rejects configs with more than 2 robots in one room.
 
 ### Lasers can be destroyed by a driven robot
 `LASER_STATE` (one byte per config laser, 0=active 1=destroyed) implements a one-way puzzle mechanic: driving any proxy-controlled robot into an active laser destroys both.
 - `LASER_AT` (`game.asm`) is the shared test — carry set if `NEWX/NEWY` is inside an active laser rect of the current room, returning the laser index in `Y`. `TRY_MOVE` (human) and `TRY_ACT` (driven robot) both call it on every attempted move.
 - On a robot hit, `TRY_ACT` doesn't destroy it yet: it sets `ACT_ALIVE=2` ("dying") and remembers the laser in `PEND_LSR`. A dying robot ignores input (`MOVE_ACTOR`) and patrol (`TICK_ROBOT` only moves `ACT_ALIVE=1`), and keeps gliding onto the laser tile; once its sprite arrives, `UPD_DYING` (from `UPD_SLOT`) calls `ROBOT_LASER_DEATH`, which sets that actor's `ACT_ALIVE=0` (sprite hidden for good, patrol suspended forever) and that laser's `LASER_STATE=1` (it stops killing the human too), erases the beam from the screen (`ERASE_LASER`, below), flashes the border yellow via `BFLASH`, and resets `PLAYER_MODE=0` (control snaps back to human without waiting for the X key).
-- **Destroyed lasers disappear from the room art.** The room maps always have every laser drawn in, so `genworld.py` precomputes per laser a patch list (`LASER_ART_n`, via `LASER_ART_LO/HI`): every cell under the laser rect (its tiles' sprite footprint ±1 char row, to catch the emitters) whose screen code is in `art.laser_tiles` in `titan.yaml`, with its replacement — the char on both sides if they match (so a beam crossing a wall leaves the wall continuous), else `art.floor_tile`. `ERASE_LASER` (Y = laser index) writes those cells + their `TILE_COLORS` colour; it runs from `ROBOT_LASER_DEATH` and at the end of `DRAW_ROOM` for every destroyed laser in `CUR_ROOM` (so room changes / popup / map / terminal redraws keep it erased; `RESET_ROUND` re-arms lasers before redrawing, so a respawn brings the beam back). The build warns if a laser has no `laser_tiles` under it — usually art and config have drifted apart. New laser glyphs in the charset must be added to `laser_tiles`.
+- **Destroyed lasers disappear from the room art.** The room maps always have every laser drawn in, so `genworld.py` precomputes per laser a patch list (`LASER_ART_n`, via `LASER_ART_LO/HI`): every cell under the laser rect (its tiles' 2×2 chars ±1 char row, to catch the emitters) whose screen code is in `art.laser_tiles` in `titan.yaml`, with its replacement — the char on both sides if they match (so a beam crossing a wall leaves the wall continuous), else `art.floor_tile`. `ERASE_LASER` (Y = laser index) writes those cells + their `TILE_COLORS` colour; it runs from `ROBOT_LASER_DEATH` and at the end of `DRAW_ROOM` for every destroyed laser in `CUR_ROOM` (so room changes / popup / map / terminal redraws keep it erased; `RESET_ROUND` re-arms lasers before redrawing, so a respawn brings the beam back). The build warns if a laser has no `laser_tiles` under it — usually art and config have drifted apart. New laser glyphs in the charset must be added to `laser_tiles`.
 - The terminal blocks re-linking to a destroyed splicer: `TERM_LINK_SPLICER` in `terminal.asm` checks `ACT_ALIVE+ACTOR_BOT3312` and shows `TMSG_DEAD` instead of linking if it's already gone.
 
 ### Sprite collision
@@ -274,7 +274,7 @@ $29  PLR_DIR      player facing (DIR_DOWN/UP/LEFT/RIGHT = 0-3)
 $2A  PLR_ANIM     player walk frame (0=rest 1=walk1 2=walk2)
 $2B  ANIM_CNT     free-running game-frame counter (hover animation)
 $2C  SND_KIND     sound effect playing: 0=death sweep 1=laser zap
-$2D  ROB_TMR      robot movement timer (shared by all actors, ROB_PERIOD = 24 frames)
+$2D  ROB_TMR      robot movement timer (shared by all actors, ROB_PERIOD = 16 frames)
 $2E  GL_SX        GLIDE speed X, px/frame (smooth movement)
 $2F  GL_SY        GLIDE speed Y, px/frame
 $31  PLAYER_MODE  0=human (PLR_X/Y)  else actor index+1 (proxy mode, ACT_X/Y)
@@ -289,16 +289,16 @@ Free zero-page slots: `$30`, `$37+`. Per-robot positions, laser/item state etc. 
 
 ## Room Map
 
-The playfield (screen rows 2–23) is a custom-charset top-down map, 22 rows × 40 chars, authored in vchar64 (see `graphics/` and `src/charset.asm`). The walkable tile grid is per-room (`bounds:` in `titan.yaml`). Tile colours come from `TILE_COLORS` (indexed by screen code), not a hand-written switch.
+The playfield (screen rows 2–23) is a custom-charset top-down map, 22 rows × 40 chars, authored in vchar64 (see `graphics/` and `src/charset.asm`). Positions are in 2×2-char tiles (20×11 per room). Tile colours come from `TILE_COLORS` (indexed by screen code), not a hand-written switch.
 
 Interior walls are derived from the room art at build time (see "Interior walls" above). Everything else — lasers, doorways, terminals, item spots — is **not** detected from tile bytes: their logical positions come from `titan.yaml` (tile coordinates/rectangles), so the art and those config coordinates can silently drift out of visual sync; check new room art against the config before relying on it. Current config:
 
 | Feature | Config (titan.yaml) | Colour |
 |---------|---------------------|--------|
-| Laser wall | room1 laser rect X=6, Y 0–9 — kills player on contact, unless destroyed (`LASER_STATE`) | Lt Red (visual) |
-| Terminal | room1 terminal zone X 1–3, Y 3–5; press space | Lt Green (visual) |
-| Room 1 ↔ room 2 doorway | door rects at x=-1 (room1) / x=13 (room2), Y 5–6 | — |
-| Win exit | room2 door rect y=10, X 4–6, `leads_to: exit`, `key: red_card` — locked popup without the card | — |
+| Laser wall | room1 laser rect X=9, Y 0–10 — kills player on contact, unless destroyed (`LASER_STATE`) | Lt Red (visual) |
+| Terminal | room1 terminal zone X 1–2, Y 1–2 (in front of the console, top left); press space | Lt Green (visual) |
+| Room 1 ↔ room 2 doorway | door rects at x=-1 (room1) / x=20 (room2), Y 5–6 | — |
+| Win exit | room2 door rect y=11, X 6–10, `leads_to: exit`, `key: red_card` — locked popup without the card | — |
 
 ## HUD Layout (row 0, 40 chars)
 
@@ -336,7 +336,7 @@ Room/HUD art is authored with **vchar64** (charset + screen + colour editor). `g
 ### Code growth can silently corrupt TILE_COLORS/CHARSET — watch for ACME warnings
 `TILE_COLORS` (256 bytes, in `src/charset.asm`) has no fixed address — it starts wherever the code before it (all of `titanfall.asm` + every `!source`d module) happens to end, and `CHARSET` right after it is pinned to a fixed, 2K-aligned address (`* = $2800`). If code+`TILE_COLORS` ever grows past that fixed address, ACME does **not** fail the build — it prints `Warning - ... Segment starts inside another one, overwriting it.` and silently truncates the tail of `TILE_COLORS`, whose bytes get overwritten by the start of `CHARSET`. Since most room tiles use screen codes in the `$80s`-`$A0s`, this corrupts colour lookups for most of the room art (tiles render in wrong/black colours) while leaving the charset bitmaps themselves intact — exactly the "graphics look horrible, wrong colours" symptom, with no build error to point at it.
 - **Always check `make`'s full output for `Warning` lines, not just for a nonzero exit code** — a successful build can still have silently corrupted data.
-- To check headroom: `acme -f cbm -o /tmp/g.prg -l /tmp/labels.txt src/titanfall.asm` then `grep TILE_COLORS /tmp/labels.txt` — its start address + 256 must stay under `CHARSET`'s fixed address. **As of 2026-10-06 `TILE_COLORS` starts at `$266C`, leaving only ~150 bytes** — the next sizeable feature will need the move below first.
+- To check headroom: `acme -f cbm -o /tmp/g.prg -l /tmp/labels.txt src/titanfall.asm` then `grep TILE_COLORS /tmp/labels.txt` — its start address + 256 must stay under `CHARSET`'s fixed address. **As of 2026-10-06 `TILE_COLORS` starts at `$2650`, leaving only ~175 bytes** — the next sizeable feature will need the move below first.
 - Keep *data* out of the code area where possible: the intro logo, sprites and all generated world data already live above the charset (`$3000+`); prefer that for new tables/strings too.
 - `CHARSET` was moved from `$2000` to `$2800` for exactly this reason (code had grown ~173 bytes past the old boundary); this freed a full extra 2KB of headroom. If it happens again, the same fix applies — bump `CHARSET`'s `* =` in `src/charset.asm` to the next free 2K-aligned address (the sprite block at `$3000` and the world data after it would have to move up too) and update `VIC_VMCSB`'s value in `titanfall.asm` to match (`$D018 = (screen_base/1024)*16 + (charset_base/2048)*2`; `$0400`/`$2800` → `$1A`).
 
@@ -390,10 +390,8 @@ All sprite frames live in one block at `$3000` (see "Sprites"), which must stay 
 ### Sprite collision register clears on read
 `VIC_SPCOLL` (`$D01E`) is cleared by the hardware the moment it is read. Read it exactly once per frame in `CHECK_SPRITE_HIT` and act on the value immediately — reading it again will always return 0.
 
-### Extended (9-bit) sprite X needs every carry, not just the last one
-The `X pixel = tile*24+28` formula is computed as `tile*16 + tile*8`, then `+28` — two separate 8-bit adds. For tiles 0-10 only the final `+28` can push the result past 255, so a single `bcs` after that last add is enough to catch it. But at tile 11-12 (reachable in room 1 by `PLR_X` and by a player-driven robot's `ACT_X`), `tile*24` alone already exceeds 255 — the *first* add overflows. A naive `clc` before the final `+28` (needed so that add doesn't also pick up a stray carry-in) throws away that first overflow, so `bcs` after the last add sees no carry and the sprite's `VIC_SP_MSB` bit never gets set — the sprite silently wraps to a low X instead of continuing right, instead of correctly extending onto the far right of the screen.
-
-The shared fix is `TILE_TO_PIXEL_X` (`game.asm`): given a tile number in A, it returns the pixel-X low byte in A and sets carry iff the *true* 9-bit value exceeds 255, by explicitly carrying the overflow forward — store the low byte and overflow bit from the first add (`TMP`/`TMP2`), then `adc #0` the second add's carry into `TMP2` and convert that 0/1 into the carry flag with `cmp #1` (done *after* restoring the low byte into `A`, since `LDA` doesn't touch carry). `UPDATE_SPRITE0` and `UPDATE_ROBOT_SPRITES` both call this instead of duplicating the add — any sprite's tile coordinate can safely reach 11-12 (or beyond, up to the point pixel X would exceed the visible screen) and get the right `VIC_SP_MSB` bit.
+### Extended (9-bit) sprite X
+Sprite X is 9 bits: `X pixel = tile*16+20` exceeds 255 for tiles 15–19, and then the slot's `VIC_SP_MSB` bit must be set or the sprite wraps to the left side of the screen. `TILE_TO_PIXEL_X` (`game.asm`) returns the low byte in A and bit 8 in carry; it computes `(tile*8+10)*2` so the only possible overflow is the final `asl`, which lands straight in carry (an earlier 24 px/tile version computed two adds and lost the first add's overflow — keep any future change to the formula to a single overflow point). `GL_TARGET` stores the carry in `GLT_H`, which ends up in `GL_PXH`.
 
 ## SID / Music
 
@@ -454,7 +452,7 @@ Presentation (as of 2026-10-06): multicolour animated sprites with 4-way facing 
 - `ai:` in `titan.yaml` only accepts `patrol` (two-waypoint shuttle); no other AI routines exist yet
 - Max 2 robots per room (hardware sprites 1–2; enforced by `genworld.py`) — a sprite multiplexer is deliberately out of scope
 - The reactor gauge is display-only — nothing happens when it's in the red (an idea: make it a real hazard)
-- Room 2's drone patrols only X 2–7, leaving the right third of the (now full-width) room unguarded
+- Room 2's drone patrols only X 3–11, leaving the right third of the room unguarded
 - Furniture is walk-through (not in `art.solid_tiles`); walls only check the sprite's feet, so the upper body overlaps wall art in the oblique view (intended)
 - The code area is nearly full (~150 bytes before `CHARSET` at `$2800`) — move the charset up before the next big feature (see the TILE_COLORS gotcha)
 - `graphics/aaa-*` files (an alternative vchar64 project/export) are untracked and not referenced by the build
