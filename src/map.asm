@@ -17,26 +17,23 @@ MAP_GO
 MAPDONE jmp MAIN_LOOP
 
 ; ---------------------------------------------------------------------------
-; SETUP_MAP — draw map screen, switch to state 5
-; Called via jsr from the terminal's "view map" entry.
+; SETUP_MAP — draw the sector map, switch to state 5. Called via jsr from the
+; terminal's "view map" entry. The whole map (rows 2-23: boxes, corridors,
+; exits, title, prompt) is generated from the doors by tools/genworld.py as
+; MAP_SCR (screen codes) / MAP_COL (colours) in world.asm; this just copies
+; it and lights up the current room's box (MAPHL_*).
 ; ---------------------------------------------------------------------------
 SETUP_MAP
         lda #5 : sta GAME_STATE
         lda #$00 : sta VIC_SPEN
 
-        jsr CLEAR_ROOM
-        lda #<MAP_ROWS : ldy #>MAP_ROWS : jsr DRAW_ROWS
+        lda #<MAP_SCR : sta PTR : lda #>MAP_SCR : sta PTR+1
+        lda #<(SCRN+80) : sta PTR2 : lda #>(SCRN+80) : sta PTR2+1
+        jsr MAPCOPY
+        lda #<MAP_COL : sta PTR : lda #>MAP_COL : sta PTR+1
+        lda #<(CRAM+80) : sta PTR2 : lda #>(CRAM+80) : sta PTR2+1
+        jsr MAPCOPY
 
-        ; Colour connection passage (cols 13-20) on rows 11-12 in CYAN
-        ldx #7
-SMCN11  lda #CYAN : sta CRAM+11*40+13,x : dex : bpl SMCN11
-        ldx #7
-SMCN12  lda #CYAN : sta CRAM+12*40+13,x : dex : bpl SMCN12
-
-        ; Highlight the current room's box in LTGREEN. The box position/size
-        ; comes from the MAPHL_* tables (map_view in titan.yaml) — the map
-        ; background art above is still hand-drawn, so a new room needs both
-        ; a map_view entry and matching art in the MAP_R* strings.
         ldx CUR_ROOM
         lda MAPHL_LO,x : sta PTR
         lda MAPHL_HI,x : sta PTR+1
@@ -50,46 +47,13 @@ SMHLCOL lda #LTGREEN : sta (PTR),y
         dec TMP : bne SMHLROW
         rts
 
-; Rows of the map screen: (screen row, colour, string), for DRAW_ROWS
-MAP_ROWS
-        !byte 8,  YELLOW, <MAP_R8,  >MAP_R8        ; title
-        !byte 9,  DGRAY,  <MAP_R9,  >MAP_R9        ; top border
-        !byte 10, DGRAY,  <MAP_R10, >MAP_R10       ; room names
-        !byte 11, DGRAY,  <MAP_R11, >MAP_R11       ; connection row 1
-        !byte 12, DGRAY,  <MAP_R12, >MAP_R12       ; connection row 2
-        !byte 13, DGRAY,  <MAP_R13, >MAP_R13       ; bottom border (exit gap)
-        !byte 14, WHITE,  <MAP_R14, >MAP_R14       ; exit arrow
-        !byte 15, WHITE,  <MAP_R15, >MAP_R15       ; "exit" label
-        !byte 17, MGRAY,  <MAP_R17, >MAP_R17       ; prompt
-        !byte $FF
-
-; =============================================================================
-; Map strings — all exactly 40 bytes
-; =============================================================================
-MAP_R8   !pet "      * sector map *                    "
-MAP_R9
-        !pet "  ", G_RD_UL
-        !fill 10, G_HORIZ_BAR
-        !pet G_RD_UR, "      ", G_RD_UL
-        !fill 10, G_HORIZ_BAR
-        !pet G_RD_UR, "        "
-MAP_R10  !pet "  ", G_VERT_BAR, "  room 1  ", G_VERT_BAR, "      ", G_VERT_BAR, "  room 2  ", G_VERT_BAR, "        "
-MAP_R11                                 ; corridor top: walls turn into it
-        !pet "  ", G_VERT_BAR, "          ", G_RD_LL
-        !fill 6, G_HORIZ_BAR
-        !pet G_RD_LR, "          ", G_VERT_BAR, "        "
-MAP_R12                                 ; corridor bottom
-        !pet "  ", G_VERT_BAR, "          ", G_RD_UL
-        !fill 6, G_HORIZ_BAR
-        !pet G_RD_UR, "          ", G_VERT_BAR, "        "
-MAP_R13
-        !pet "  ", G_RD_LL
-        !fill 10, G_HORIZ_BAR
-        !pet G_RD_LR, "      ", G_RD_LL
-        !fill 4, G_HORIZ_BAR
-        !pet "  "
-        !fill 4, G_HORIZ_BAR
-        !pet G_RD_LR, "        "
-MAP_R14  !pet "                         ", G_VERT_BAR, G_VERT_BAR, "             "
-MAP_R15  !pet "                        exit            "
-MAP_R17  !pet "     press fire to return               "
+; MAPCOPY — copy 22 rows (880 = 3*256+112 bytes) from PTR to PTR2.
+MAPCOPY
+        ldx #3 : ldy #0
+MCPG    lda (PTR),y : sta (PTR2),y
+        iny : bne MCPG
+        inc PTR+1 : inc PTR2+1
+        dex : bne MCPG
+MCPT    lda (PTR),y : sta (PTR2),y
+        iny : cpy #112 : bcc MCPT
+        rts

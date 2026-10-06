@@ -36,11 +36,11 @@ The source is split into one orchestrator and eight state/data modules, all `!so
 | `src/gameover.asm` | `DO_GAMEOVER`, `SETUP_GAMEOVER`, `GO_BLINK` helpers, strings |
 | `src/win.asm` | `DO_WIN`, `SETUP_WIN`, `WIN_BLINK` helpers, strings |
 | `src/terminal.asm` | `SETUP_TERMINAL`, `DO_TERMINAL`, `TERM_DRAW_SEL`, `CLEAR_ROOM`, strings |
-| `src/map.asm` | `DO_MAP`, `SETUP_MAP`, `MAP_ROWS`, map strings |
+| `src/map.asm` | `DO_MAP`, `SETUP_MAP` (copies the generated `MAP_SCR`/`MAP_COL`, lights the current room) |
 | `src/popup.asm` | `DO_POPUP`, `SHOW_POPUP`, `SETUP_SEARCH`, `SETUP_DOOR_LOCKED`, popup strings |
 | `src/c64_walker_sprites.asm`, `src/c64_robot_sprites.asm`, `src/c64_drone_sprites.asm` | Multicolour sprite sets (player / walking robot / flying drone), `!source`d into the sprite block at `$3000`. All three have all four facings (robots need up/down too — the terminal lets you drive them in any direction) |
 | `src/charset.asm` | `TILE_COLORS` (256-byte tile→colour table) and `CHARSET` (custom 2K charset at `$2800`), generated from `graphics/*.s` — see "Custom Charset / Screen Art" |
-| `src/world.asm` | **Generated** by `tools/genworld.py` from `titan.yaml` (data only, no code): `NUM_*`/`ACTOR_*`/`ITEM_*`/`CFG_*` constants, `ROOM_*`/`TYPE_*`/`ACT_*`/`ITEM_*`/`DOOR_*`/`LASER_*`/`TERMZ_*`/`MAPHL_*` tables, `ROOM_MAP_n` screen-code data, and the runtime state arrays (`ACT_X/Y/TGT/ALIVE/DIR/ANIM`, `GL_PXL/PXH/PY`, `ITEM_STATE`, `LASER_STATE`, `SPR_SLOT_ACT`) |
+| `src/world.asm` | **Generated** by `tools/genworld.py` from `titan.yaml` (data only, no code): `NUM_*`/`ACTOR_*`/`ITEM_*`/`CFG_*` constants, `ROOM_*`/`TYPE_*`/`ACT_*`/`ITEM_*`/`DOOR_*`/`LASER_*`/`TERMZ_*`/`MAPHL_*` tables, the generated sector map `MAP_SCR`/`MAP_COL`, `ROOM_MAP_n` screen-code data, and the runtime state arrays (`ACT_X/Y/TGT/ALIVE/DIR/ANIM`, `GL_PXL/PXH/PY`, `ITEM_STATE`, `LASER_STATE`, `SPR_SLOT_ACT`) |
 
 Other files:
 - `titan.yaml` — **the world definition** (rooms, robots, items, doors, lasers, terminals, start clock); the preferred place to change gameplay content
@@ -85,7 +85,7 @@ The SYS address in `!pet` must be kept in sync manually if the header ever chang
 | `$D800–$DBFF` | Colour RAM |
 | `$07F8` | Sprite pointer table (end of screen RAM — **must be restored after every CLS call**) |
 | `$3000–$38FF` | Sprite frames (36 × 64 bytes, pointers `$C0–$E3`): player 12, robot 12, drone 12 — see "Sprites" |
-| `$3900` | `TITLE_SCR`/`TITLE_COL` intro logo (640 bytes), then the generated world data (`src/world.asm`): tables, room maps, wall grids, runtime state arrays — grows with content (ends ~`$44A4` today), must stay below `$C000` |
+| `$3900` | `TITLE_SCR`/`TITLE_COL` intro logo (640 bytes), then the generated world data (`src/world.asm`): tables, room maps, wall grids, runtime state arrays — grows with content (ends ~`$4C7B` today), must stay below `$C000` |
 | `$C000–$CFFF` | Licence to Kill SID music (init `$C000`, play `$C127`; loaded by exomizer) |
 
 ## Core Design Constraints
@@ -154,7 +154,7 @@ Doorway transitions call `DRAW_ROOM`, which blits 22×40 chars via the `ROOM_MAP
 
 ### Adding content (config-only recipes)
 
-- **New room:** author the art in vchar64 (22×40, shared charset — see `graphics/README.txt`), export the map as ASM, add a `rooms:` entry in `titan.yaml` (name, `vchar64_map`, `player_start`, `map_view`; `bounds` optional) plus doors linking it to its neighbours (a door in each direction of travel, one per room). Until the sector-map art is generated, also extend the `MAP_R*` strings in `src/map.asm` by hand.
+- **New room:** author the art in vchar64 (22×40, shared charset — see `graphics/README.txt`), export the map as ASM, add a `rooms:` entry in `titan.yaml` (name, `vchar64_map`, `player_start`; `label` — its name on the sector map — and `bounds` optional) plus doors linking it to its neighbours (a door in each direction of travel, one per room). The sector map updates itself (see "Sector map").
 - **New hidden item:** add an entry under `items:` (label ≤12 chars, found_text ≤30 chars) and place it with a `things:` entry in a room. Lock any door with `key: <item>`.
 - **New robot:** add a `robots:` entry in a room (`type`, `start`, two-point `patrol`, optional terminal `name:` ≤22 chars and `locked: true`; ≤2 robots per room). It appears in the terminal menu of its room automatically. Give it an `id:` if code needs to reference it (emitted as `ACTOR_<ID>`). A new *type* needs an `actor_types:` entry, a sprite data block in `titanfall.asm` (64-byte aligned, referenced by label), and — until more AI exists — `ai: patrol`.
 - **New laser / terminal zone:** one line under the room's `lasers:` / `terminals:`.
@@ -386,6 +386,9 @@ Space (search/terminal): col 7 (PA=$7F), row 4 (PRB bit 4 = mask $10, active low
 
 Terminal menu keyboard navigation uses `GETIN` (KERNAL keyboard buffer) for PETSCII codes: `$11`=cursor down, `$91`=cursor up, `$0D`=Return, `$88`=F7 (leave). Space is deliberately not "select" there: the Space press that opened the terminal is still in the KERNAL buffer.
 
+### Sector map
+Generated entirely by `genworld.py` (`build_map`) from the doors — nothing is hand-drawn. Each door's rectangle says which wall it's on (`door_dir`: left/right/up/down — it must lie outside the room), so starting from the start room every door places the room it leads to in the neighbouring grid cell; the build **fails** if two doors disagree about where a room is, two rooms land on one cell, a room isn't reachable through doors, an exit faces another room, or the layout doesn't fit the 22×40 map screen. Each room is a 4-row box (rounded corners, `label:` from `titan.yaml`, default the room's name; up to 12 wide, narrowed to fit), connected rooms get a cyan corridor (two lines between the boxes, the walls turning into it), and every `leads_to: exit` door gets an opening in that wall plus a white stub and "exit" label outside it. Title and prompt are centred above/below. The result is emitted as `MAP_SCR` (screen codes) and `MAP_COL` (colours) for screen rows 2–23, with an ASCII picture of the map in the comments of `world.asm`; `SETUP_MAP` just copies both and paints the current room's box light green from `MAPHL_*` (also generated from the layout). The old `map_view:` room key is rejected.
+
 ### Terminal menu
 `SETUP_TERMINAL` builds the menu on entry from the actor tables: one entry per robot in `CUR_ROOM` (rows 8–9, at most 2 per room; text from the generated `ACT_TROW_n` row — `name:` from `titan.yaml`, plus "locked" for `locked: true`; a destroyed robot gets "destroyed" drawn over cols 28–36), then **view map** (row 11) and **logoff** (row 12). With no robots in the room, row 8 shows "no units in this sector". `TM_ACT`/`TM_ROW` (per entry: actor index or `TM_MAP`/`TM_LOGOFF`, and screen row) and `TERM_N` drive `TERM_DRAW_SEL` (colours, `>` marker) and `TERM_FIRE`. View map `jsr SETUP_MAP`s; leaving the map (`DO_MAP`) calls `SETUP_TERMINAL` again with `TERM_SEL` still on "view map" (`READ_KEYS` zeroes `TERM_SEL` before a fresh entry).
 
@@ -422,7 +425,7 @@ It sets `$D418 = $0F` on start, and `SNDOFF` gates off and restores `$0F` at the
 
 Non-game screens (intro, game over, win) use a PETSCII box design: a bordered panel (rows 3–13 on game over / win, rows 12–21 under the logo and author line on the intro) drawn at 50 Hz by the relevant setup routine. All three share the subroutine `DRAW_INTRO_SCREEN` for the intro layout (called from `SHOW_INTRO`, the `DO_GAMEOVER` restart path, and the `DO_WIN` restart path).
 
-**Row lists.** `DRAW_ROWS` (`titanfall.asm`, A/Y = list address) draws a screen from a table of `(screen row, colour, string lo, string hi)` entries ended by `$FF` — the terminal (`TERM_ROWS`) and map (`MAP_ROWS`) use it instead of one unrolled copy loop per row. `DRAW_ROW` draws a single row (A = row, `PTR` = string, `TMP2` = colour), `PAINT_ROW` recolours the row at `PTR2`, `ROW_PTR` turns a row number into its screen address.
+**Row lists.** `DRAW_ROWS` (`titanfall.asm`, A/Y = list address) draws a screen from a table of `(screen row, colour, string lo, string hi)` entries ended by `$FF` — the terminal (`TERM_ROWS`) and popup (`SBOX_ROWS`) use it instead of one unrolled copy loop per row. `DRAW_ROW` draws a single row (A = row, `PTR` = string, `TMP2` = colour), `PAINT_ROW` recolours the row at `PTR2`, `ROW_PTR` turns a row number into its screen address.
 
 ### Shared string labels (each exactly 40 bytes)
 - `SCR_BORDER_TOP` — rounded top border (`G_RD_UL` + 38 × `G_HORIZ_BAR` + `G_RD_UR`)
@@ -430,7 +433,7 @@ Non-game screens (intro, game over, win) use a PETSCII box design: a bordered pa
 - `SCR_BLANK` — `G_VERT_BAR` + 38 spaces + `G_VERT_BAR` empty interior row
 - `ITR_SEP` — `G_VERT_BAR  ==...==  G_VERT_BAR` separator (reused by all three screens)
 
-**All boxes use the PETSCII line glyphs** from `src/petscii.asm` — rounded corners `G_RD_UL/UR/LL/LR`, `G_HORIZ_BAR`, `G_VERT_BAR` — never ASCII `+`, `-`, `|` (those render as plain/odd glyphs). The terminal box reuses `SCR_BORDER_TOP`/`SCR_BORDER_BOTTOM`/`SCR_BLANK`; the popup's narrower box (`SBOX_*`, columns 4–35) builds its border rows with `!fill 30, G_HORIZ_BAR`; `genworld.py` frames the generated `ITEM_MSG_*` rows with `G_VERT_BAR`; the sector map's room outlines (`MAP_R9`–`MAP_R13`) use the rounded corners too. After drawing a box, call `FRAME_EDGES` (full width) / `FRAME_EDGES_LR` (columns preset in `FR_L`/`FR_R`) with the frame colour so the `G_VERT_BAR` ends don't inherit each row's text colour.
+**All boxes use the PETSCII line glyphs** from `src/petscii.asm` — rounded corners `G_RD_UL/UR/LL/LR`, `G_HORIZ_BAR`, `G_VERT_BAR` — never ASCII `+`, `-`, `|` (those render as plain/odd glyphs). The terminal box reuses `SCR_BORDER_TOP`/`SCR_BORDER_BOTTOM`/`SCR_BLANK`; the popup's narrower box (`SBOX_*`, columns 4–35) builds its border rows with `!fill 30, G_HORIZ_BAR`; `genworld.py` frames the generated `ITEM_MSG_*` rows with `G_VERT_BAR`; the generated sector map uses the same glyphs (as screen codes, `SC_*` in `genworld.py`). After drawing a box, call `FRAME_EDGES` (full width) / `FRAME_EDGES_LR` (columns preset in `FR_L`/`FR_R`) with the frame colour so the `G_VERT_BAR` ends don't inherit each row's text colour.
 
 All string-copy loops call `jsr PET2SCREEN` to convert PETSCII to screen codes before writing to screen RAM. `PET2SCREEN` is defined in `src/titanfall.asm` after `CLS`.
 - `ITR_TAG`, `ITR_M1`–`ITR_M3` — intro panel content (the intro has no title row in the box any more — the logo above it replaces it)
@@ -446,14 +449,13 @@ Star characters (`*`) in the game over / win titles are recoloured to YELLOW aft
 
 The core puzzle loop is in place and playable end-to-end: explore, take over the splicer via the terminal, drive it into the laser (it slides into the beam, the beam vanishes from the art with a "bzzzt"), search for the access card, and reach the win screen through the now-unlockable room 2 door — with a real risk/reward death penalty (lose time + respawn) instead of an instant Game Over, and Game Over genuinely tied to the countdown clock hitting zero.
 
-The world is **config-driven**: rooms (bounds, player start, vchar64 map), robots (type, start, patrol waypoints), items (position, label, found-text), doors (rect, destination, arrival position, key), lasers, terminal zones, the starting clock, the death penalty and the art codes (floor, laser, wall chars) all live in `titan.yaml` and are compiled into `src/world.asm` data tables at build time. Interior walls and the laser-erase patches are derived from the room art by `genworld.py`, which also rejects placements inside walls. Adding a room = a vchar64 map export + a `rooms:` entry (plus, for now, hand-drawn sector-map art — see below). Adding an item, door, laser or robot is config-only.
+The world is **config-driven**: rooms (bounds, player start, vchar64 map), robots (type, start, patrol waypoints), items (position, label, found-text), doors (rect, destination, arrival position, key), lasers, terminal zones, the starting clock, the death penalty and the art codes (floor, laser, wall chars) all live in `titan.yaml` and are compiled into `src/world.asm` data tables at build time. Interior walls and the laser-erase patches are derived from the room art by `genworld.py`, which also rejects placements inside walls. Adding a room = a vchar64 map export + a `rooms:` entry + its doors; the sector map is generated from the doors. Adding an item, door, laser or robot is config-only.
 
 Presentation (as of 2026-10-06): multicolour animated sprites with 4-way facing (walker player, walking robots in room 1, hovering drone in room 2), smooth gliding movement between tiles, a PETSCII block-letter title logo + author line on the intro, rounded PETSCII frames with uniform frame colours on every box (intro, game over, win, terminal, popups, sector map), and a working reactor thermometer tied to the countdown. The obvious visual glitches (robots over the terminal, wrong spawn in room 2, walking through walls, blank reactor HUD, terminal cursor on several rows) are fixed.
 
 ## What's Not Yet Implemented
 
 - Robot abilities: every linkable robot drives the same way (any of them would burn out a laser); the per-type capabilities from the design (loader immune to lasers, splicer through ducts, centurion armed) aren't implemented. The room-1 sentry is `locked: true` so the splicer stays the puzzle's key
-- Sector map background art (`MAP_R8-R17` strings in `map.asm`) is still hand-drawn for the two current rooms; only the current-room highlight box is table-driven (`MAPHL_*` from `map_view:` in `titan.yaml`). A third room needs new map strings.
 - Item states `carried` vs `used` aren't distinguished yet — door keys accept either, nothing sets `used` (=2)
 - `ai:` in `titan.yaml` only accepts `patrol` (two-waypoint shuttle); no other AI routines exist yet
 - Max 2 robots per room (hardware sprites 1–2; enforced by `genworld.py`) — a sprite multiplexer is deliberately out of scope

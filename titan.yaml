@@ -73,9 +73,9 @@ items:
 rooms:
   - name: room1
     vchar64_map: graphics/titan_room01-map.s
+    label: room 1                      # name on the sector map (default: name)
     # bounds: {max_x: 19, max_y: 10}   # optional; default is the whole room
     player_start: {x: 6, y: 4}
-    map_view: {row: 9, col: 2, width: 12, height: 4}   # highlight box on the sector map
     # Robots: name is shown in the terminal menu (max 22 chars; default: id
     # or type); locked: true lists it there but refuses the link.
     robots:
@@ -103,8 +103,8 @@ rooms:
 
   - name: room2
     vchar64_map: graphics/titan_room02-map.s
+    label: room 2
     player_start: {x: 17, y: 5}
-    map_view: {row: 9, col: 20, width: 12, height: 5}
     robots:
       - type: drone
         name: bot-8808  drone

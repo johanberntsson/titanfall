@@ -7,9 +7,6 @@ in the map file and define where it's activated from that
 
 I'm made two new sprites for later
 
-Perhaps remove keyboard support. This is a joystick controlled game. The only exception is "any key"
-to close popups and the intro screen - this is still allowed to register the keyboard as an option.
-
 # ------------------------
 #           DONE
 # ------------------------

@@ -146,6 +146,167 @@ def patrol_path(x, y, tx, ty):
     return tiles
 
 
+# ---- sector map ---------------------------------------------------------
+# The map screen (screen rows 2-23 = 22 rows x 40) is generated from the
+# doors: each door's wall gives the direction of the room it leads to, so
+# the rooms are laid out on a grid from the start room, then drawn as boxes
+# with corridors between connected rooms and an opening + "exit" marker for
+# every exit door. Emitted as raw screen codes + a colour per cell.
+MAP_ROWS, MAP_COLS = 22, 40
+SC_HBAR, SC_VBAR = 0x43, 0x5D            # screen codes of the ROM box glyphs
+SC_UL, SC_UR, SC_LL, SC_LR = 0x55, 0x49, 0x4A, 0x4B   # rounded corners
+DIRS = {"left": (-1, 0), "right": (1, 0), "up": (0, -1), "down": (0, 1)}
+MAP_BOX_H = 4                            # top border, label, blank, bottom
+MAP_GAP_X, MAP_GAP_Y = 6, 2              # corridor length between boxes
+MAP_EXIT_X, MAP_EXIT_Y = 7, 2            # room an exit marker needs outside
+
+
+def screen_code(ch):
+    """Screen code of a PET_SAFE character (as !pet + PET2SCREEN would)."""
+    return ord(ch) - 96 if "a" <= ch <= "z" else ord(ch)
+
+
+def door_dir(door, room, what):
+    """Which wall a door rectangle is on (doors sit just outside the room)."""
+    if door["x2"] < 0:
+        return "left"
+    if door["x1"] > room["_maxx"]:
+        return "right"
+    if door["y2"] < 0:
+        return "up"
+    if door["y1"] > room["_maxy"]:
+        return "down"
+    die(f"{what}: door rectangle is not outside a wall of the room")
+
+
+def build_map(rooms, start, doors):
+    """Lay the rooms out and draw the map. doors: (room, dir, dest or None)."""
+    pos = {start: (0, 0)}
+    queue = [start]
+    while queue:
+        ri = queue.pop(0)
+        for (r, d, dest) in doors:
+            if r != ri or dest is None:
+                continue
+            dx, dy = DIRS[d]
+            want = (pos[ri][0] + dx, pos[ri][1] + dy)
+            if dest in pos:
+                if pos[dest] != want:
+                    die(f"map: room {rooms[ri]['name']}'s {d} door leads to "
+                        f"{rooms[dest]['name']}, which other doors put elsewhere")
+                continue
+            if want in pos.values():
+                die(f"map: room {rooms[dest]['name']} would overlap another "
+                    f"room ({d} of {rooms[ri]['name']})")
+            pos[dest] = want
+            queue.append(dest)
+    for ri, room in enumerate(rooms):
+        if ri not in pos:
+            die(f"map: room {room['name']} can't be reached through doors "
+                f"from the start room")
+    minx = min(x for x, _ in pos.values())
+    miny = min(y for _, y in pos.values())
+    pos = {ri: (x - minx, y - miny) for ri, (x, y) in pos.items()}
+    gw = max(x for x, _ in pos.values()) + 1
+    gh = max(y for _, y in pos.values()) + 1
+    exits = [(r, d) for (r, d, dest) in doors if dest is None]
+    for r, d in exits:
+        dx, dy = DIRS[d]
+        if (pos[r][0] + dx, pos[r][1] + dy) in pos.values():
+            die(f"map: room {rooms[r]['name']}'s {d} exit faces another room")
+
+    labels = [r["_label"] for r in rooms]
+    lm = MAP_EXIT_X if any(d == "left" and pos[r][0] == 0 for r, d in exits) else 0
+    rm = MAP_EXIT_X if any(d == "right" and pos[r][0] == gw - 1 for r, d in exits) else 0
+    tm = MAP_EXIT_Y if any(d == "up" and pos[r][1] == 0 for r, d in exits) else 0
+    bm = MAP_EXIT_Y if any(d == "down" and pos[r][1] == gh - 1 for r, d in exits) else 0
+    min_w = max(len(l) for l in labels) + 4
+    box_w = 12
+    while box_w > min_w and lm + rm + gw * box_w + (gw - 1) * MAP_GAP_X > MAP_COLS - 2:
+        box_w -= 1
+    box_w = max(box_w, min_w)
+    total_w = lm + rm + gw * box_w + (gw - 1) * MAP_GAP_X
+    grid_h = tm + bm + gh * MAP_BOX_H + (gh - 1) * MAP_GAP_Y
+    block_h = 2 + grid_h + 2                 # title, blank, grid, blank, prompt
+    if total_w > MAP_COLS - 2 or block_h > MAP_ROWS:
+        die(f"map: {gw}x{gh} rooms don't fit on the map screen "
+            f"({total_w} cols, {block_h} rows)")
+
+    scr = [[0x20] * MAP_COLS for _ in range(MAP_ROWS)]
+    col = [[C64_COLORS["dgray"]] * MAP_COLS for _ in range(MAP_ROWS)]
+
+    def put(r, c, code, colour):
+        scr[r][c] = code
+        col[r][c] = C64_COLORS[colour]
+
+    def text(r, c, t, colour):
+        for i, ch in enumerate(t):
+            put(r, c + i, screen_code(ch), colour)
+
+    top = (MAP_ROWS - block_h) // 2
+    text(top, (MAP_COLS - 14) // 2, "* sector map *", "yellow")
+    text(top + block_h - 1, (MAP_COLS - 20) // 2, "press fire to return", "mgray")
+    gx0 = (MAP_COLS - total_w) // 2 + lm
+    gy0 = top + 2 + tm
+
+    def box_at(ri):
+        x, y = pos[ri]
+        return gy0 + y * (MAP_BOX_H + MAP_GAP_Y), gx0 + x * (box_w + MAP_GAP_X)
+
+    boxes = []
+    for ri in range(len(rooms)):
+        r, c = box_at(ri)
+        boxes.append((r, c))
+        put(r, c, SC_UL, "dgray"); put(r, c + box_w - 1, SC_UR, "dgray")
+        put(r + 3, c, SC_LL, "dgray"); put(r + 3, c + box_w - 1, SC_LR, "dgray")
+        for i in range(1, box_w - 1):
+            put(r, c + i, SC_HBAR, "dgray"); put(r + 3, c + i, SC_HBAR, "dgray")
+        for i in (1, 2):
+            put(r + i, c, SC_VBAR, "dgray"); put(r + i, c + box_w - 1, SC_VBAR, "dgray")
+        text(r + 1, c + (box_w - len(labels[ri])) // 2, labels[ri], "dgray")
+
+    mid = box_w // 2 - 1                     # vertical corridor/exit columns: mid, mid+1
+    drawn = set()
+    for (a, d, b) in doors:
+        if b is None or frozenset((a, b)) in drawn:
+            continue
+        drawn.add(frozenset((a, b)))
+        if d in ("left", "up"):
+            a, b = b, a                      # a = left/top room
+        (ra, ca), (rb, cb) = boxes[a], boxes[b]
+        if d in ("left", "right"):           # walls turn into a corridor
+            l, rr = ca + box_w - 1, cb
+            put(ra + 1, l, SC_LL, "cyan"); put(ra + 1, rr, SC_LR, "cyan")
+            put(ra + 2, l, SC_UL, "cyan"); put(ra + 2, rr, SC_UR, "cyan")
+            for c in range(l + 1, rr):
+                put(ra + 1, c, SC_HBAR, "cyan"); put(ra + 2, c, SC_HBAR, "cyan")
+        else:
+            bot, tp = ra + 3, rb
+            put(bot, ca + mid, SC_UR, "cyan"); put(bot, ca + mid + 1, SC_UL, "cyan")
+            put(tp, ca + mid, SC_LR, "cyan"); put(tp, ca + mid + 1, SC_LL, "cyan")
+            for r in range(bot + 1, tp):
+                put(r, ca + mid, SC_VBAR, "cyan"); put(r, ca + mid + 1, SC_VBAR, "cyan")
+    for (ri, d) in exits:                    # opening in the wall + "exit"
+        r, c = boxes[ri]
+        if d == "down":
+            put(r + 3, c + mid, 0x20, "white"); put(r + 3, c + mid + 1, 0x20, "white")
+            put(r + 4, c + mid, SC_VBAR, "white"); put(r + 4, c + mid + 1, SC_VBAR, "white")
+            text(r + 5, c + mid - 1, "exit", "white")
+        elif d == "up":
+            put(r, c + mid, 0x20, "white"); put(r, c + mid + 1, 0x20, "white")
+            put(r - 1, c + mid, SC_VBAR, "white"); put(r - 1, c + mid + 1, SC_VBAR, "white")
+            text(r - 2, c + mid - 1, "exit", "white")
+        else:
+            w = c if d == "left" else c + box_w - 1
+            s = -1 if d == "left" else 1
+            for i in (1, 2):
+                put(r + i, w, 0x20, "white")
+                put(r + i, w + s, SC_HBAR, "white"); put(r + i, w + 2 * s, SC_HBAR, "white")
+            text(r + 1, w - 7 if d == "left" else w + 4, "exit", "white")
+    highlight = [(r + 2, c, box_w, MAP_BOX_H) for (r, c) in boxes]   # screen rows
+    return scr, col, highlight
+
+
 def main():
     if len(sys.argv) != 3:
         die("usage: genworld.py <titan.yaml> <world.asm>")
@@ -230,6 +391,7 @@ def main():
     actor_ids = {}
     item_pos = {}                       # item index -> (room, x, y)
     door = {k: [] for k in ("room", "x1", "y1", "x2", "y2", "dest", "ax", "ay", "key")}
+    map_doors = []                      # (room, wall direction, dest or None)
     laser = {k: [] for k in ("room", "x1", "y1", "x2", "y2")}
     laser_art = []                      # per laser: [(map offset, new char), ...]
     art = cfg.get("art") or die("config needs an art section (floor_tile, laser_tiles)")
@@ -242,6 +404,10 @@ def main():
 
     for ri, room in enumerate(rooms):
         rname = room["name"]
+        if "map_view" in room:
+            die(f"room {rname}: map_view is obsolete - the sector map is "
+                f"generated from the doors (use label: to name the room)")
+        room["_label"] = check_pet(str(room.get("label", rname)), f"room {rname} label")
         b = room.get("bounds") or {}       # default: the whole 20x11 room
         room["_maxx"] = int(b.get("max_x", TILES_X - 1))
         room["_maxy"] = int(b.get("max_y", TILES_Y - 1))
@@ -325,6 +491,9 @@ def main():
             door["ax"].append(0xFF if "x" not in arrive else int(arrive["x"]))
             door["ay"].append(0xFF if "y" not in arrive else int(arrive["y"]))
             door["key"].append(0 if key is None else item_index[key] + 1)
+            map_doors.append((ri, door_dir({k: int(at[k]) for k in ("x1", "y1", "x2", "y2")},
+                                           room, f"room {rname} door to {dest}"),
+                              None if dest_i == 0xFF else dest_i))
 
     for iname, ii in item_index.items():
         if ii not in item_pos:
@@ -373,6 +542,8 @@ def main():
                for x in range(termz["x1"][ti], termz["x2"][ti] + 1)):
             die(f"terminal zone #{ti} in room {rooms[ri]['name']} is entirely inside walls")
 
+
+    map_scr, map_col, map_hl = build_map(rooms, room_index[start_room], map_doors)
 
     # ---- emit ----------------------------------------------------------
     o = []
@@ -424,17 +595,13 @@ def main():
     o.append(tbl("ROOM_PSY", [byte(int(r["player_start"]["y"]), "ROOM_PSY") for r in rooms]))
     o.append("")
 
-    o.append("; ---- sector map view: highlight box per room (colour RAM) ----")
-    hl_addr = []
-    for r in rooms:
-        mv = r.get("map_view") or die(f"room {r['name']}: needs map_view")
-        hl_addr.append((int(mv["row"]), int(mv["col"]), int(mv["width"]), int(mv["height"])))
-    o.append("MAPHL_LO        ; CRAM address of the box's top-left corner")
-    o.append("        !byte " + ",".join(f"<($D800+{row}*40+{col})" for row, col, _, _ in hl_addr))
+    o.append("; ---- sector map: highlight box per room (colour RAM) ----")
+    o.append("MAPHL_LO        ; CRAM address of the room box's top-left corner")
+    o.append("        !byte " + ",".join(f"<($D800+{row}*40+{col})" for row, col, _, _ in map_hl))
     o.append("MAPHL_HI")
-    o.append("        !byte " + ",".join(f">($D800+{row}*40+{col})" for row, col, _, _ in hl_addr))
-    o.append(tbl("MAPHL_W", [byte(w, "MAPHL_W") for _, _, w, _ in hl_addr]))
-    o.append(tbl("MAPHL_H", [byte(h, "MAPHL_H") for _, _, _, h in hl_addr]))
+    o.append("        !byte " + ",".join(f">($D800+{row}*40+{col})" for row, col, _, _ in map_hl))
+    o.append(tbl("MAPHL_W", [byte(w, "MAPHL_W") for _, _, w, _ in map_hl]))
+    o.append(tbl("MAPHL_H", [byte(h, "MAPHL_H") for _, _, _, h in map_hl]))
     o.append("")
 
     o.append("; ---- actors (robots; the player is not in this table) ----")
@@ -543,6 +710,20 @@ def main():
         for off in range(0, len(data), 16):
             row = ",".join(f"${b:02x}" for b in data[off:off + 16])
             o.append(f"!byte {row}\t; {off}")
+    o.append("")
+
+    o.append("; ---- sector map: screen rows 2-23, generated from the doors ----")
+    o.append("; (SETUP_MAP copies MAP_SCR/MAP_COL to screen/colour RAM as they are)")
+    picture = {SC_HBAR: "-", SC_VBAR: "|", SC_UL: "+", SC_UR: "+", SC_LL: "+", SC_LR: "+"}
+    for r in range(MAP_ROWS):
+        line = "".join(picture.get(c, chr(c + 96) if 1 <= c <= 26 else chr(c)) for c in map_scr[r])
+        o.append(f";   {line.rstrip()}")
+    o.append("MAP_SCR")
+    for r in range(MAP_ROWS):
+        o.append("        !byte " + ",".join(f"${c:02x}" for c in map_scr[r]))
+    o.append("MAP_COL")
+    for r in range(MAP_ROWS):
+        o.append("        !byte " + ",".join(f"${c:02x}" for c in map_col[r]))
     o.append("")
 
     o.append("; ---- runtime state (RAM, initialised by SETUP_GAME/RESET_ROUND) ----")
