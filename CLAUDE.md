@@ -148,7 +148,7 @@ Movement is fully table-driven (`MOVE_PLAYER`/`TRY_MOVE` in `game.asm`):
 - **Bounds:** each room has its own `ROOM_MAXX`/`ROOM_MAXY` (default and maximum 19/10, the full 20×11-tile room; walls in the art do the real limiting).
 - **Doors** (`DOOR_*` tables) are rectangles *one tile outside* the walkable range (e.g. `x: -1` on a left wall, `y: 10` on a bottom wall, encoded `$FF`/`$0A`). A move landing inside a door rect triggers it: locked check first (`DOOR_KEY` = item index+1, 0=none; locked shows the popup and acts like a wall), then either the win screen (`DOOR_DEST=$FF`, `leads_to: exit`) or a room change (`DOOR_AX/AY` set the arrival position; `$FF` = keep current coordinate). Anything out of bounds that isn't a door is a wall.
 - **Interior walls** come from the room art, computed at build time: `genworld.py`'s `wall_grid` marks a tile solid if any of its 2×2 map chars (map cols `2x..2x+1`, rows `2y..2y+1` — where the sprite's feet stand) is in `art.solid_tiles` in `titan.yaml` (`$84–$8B`, the wall glyphs). It emits `ROOM_WALLS_n` (20 bytes per tile row, index `y*20+x` — max 219, so one byte index covers the room; 1 = solid, with an ASCII picture of the grid in the comments) via `ROOM_WALL_LO/HI`; `WALL_AT` (A = room) looks a tile up, and both `TRY_MOVE` (human) and `TRY_ACT` (driven robot) treat a solid tile like a wall before checking lasers. The build **fails** if a player start, a robot start or any tile on a patrol path, an item, or a door arrival lands on a solid tile (or a terminal zone is all wall) — so new art and the config can't silently drift apart for walls. Furniture isn't solid unless its codes are added to `solid_tiles`.
-- **Lasers** (`LASER_*` tables) are rectangles inside the room; `LASER_AT` checks the attempted position against every active laser in the current room. The human dies without entering the tile; a player-driven robot enters the tile and `ROBOT_LASER_DEATH` destroys both robot and laser.
+- **Lasers** (`LASER_*` tables) are rectangles inside the room; `LASER_AT` checks the attempted position against every active laser in the current room. The human steps onto the tile but is already dying (`PLR_DYING=1`: `MOVE_PLAYER` ignores input) and `UPDATE_SPRITE0` calls `PLAYER_DIE` once the sprite has glided onto the beam — the same "finish the slide, then die" as a driven robot; a player-driven robot enters the tile and `ROBOT_LASER_DEATH` destroys both robot and laser.
 
 Doorway transitions call `DRAW_ROOM`, which blits 22×40 chars via the `ROOM_MAP_LO/HI` pointer tables and then calls `ASSIGN_SPRITES` to remap the new room's actors onto hardware sprites 1–2.
 
@@ -263,7 +263,7 @@ $1E  SND_TMR      sound effect countdown (0=silent, music plays)
 $1F  TERM_SEL     terminal selected menu entry (0..TERM_N-1)
 $20  FIRE_PREV    fire/space held (0/1) as of this frame's READ_KEYS (DRAW_ROOM sets 1: a new press is needed after any screen change)
 $21  NEAR_TERM    non-zero when player is adjacent to terminal
-$22  (free — was KEY_F1/T key flag, removed when terminal entry moved to Space/KEY_SPC)
+$22  PLR_DYING    1 = the human is sliding into a laser; UPDATE_SPRITE0 kills the player on arrival (RESET_ROUND clears it)
 $23/$24 ROWS_PTR  DRAW_ROWS row-list pointer
 $25  CUR_ROOM     current room index (into world.asm ROOM_* tables)
 $26  SRCH_TMR     search: frames fire held (0 = not searching; caps at SRCH_DONE)
@@ -289,7 +289,7 @@ $3B  SP_R         SPOP row being processed
 $3C  SP_MODE      SPOP mode (save/draw/restore)
 ```
 
-Free zero-page slots: `$22`, `$30`, `$3D+`. (`$0340`–`$0397` in the tape buffer is the search popup's `SP_BUF`.) Per-robot positions, laser/item state etc. moved to RAM arrays at the end of `src/world.asm` (`ACT_X/Y/TGT/ALIVE/DIR/ANIM`, `GL_PXL/PXH/PY`, `ITEM_STATE`, `LASER_STATE`, `SPR_SLOT_ACT`) — indexed with `,x`, sized by the config.
+Free zero-page slots: `$30`, `$3D+`. (`$0340`–`$0397` in the tape buffer is the search popup's `SP_BUF`.) Per-robot positions, laser/item state etc. moved to RAM arrays at the end of `src/world.asm` (`ACT_X/Y/TGT/ALIVE/DIR/ANIM`, `GL_PXL/PXH/PY`, `ITEM_STATE`, `LASER_STATE`, `SPR_SLOT_ACT`) — indexed with `,x`, sized by the config.
 
 ## Room Map
 

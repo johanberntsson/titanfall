@@ -38,6 +38,7 @@ SND_TMR    = $1E   ; sound effect frame counter (0=silent, music plays)
 TERM_SEL   = $1F   ; terminal: selected menu entry (0..TERM_N-1)
 NEAR_TERM  = $21   ; non-zero when player is adjacent to terminal
 ROWS_PTR   = $23   ; $23/$24: DRAW_ROWS row-list pointer
+PLR_DYING  = $22   ; 1 = player is sliding into a laser (dies on arrival)
 FIRE_PREV  = $20   ; fire/space held (0/1), as of this frame's READ_KEYS
 SRCH_TMR   = $26   ; search: frames fire held (0 = not searching)
 SRCH_ST    = $2C   ; search popup: 0 none, 1 "searching", 2 "nothing here"

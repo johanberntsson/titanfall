@@ -76,6 +76,7 @@ RESET_ROUND
         lda #0   : sta MOVE_TMR
         lda #0   : sta KEY_U : sta KEY_D : sta KEY_L : sta KEY_R
         lda #0   : sta DEATH_TMR
+        lda #0   : sta PLR_DYING
         lda #0   : sta BFLASH
         lda #0   : sta SND_TMR
         lda #0   : sta PLAYER_MODE
@@ -409,8 +410,8 @@ RKDONE  rts
 ; pressed, or every pressed direction walled off) drops back to the rest pose.
 ; =============================================================================
 MOVE_PLAYER
-        lda SRCH_TMR : beq MPNOSRCH      ; searching: stand still
-        rts
+        lda SRCH_TMR : ora PLR_DYING : beq MPNOSRCH   ; searching or sliding
+        rts                                           ;  into a laser: no input
 MPNOSRCH
         lda MOVE_TMR : beq MOVEGO
         dec MOVE_TMR : rts
@@ -455,9 +456,10 @@ TMYOK   lda CUR_ROOM : jsr WALL_AT : bcc TMNOWALL
         clc : rts                    ; wall: blocked (try the next direction)
 TMNOWALL
         jsr LASER_AT : bcc TMCOMMIT
-        ; stepped into an active laser — death, move not committed
-        jsr PLAYER_DIE
-        sec : rts
+        ; stepped into an active laser: take the step, but already dying —
+        ; no more input, and UPDATE_SPRITE0 kills the player once the sprite has
+        ; glided onto the laser tile (like a driven robot, UPD_DYING)
+        lda #1 : sta PLR_DYING
 TMCOMMIT
         lda NEWX : sta PLR_X
         lda NEWY : sta PLR_Y
@@ -632,6 +634,14 @@ UPDATE_SPRITE0
 SPRMSB  lda VIC_SP_MSB : ora #$01 : sta VIC_SP_MSB
 SPRDX
         lda GL_PY+GL_PLAYER : sta VIC_SP0Y
+
+        lda PLR_DYING : beq SPRALIVE     ; walked into a laser: die once the
+        lda GL_PXL+GL_PLAYER : cmp GLT_L : bne SPRALIVE   ;  sprite is on it
+        lda GL_PXH+GL_PLAYER : cmp GLT_H : bne SPRALIVE   ;  (GLT_* = target
+        lda GL_PY+GL_PLAYER  : cmp GLT_Y : bne SPRALIVE   ;  from GLIDE)
+        lda #0 : sta PLR_DYING
+        jsr PLAYER_DIE
+SPRALIVE
 
         lda BFLASH : beq SPROUT
         dec BFLASH : bne SPROUT
