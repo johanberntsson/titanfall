@@ -870,6 +870,12 @@ def main():
         o.append(tbl(name, [byte(v, "termz") for v in termz[key]]))
     o.append("")
 
+    o.append("; ---- win-target chars (art.win_tiles): darkened when the target is shot ----")
+    o.append(f"NUM_WIN_CHARS = {len(win_tiles)}")
+    o.append("WIN_CHARS")
+    o.append("        !byte " + (",".join(f"${t:02x}" for t in sorted(win_tiles)) or "0"))
+    o.append("")
+
     o.append(f"; ---- walls: per room, {TILES_X} bytes per tile row (y*{TILES_X}+x) ----")
     o.append("; bit 0 = solid (#), bit 1 = win target (*: a bolt fired by a player-driven")
     o.append("; robot entering it wins) -- from the 2x2 chars of each tile, see wall_grid")

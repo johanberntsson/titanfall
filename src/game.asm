@@ -1138,8 +1138,7 @@ BTMOVED lda BOLT_XH : lsr                ; tile = X/16 (C = bit 8)
         and BOLT_PLR : beq BTSHOW        ; a win target, hit by the player?
         lda #0 : sta BOLT_ON
         lda VIC_SPEN : and #$F7 : sta VIC_SPEN
-        jsr SOUND_ZAP_START
-        jmp SETUP_WIN                    ; the power cell is hit: mission won
+        jmp SETUP_EXPLODE                ; the power cell is hit (win.asm)
 BTSHOW  lda BOLT_XL : clc : adc #12 : sta VIC_SP3X   ; sprite X = centre+12
         lda BOLT_XH : adc #0 : beq BTMSB0
         lda VIC_SP_MSB : ora #$08 : bne BTMSB
@@ -1340,6 +1339,7 @@ ZAP_LEN   = 40                  ; frames; also the laser-death pause
 
 SOUND_ZAP_START
         lda #ZAP_LEN : sta SND_TMR
+        lda #0 : sta SND_KIND
 
         lda #$00   : sta $D405      ; attack=0, decay=0
         lda #$F0   : sta $D406      ; sustain=15, release=0
@@ -1357,11 +1357,13 @@ SOUND_TICK
         beq SNDOUT
 
         dec SND_TMR
-        bne ZAP_TICK
+        bne SNDKIND
 
 SNDOFF  lda #$20 : sta $D404
         lda #$0F : sta $D418
 SNDOUT  rts
+
+SNDKIND lda SND_KIND : bne BOOM_TICK
 
 ZAP_TICK
         lda SND_TMR : cmp #16 : bcs ZTWAVE
@@ -1378,4 +1380,32 @@ ZTBUZZ  ; even frame: the buzz, ~60-90Hz with random fine jitter
         lda #$41 : sta $D404    ; pulse + gate
         rts
 ZTGAP   lda #$40 : sta $D404    ; gate off for one frame: the stutter
+        rts
+
+; ---------------------------------------------------------------------------
+; The explosion (SETUP_EXPLODE, when the power cell is shot): a low noise
+; blast with a long decay, its pitch falling into a rumble, and a second
+; blast halfway through. Same rules as the zap (runs in the IRQ: A only).
+; ---------------------------------------------------------------------------
+BOOM_LEN  = 100                 ; frames; as long as the screen shake
+
+SOUND_BOOM_START
+        lda #BOOM_LEN : sta SND_TMR
+        lda #1 : sta SND_KIND
+        lda #$0F   : sta $D418      ; master volume full
+        lda #$0B   : sta $D405      ; attack 0, decay 11 (~1.5 s)
+        lda #$00   : sta $D406      ; sustain 0, release 0
+        lda #$00   : sta $D400
+        lda #$18   : sta $D401      ; noise, fairly low to start
+        lda #$81   : sta $D404      ; noise + gate on
+        rts
+
+BOOM_TICK
+        lda SND_TMR : cmp #BOOM_LEN/2+1 : bne BTKNG
+        lda #$80 : sta $D404        ; gate off for a frame ...
+        rts
+BTKNG   cmp #BOOM_LEN/2 : bne BTKP
+        lda #$81 : sta $D404        ; ... second blast
+BTKP    lda SND_TMR : lsr : lsr : clc : adc #2
+        sta $D401                   ; pitch falls with the timer: a rumble
         rts

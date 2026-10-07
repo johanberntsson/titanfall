@@ -63,6 +63,10 @@ BOLT_Y     = $42   ; bolt centre Y in room pixels (tile*16+8)
 BOLT_PLR   = $43   ; 1 = the bolt was fired by a player-driven robot (can win)
 PLAYER_MODE = $31  ; 0=human (control PLR_X/Y)  else actor index+1 (proxy mode)
 LINK_S     = $32   ; robot link: seconds left (HUD "robot NN"; 0 -> human)
+SND_KIND   = $45   ; sound effect playing: 0 = laser zap, 1 = explosion
+EXPL_TMR   = $46   ; explosion (state 7): frames left
+EXP_D011   = $47   ; explosion: $D011/$D016 saved before the shake
+EXP_D016   = $48
 LINK_JIF   = $44   ; robot link: frames into the current second (0-49)
 POPUP_ST   = $33   ; popup: 0=waiting for opening space to be released, 1=armed
 F2_PREV    = $30   ; F2 held last game frame (edge detect for the where-am-I popup)
@@ -265,7 +269,9 @@ MLNOT3  cmp #4 : bne MLNOT4
         jmp DO_WIN
 MLNOT4  cmp #5 : bne MLNOT5
         jmp DO_MAP
-MLNOT5  jmp DO_POPUP
+MLNOT5  cmp #6 : bne MLNOT6
+        jmp DO_POPUP
+MLNOT6  jmp DO_EXPLODE
 
 ; =============================================================================
 ; CLS — clears all 1024 bytes of screen + colour RAM
