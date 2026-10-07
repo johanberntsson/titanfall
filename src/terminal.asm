@@ -44,6 +44,7 @@ CRMCTAIL lda #DGRAY : sta (PTR),y
 ; ---------------------------------------------------------------------------
 SETUP_TERMINAL
         lda #3 : sta GAME_STATE
+        lda #0 : sta $C6                 ; empty the keyboard buffer (198)
         lda #$00 : sta VIC_SPEN
         jsr CLEAR_ROOM
         lda #<TERM_ROWS : ldy #>TERM_ROWS : jsr DRAW_ROWS
@@ -84,8 +85,8 @@ DO_TERMINAL
         ; move. Checked before GETIN so a character sitting in the KERNAL
         ; buffer (e.g. an emulator fire key that also types a key) can't
         ; route the frame into the keyboard branch and swallow the fire.
-        ; Keyboard: Return = select, cursor up/down, F7 = leave. (Not
-        ; space: the space that opened the terminal is still buffered.)
+        ; Keyboard: Space (= fire, merged into JOY_NEW by MAIN_LOOP) or
+        ; Return = select, W/S = up/down (like WASD in the game), F7 = leave.
         lda JOY_NEW : and #$10 : bne TERM_FIRE
         lda JOY_NEW : and #$01 : bne TERM_UP
         lda JOY_NEW : and #$02 : bne TERM_DOWN
@@ -93,8 +94,8 @@ DO_TERMINAL
         beq TERM_DONE
         cmp #$88 : beq TERM_ABORT
         cmp #$0D : beq TERM_FIRE
-        cmp #$91 : beq TERM_UP
-        cmp #$11 : beq TERM_DOWN
+        cmp #$57 : beq TERM_UP           ; W
+        cmp #$53 : beq TERM_DOWN         ; S
         bne TERM_DONE
 
 TERM_UP

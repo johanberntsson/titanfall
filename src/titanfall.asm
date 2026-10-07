@@ -254,9 +254,16 @@ MAIN_LOOP
         ; Poll joystick 2 once per frame: JOY_NEW = bits pressed now but not
         ; last frame (1=pressed; 0 up, 1 down, 2 left, 3 right, 4 fire).
         ; Menus and fire actions use JOY_NEW, so a press held over from the
-        ; previous screen can't immediately trigger the next one.
+        ; previous screen can't immediately trigger the next one. The Space
+        ; key counts as fire (bit 4) everywhere — read from the matrix here,
+        ; not via GETIN, so the KERNAL's Space key repeat can't fake a press.
         lda #$FF : sta CIA1_DDRA : sta CIA1_PRA
         lda CIA1_PRA : eor #$FF : and #$1F : tax
+        lda #$7F : sta CIA1_PRA          ; Space: col 7 (PA=$7F), row 4
+        lda CIA1_PRB : and #$10 : bne MLNOSPC
+        txa : ora #$10 : tax             ; Space = fire
+MLNOSPC lda #$FF : sta CIA1_PRA
+        txa
         eor JOY_PREV : sta JOY_NEW
         txa : and JOY_NEW : sta JOY_NEW
         stx JOY_PREV

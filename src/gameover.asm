@@ -6,9 +6,10 @@
 ; DO_GAMEOVER — called each frame in state 2
 ; ---------------------------------------------------------------------------
 DO_GAMEOVER
-        jsr GETIN
-        bne GO_GO
-        lda JOY_NEW : and #$10          ; or joystick fire
+        jsr GETIN                       ; any key but Space (Space is fire,
+        beq GONK                       ;  merged into JOY_NEW by MAIN_LOOP;
+        cmp #$20 : bne GO_GO           ;  as a key it could be a repeat)
+GONK    lda JOY_NEW : and #$10          ; or joystick fire / Space
         beq GO_NOBTN
 GO_GO
         lda #0     : sta GAME_STATE

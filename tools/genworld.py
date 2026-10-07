@@ -783,7 +783,9 @@ def main():
         tmpl = " card: "
     o.append("STAT_CNT_COL  = 9      ; column of code 0's digit; codes are 4 columns apart")
     o.append(f"STAT_LBL_COL  = {len(tmpl)}     ; column of the card label (LABEL_WIDTH chars)")
-    o.append(f'STAT_TMPL !pet "{tmpl.ljust(40)}"')
+    # "not found" sits in the label field: a carried card's label (always
+    # LABEL_WIDTH chars, space-padded) is drawn right over it
+    o.append(f'STAT_TMPL !pet "{(tmpl + "not found").ljust(40)}"')
     o.append("CODE_MSG_LO     ; terminal message: link refused, no code of this type")
     o.append("        !byte " + (",".join(f"<CODE_MSG_{i}" for i in range(len(code_names))) or "0"))
     o.append("CODE_MSG_HI")

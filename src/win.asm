@@ -6,9 +6,10 @@
 ; DO_WIN — called each frame in state 4
 ; ---------------------------------------------------------------------------
 DO_WIN
-        jsr GETIN
-        bne WIN_GO
-        lda JOY_NEW : and #$10          ; or joystick fire
+        jsr GETIN                       ; any key but Space (Space is fire,
+        beq WINNK                       ;  merged into JOY_NEW by MAIN_LOOP;
+        cmp #$20 : bne WIN_GO           ;  as a key it could be a repeat)
+WINNK   lda JOY_NEW : and #$10          ; or joystick fire / Space
         beq WIN_NOBTN
 WIN_GO
         lda #0     : sta GAME_STATE

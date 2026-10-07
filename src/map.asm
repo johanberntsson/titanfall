@@ -7,9 +7,10 @@
 ; terminal the map was opened from, with "view map" still selected.
 ; ---------------------------------------------------------------------------
 DO_MAP
-        jsr GETIN
-        bne MAP_GO
-        lda JOY_NEW : and #$10          ; or joystick fire
+        jsr GETIN                       ; any key but Space (Space is fire,
+        beq MAPNK                       ;  merged into JOY_NEW by MAIN_LOOP;
+        cmp #$20 : bne MAP_GO           ;  as a key it could be a repeat)
+MAPNK   lda JOY_NEW : and #$10          ; or joystick fire / Space
         beq MAPDONE
 MAP_GO
         lda #0 : sta $C6
@@ -25,6 +26,7 @@ MAPDONE jmp MAIN_LOOP
 ; ---------------------------------------------------------------------------
 SETUP_MAP
         lda #5 : sta GAME_STATE
+        lda #0 : sta $C6                ; empty the keyboard buffer (198)
         lda #$00 : sta VIC_SPEN
 
         lda #<MAP_SCR : sta PTR : lda #>MAP_SCR : sta PTR+1
