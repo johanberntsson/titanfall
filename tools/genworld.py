@@ -117,6 +117,29 @@ def laser_art_patches(mapdata, l, laser_tiles, floor_tile, what):
     return patches
 
 
+def door_art_patches(mapdata, d, side, door_tiles, floor_tile):
+    """Screen cells to repaint as floor when a keyed door is opened.
+
+    The door's art is drawn in the room's edge tiles next to the door
+    rectangle (which lies one tile outside the room): the 2 char rows (or
+    columns) at that wall, along the door's span plus one char on each end
+    (art that is a char wider than the tile span). Every door_tiles char
+    there becomes floor. Returns [(map offset, new screen code), ...].
+    """
+    rows = ROOM_MAP_BYTES // 40
+    if side in ("up", "down"):
+        r0, r1 = (0, 1) if side == "up" else (rows - 2, rows - 1)
+        c0, c1 = 2 * d["x1"] - 1, 2 * d["x2"] + 2
+    else:
+        c0, c1 = (0, 1) if side == "left" else (38, 39)
+        r0, r1 = 2 * d["y1"] - 1, 2 * d["y2"] + 2
+    c0, c1 = max(c0, 0), min(c1, 39)
+    r0, r1 = max(r0, 0), min(r1, rows - 1)
+    return [(r * 40 + c, floor_tile)
+            for r in range(r0, r1 + 1) for c in range(c0, c1 + 1)
+            if mapdata[r * 40 + c] in door_tiles]
+
+
 def wall_grid(mapdata, maxx, maxy, solid_tiles):
     """Solid tiles of a room, judged by the art.
 
@@ -464,6 +487,8 @@ def main():
     solid_tiles = {int(t) for t in art.get("solid_tiles") or []}
     laser_tiles = {int(t) for t in art.get("laser_tiles") or []}
     terminal_tiles = {int(t) for t in art.get("terminal_tiles") or []}
+    door_tiles = {int(t) for t in art.get("door_tiles") or []}
+    door_art = []                       # per door: [(map offset, new char), ...]
     if not laser_tiles:
         die("art.laser_tiles must list the laser beam/emitter screen codes")
     termz = {k: [] for k in ("room", "x1", "y1", "x2", "y2")}
@@ -583,9 +608,20 @@ def main():
             door["ax"].append(0xFF if "x" not in arrive else int(arrive["x"]))
             door["ay"].append(0xFF if "y" not in arrive else int(arrive["y"]))
             door["key"].append(0 if key is None else item_index[key] + 1)
-            map_doors.append((ri, door_dir({k: int(at[k]) for k in ("x1", "y1", "x2", "y2")},
-                                           room, f"room {rname} door to {dest}"),
-                              None if dest_i == 0xFF else dest_i))
+            drect = {k: int(at[k]) for k in ("x1", "y1", "x2", "y2")}
+            side = door_dir(drect, room, f"room {rname} door to {dest}")
+            map_doors.append((ri, side, None if dest_i == 0xFF else dest_i))
+            # a keyed door opens (its art turns to floor) the first time the
+            # player walks into it carrying the key
+            patches = []
+            if key is not None:
+                patches = door_art_patches(read_vchar64_map(room["vchar64_map"]),
+                                           drect, side, door_tiles, floor_tile)
+                if not patches:
+                    print(f"genworld: warning: room {rname}: locked door to {dest} "
+                          f"has no art.door_tiles drawn at its wall - nothing "
+                          f"will visibly open", file=sys.stderr)
+            door_art.append(patches)
 
     for iname, ii in item_index.items():
         if ii not in item_pos:
@@ -805,6 +841,19 @@ def main():
         o.append("        !byte $00,$ff")
     o.append("")
 
+    o.append("; screen cells ERASE_DOOR repaints (door art -> floor) when a keyed door")
+    o.append("; opens; same format as LASER_ART_n (empty for doors without a key)")
+    o.append("DOOR_ART_LO")
+    o.append("        !byte " + (",".join(f"<DOOR_ART_{i}" for i in range(len(door_art))) or "0"))
+    o.append("DOOR_ART_HI")
+    o.append("        !byte " + (",".join(f">DOOR_ART_{i}" for i in range(len(door_art))) or "0"))
+    for i, patches in enumerate(door_art):
+        o.append(f"DOOR_ART_{i}")
+        for off, ch in patches:
+            o.append(f"        !byte ${off & 0xff:02x},${off >> 8:02x},${ch:02x}   ; row {off // 40}, col {off % 40}")
+        o.append("        !byte $00,$ff")
+    o.append("")
+
     o.append("; ---- terminal zones (fire inside to open the terminal), found in the art ----")
     for ti in range(len(termz["room"])):
         o.append(f"; terminal {ti}: room {rooms[termz['room'][ti]]['name']}, tiles "
@@ -866,6 +915,7 @@ def main():
     o.append("GL_PY       !fill NUM_ACTORS+1  ; sprite pixel Y")
     o.append("CODE_CNT    !fill NUM_CODES+1   ; security codes carried, per code type (0-9)")
     o.append("ITEM_STATE  !fill NUM_ITEMS+1   ; 0=hidden 1=carried 2=used (+1 pads the empty case)")
+    o.append("DOOR_OPEN   !fill NUM_DOORS+1   ; 1 = keyed door opened (art erased, passable)")
     o.append("LASER_STATE !fill NUM_LASERS+1  ; 0=active 1=destroyed")
     o.append("SPR_SLOT_ACT !fill 2            ; actor shown by hw sprite 1/2, $ff = none")
     o.append("")

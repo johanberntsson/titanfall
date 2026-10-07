@@ -32,10 +32,15 @@ art:
   # Wall chars. A tile is solid if any of its 2x2 chars is one of these;
   # the build computes the wall map from the art and rejects starts,
   # patrols, items or door arrivals inside a wall.
-  solid_tiles: [0x84, 0x85, 0x86, 0x87, 0x88, 0x89, 0x8a, 0x8b]
+  solid_tiles: [0x84, 0x85, 0x86, 0x87, 0x88, 0x89, 0x8a, 0x8b,
+                0xa4]                  # 0xa4: the missile bay's "keep out" border
   # Terminal chars. Every group of these in a room's art is a terminal,
   # used with fire from its own tiles or any tile next to them.
   terminal_tiles: [0x8c, 0x8d, 0x8e, 0x8f]
+  # Closed-door chars. A door with a key: is drawn with these in the room's
+  # edge row(s) at the door; walking into it with the key turns them into
+  # floor_tile (the door opens), and the next push goes through.
+  door_tiles: [0xa3]
 
 # Actor types: name, sprite set (src/c64_*_sprites.asm, included by src/titanfall.asm),
 # colour, and AI routine used while computer-controlled. "human" is reserved
@@ -145,9 +150,10 @@ rooms:
       - at: {x1: 6, y1: -1, x2: 10, y2: -1}  # top wall opening (cols 12-21)
         leads_to: room3
         arrive: {y: 10}                # x omitted = keep current x
-      - at: {x1: 6, y1: 11, x2: 10, y2: 11}  # bottom wall — mission exit
-        leads_to: exit                 # special: win screen
-        key: red_card                  # locked (popup) without this item
+      - at: {x1: 6, y1: 11, x2: 10, y2: 11}  # bottom wall: the closed door (0xa3)
+        leads_to: room4
+        arrive: {y: 0}
+        key: red_card                  # locked (popup) without it; opens with it
 
   - name: room3
     vchar64_map: graphics/titan-map03.s
@@ -157,3 +163,12 @@ rooms:
       - at: {x1: 6, y1: 11, x2: 10, y2: 11}  # bottom wall opening, back to room 2
         leads_to: room2
         arrive: {y: 0}
+
+  - name: room4
+    vchar64_map: graphics/titan-map04.s
+    label: missiles
+    player_start: {x: 8, y: 5}
+    doors:
+      - at: {x1: 6, y1: -1, x2: 10, y2: -1}  # top wall opening, back to room 2
+        leads_to: room2
+        arrive: {y: 10}

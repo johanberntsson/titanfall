@@ -57,7 +57,11 @@ SETUP_GAME
 SGITEM  cpx #NUM_ITEMS : bcs SGITEMD
         lda #0 : sta ITEM_STATE,x
         inx : bne SGITEM
-SGITEMD ldx #0                           ; security codes back to the start counts
+SGITEMD ldx #0                           ; keyed doors closed again (an opened
+SGDOOR  cpx #NUM_DOORS : bcs SGDOORD     ;  door stays open across respawns)
+        lda #0 : sta DOOR_OPEN,x
+        inx : bne SGDOOR
+SGDOORD ldx #0                           ; security codes back to the start counts
 SGCODE  cpx #NUM_CODES : bcs SGCODED
         lda CODE_START,x : sta CODE_CNT,x
         inx : bne SGCODE
@@ -558,13 +562,24 @@ TDN     inx : bne TDL
 TDNONE  clc : rts
 
 ; ---------------------------------------------------------------------------
-; DOOR_ENTER — X = door index. Locked check, then win exit or room change.
+; DOOR_ENTER — X = door index. A keyed door that isn't open yet: without
+; the key the locked popup; with it the door opens — its art turns to floor
+; (ERASE_DOOR), a green border flash, the key is used up (ITEM_STATE=2) —
+; and the player stays put, so the
+; opening is seen; the next push goes through. Then win exit or room change.
 ; ---------------------------------------------------------------------------
 DOOR_ENTER
         lda DOOR_KEY,x : beq DENOPEN
-        tay : dey                    ; key is item index + 1
-        lda ITEM_STATE,y : bne DENOPEN   ; carried or used: unlocked
+        lda DOOR_OPEN,x : bne DENOPEN
+        ldy DOOR_KEY,x : dey         ; key is item index + 1
+        lda ITEM_STATE,y : cmp #1 : beq DENUNLK   ; carried: open it
         jsr SETUP_DOOR_LOCKED
+        sec : rts
+DENUNLK lda #2 : sta ITEM_STATE,y    ; the key is used up (leaves the card slot)
+        lda #1 : sta DOOR_OPEN,x
+        txa : tay : jsr ERASE_DOOR   ; (preserves X)
+        lda #GREEN : sta VIC_BRDCOL
+        lda #15 : sta BFLASH
         sec : rts
 DENOPEN lda DOOR_DEST,x : cmp #$FF : bne DENGO
         jsr SETUP_WIN                ; $FF = mission exit
@@ -1175,6 +1190,15 @@ DRMLSR  cpy #NUM_LASERS : bcs DRMLSRD
         pla : tay
 DRMLSRN iny : bne DRMLSR
 DRMLSRD
+        ldy #0                       ; ... and the doors already opened
+DRMDOOR cpy #NUM_DOORS : bcs DRMDOORD
+        lda DOOR_OPEN,y : beq DRMDOORN
+        lda DOOR_ROOM,y : cmp CUR_ROOM : bne DRMDOORN
+        tya : pha
+        jsr ERASE_DOOR
+        pla : tay
+DRMDOORN iny : bne DRMDOOR
+DRMDOORD
         jsr SNAP_ALL                 ; no gliding across a room change
         jmp ASSIGN_SPRITES           ; room changed: remap actors -> sprites
 
@@ -1182,13 +1206,19 @@ DRMLSRD
 ; ERASE_LASER — Y = laser index. Repaints the laser's beam/emitter chars on
 ; screen (+ their colour RAM from TILE_COLORS) using the patch list
 ; genworld.py computed from the room art (LASER_ART_n: map offset lo/hi +
-; new screen code per entry, $ff hi byte ends it). Only call it while that
-; laser's room is on screen. Preserves X; clobbers A/Y/PTR/PTR2/TMP.
+; new screen code per entry, $ff hi byte ends it). ERASE_DOOR (Y = door
+; index, DOOR_ART_n) does the same for an opened door's art. Only call them
+; while that room is on screen. Preserve X; clobber A/Y/PTR/PTR2/TMP.
 ; ---------------------------------------------------------------------------
+ERASE_DOOR
+        lda DOOR_ART_LO,y : sta PTR
+        lda DOOR_ART_HI,y : jmp ERASE_ART
 ERASE_LASER
-        txa : pha
         lda LASER_ART_LO,y : sta PTR
-        lda LASER_ART_HI,y : sta PTR+1
+        lda LASER_ART_HI,y
+ERASE_ART
+        sta PTR+1
+        txa : pha
         ldy #0
 ELSL    lda (PTR),y : clc : adc #<(SCRN+80) : sta PTR2   ; map offset -> screen
         iny : lda (PTR),y : bmi ELSDONE                  ; ($ff = end)
@@ -1238,10 +1268,11 @@ DSTCL   cpx #NUM_CODES : bcs DSTCD
         iny : iny : iny : iny
         inx : bne DSTCL
 DSTCD
-        ; card: label of the first found item that isn't a security code
+        ; card: label of the first carried item (not used up, ITEM_STATE=1)
+        ; that isn't a security code
         ldx #0
 DSTIL   cpx #NUM_ITEMS : bcs DSTOUT
-        lda ITEM_STATE,x : beq DSTIN
+        lda ITEM_STATE,x : cmp #1 : bne DSTIN
         lda ITEM_CODE,x : beq DSTIF
 DSTIN   inx : bne DSTIL
 DSTIF   lda ITEM_LABEL_LO,x : sta PTR

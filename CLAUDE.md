@@ -41,7 +41,7 @@ The source is split into one orchestrator and eight state/data modules, all `!so
 | `src/popup.asm` | `DO_POPUP`, `SHOW_POPUP`, `SETUP_SEARCH`, `SETUP_DOOR_LOCKED`, popup strings |
 | `src/c64_walker_sprites.asm`, `src/c64_robot_sprites.asm`, `src/c64_drone_sprites.asm` | Multicolour sprite sets (player / walking robot / flying drone), `!source`d into the sprite block right below the charset (`$2E80–$37FF` today). All three have all four facings (robots need up/down too — the terminal lets you drive them in any direction) |
 | `src/charset.asm` | **Generated** by `tools/gencharset.py` (never edit it; in `.gitignore`): `TILE_COLORS` (256-byte tile→colour table) and `CHARSET` (custom 2K charset at `$3800`) from the vchar64 exports — see "Custom Charset / Screen Art" |
-| `src/world.asm` | **Generated** by `tools/genworld.py` from `titan.yaml` (data only, no code): `NUM_*`/`ACTOR_*`/`ITEM_*`/`CFG_*` constants, `ROOM_*`/`TYPE_*`/`ACT_*`/`ITEM_*`/`DOOR_*`/`LASER_*`/`TERMZ_*`/`MAPHL_*` tables, the generated sector map `MAP_SCR`/`MAP_COL`, `ROOM_MAP_n` screen-code data, and the runtime state arrays (`ACT_X/Y/TGT/ALIVE/DIR/ANIM/FAST`, `GL_PXL/PXH/PY`, `ITEM_STATE`, `LASER_STATE`, `SPR_SLOT_ACT`) |
+| `src/world.asm` | **Generated** by `tools/genworld.py` from `titan.yaml` (data only, no code): `NUM_*`/`ACTOR_*`/`ITEM_*`/`CFG_*` constants, `ROOM_*`/`TYPE_*`/`ACT_*`/`ITEM_*`/`DOOR_*`/`LASER_*`/`TERMZ_*`/`MAPHL_*` tables, the generated sector map `MAP_SCR`/`MAP_COL`, `ROOM_MAP_n` screen-code data, and the runtime state arrays (`ACT_X/Y/TGT/ALIVE/DIR/ANIM/FAST`, `GL_PXL/PXH/PY`, `ITEM_STATE`, `DOOR_OPEN`, `LASER_STATE`, `SPR_SLOT_ACT`) |
 
 Other files:
 - `titan.yaml` — **the world definition** (rooms, robots, items, doors, lasers, terminals, start clock); the preferred place to change gameplay content
@@ -81,14 +81,14 @@ The SYS address in `!pet` must be kept in sync manually if the header ever chang
 | Address | Purpose |
 |---------|---------|
 | `$0801` | BASIC stub (SYS 2064) |
-| `$0810` | Entry point / code start (code + `TILE_COLORS` must end before `SPRITES_START`, `$2E80` today — ~1720 bytes left, see the TILE_COLORS gotcha) |
+| `$0810` | Entry point / code start (code + `TILE_COLORS` must end before `SPRITES_START`, `$2E80` today — ~1640 bytes left, see the TILE_COLORS gotcha) |
 | `$0340–$0397` | Tape buffer, reused as `SP_BUF` (screen + colour cells under the small search popup) |
 | `$0400–$07FF` | Screen RAM (default VIC bank) |
 | `$D800–$DBFF` | Colour RAM |
 | `$07F8` | Sprite pointer table (end of screen RAM — **must be restored after every CLS call**) |
 | `$2E80–$37FF` | Sprite frames (`SPRITE_FRAMES` = 38 × 64 bytes, pointers `$BA–$DF`): player 12, robot 12, drone 12, bolt 2 — packed to end right at `CHARSET`, so the start moves down 64 bytes per added frame — see "Sprites" |
 | `$3800–$3FFF` | `CHARSET` — custom 2K room-art charset, the top 2K of VIC bank 0 (see below) |
-| `$4000` | `TITLE_SCR`/`TITLE_COL` intro logo (640 bytes), then the generated world data (`src/world.asm`): tables, room maps, wall grids, runtime state arrays — CPU-only data, no VIC constraints; grows with content (ends ~`$538D` today), must stay below `$C000` |
+| `$4000` | `TITLE_SCR`/`TITLE_COL` intro logo (640 bytes), then the generated world data (`src/world.asm`): tables, room maps, wall grids, runtime state arrays — CPU-only data, no VIC constraints; grows with content (ends ~`$5D27` today), must stay below `$C000` |
 | `$C000–$CFFF` | Licence to Kill SID music (init `$C000`, play `$C127`; loaded by exomizer) |
 
 ## Core Design Constraints
@@ -111,7 +111,7 @@ When implementing code, always respect these C64 hardware limits:
 | 1 | Game | Playfield with HUD, player sprite, room map, countdown clock, reactor meter |
 | 2 | Game over | Red border + descending-pitch sound, then game-over screen |
 | 3 | Terminal | Terminal menu: this room's robots, view map, logoff (fire next to a terminal; time paused; sprites hidden) |
-| 4 | Win | Mission complete screen (reached via bottom exit in room 2) |
+| 4 | Win | Mission complete screen (reached through a `leads_to: exit` door — **none is configured right now**: room 2's bottom door leads to the missile room, so the win screen is currently unreachable) |
 | 5 | Map | Sector map overlay (terminal's "view map" entry; time paused; sprite hidden; fire/any key returns to the terminal) |
 | 6 | Popup | "Found item", "door locked" or F2 "where am I" popup (end of a held-fire search that found something, blocked at a locked door, or F2; time/robots paused; a fresh fire/Space press closes it — see the popup section) |
 
@@ -138,19 +138,20 @@ The game has two distinct active modes sharing a single countdown timer:
 
 Key state to track:
 - Countdown timer (real-time; configurable penalty and respawn per human death, see "Death & Respawn"; Game Over only when the clock hits zero)
-- Inventory: `ITEM_STATE` array (0=hidden 1=carried 2=used), one byte per config item
+- Inventory: `ITEM_STATE` array (0=hidden 1=carried 2=used — a key that opened its door), one byte per config item
 - Per-actor: `ACT_X/Y` (tile position), `ACT_TGT` (patrol waypoint), `ACT_ALIVE` (0=destroyed 1=alive 2=dying — sliding into a laser), `ACT_DIR`/`ACT_ANIM` (facing, walk frame), `GL_PXL/PXH/PY` (glided sprite pixel position)
 - Per-laser: `LASER_STATE` (0=active 1=destroyed)
 - Active mode (human / drone) and which actor is linked (`PLAYER_MODE`)
 
 ## Rooms
 
-Rooms are defined in `titan.yaml`; `CUR_ROOM` (`$25`) indexes the generated `ROOM_*` tables. Two rooms are currently configured (room1: two terminals, laser wall at X=9, search spot at (14,5), left door to room2; room2: one terminal, right door back, locked bottom exit to the win screen). The art lives in one vchar64 project, `graphics/titan.vchar64proj`.
+Rooms are defined in `titan.yaml`; `CUR_ROOM` (`$25`) indexes the generated `ROOM_*` tables. Four rooms are currently configured, laid out room3 above room2, room1 to the right of room2 and room4 below it (room1: two terminals, laser wall at X=9, search spot at (14,5), left door to room2; room2: one terminal, right door back to room1, top opening to room3, and the closed door in its bottom wall — `key: red_card` — to room4; room3: one terminal, bottom opening back to room2; room4 "missiles": the missile room, one terminal, top opening back to room2, the missile bay fenced off by the solid `$A4` "keep out" border). The art lives in one vchar64 project, `graphics/titan.vchar64proj`.
 
 Movement is fully table-driven (`MOVE_PLAYER`/`TRY_MOVE` in `game.asm`):
 - **Bounds:** each room has its own `ROOM_MAXX`/`ROOM_MAXY` (default and maximum 19/10, the full 20×11-tile room; walls in the art do the real limiting).
-- **Doors** (`DOOR_*` tables) are rectangles *one tile outside* the walkable range (e.g. `x: -1` on a left wall, `y: 10` on a bottom wall, encoded `$FF`/`$0A`). A move landing inside a door rect triggers it: locked check first (`DOOR_KEY` = item index+1, 0=none; locked shows the popup and acts like a wall), then either the win screen (`DOOR_DEST=$FF`, `leads_to: exit`) or a room change (`DOOR_AX/AY` set the arrival position; `$FF` = keep current coordinate). Anything out of bounds that isn't a door is a wall.
-- **Interior walls** come from the room art, computed at build time: `genworld.py`'s `wall_grid` marks a tile solid if any of its 2×2 map chars (map cols `2x..2x+1`, rows `2y..2y+1` — where the sprite's feet stand) is in `art.solid_tiles` in `titan.yaml` (`$84–$8B`, the wall glyphs). It emits `ROOM_WALLS_n` (20 bytes per tile row, index `y*20+x` — max 219, so one byte index covers the room; 1 = solid, with an ASCII picture of the grid in the comments) via `ROOM_WALL_LO/HI`; `WALL_AT` (A = room) looks a tile up, and both `TRY_MOVE` (human) and `TRY_ACT` (driven robot) treat a solid tile like a wall before checking lasers. The build **fails** if a player start, a robot start or any tile on a patrol path, an item, or a door arrival lands on a solid tile (or a terminal zone is all wall) — so new art and the config can't silently drift apart for walls. Furniture isn't solid unless its codes are added to `solid_tiles`.
+- **Doors** (`DOOR_*` tables) are rectangles *one tile outside* the walkable range (e.g. `x: -1` on a left wall, `y: 10` on a bottom wall, encoded `$FF`/`$0A`). A move landing inside a door rect triggers it: keyed doors first (`DOOR_KEY` = item index+1, 0=none) — without the key the locked popup (acts like a wall); with it, the first push **opens** the door (see "Keyed doors open" below) and the player stays put; once open (`DOOR_OPEN`) it's an ordinary door — then either the win screen (`DOOR_DEST=$FF`, `leads_to: exit`) or a room change (`DOOR_AX/AY` set the arrival position; `$FF` = keep current coordinate). Anything out of bounds that isn't a door is a wall.
+- **Keyed doors open.** A door with a `key:` is drawn closed in the art with `art.door_tiles` chars (`$A3`) in the room's edge rows at the door. `genworld.py` (`door_art_patches`) lists those cells — the 2 char rows/columns at that wall, along the door's span ±1 char — as `DOOR_ART_n` (via `DOOR_ART_LO/HI`, same format as the laser patches; empty for keyless doors; a warning if a keyed door has no door art). When the player walks into it carrying the key, `DOOR_ENTER` sets `DOOR_OPEN` (runtime, one byte per door), `ERASE_DOOR` repaints them as `floor_tile` (shares `ERASE_ART` with `ERASE_LASER`), the border flashes green, and **the key is used up** (`ITEM_STATE=2`, so it leaves the status line's card slot and can't open another door); the player doesn't move that push, so the opening is seen, and the next push goes through. `DRAW_ROOM` re-erases every open door in `CUR_ROOM` (like destroyed lasers). `DOOR_OPEN` is reset only by `SETUP_GAME` — an opened door stays open across a death. The door chars aren't solid (they're in the tile row the player stands on to push).
+- **Interior walls** come from the room art, computed at build time: `genworld.py`'s `wall_grid` marks a tile solid if any of its 2×2 map chars (map cols `2x..2x+1`, rows `2y..2y+1` — where the sprite's feet stand) is in `art.solid_tiles` in `titan.yaml` (`$84–$8B`, the wall glyphs, and `$A4`, the missile bay's "keep out" border). It emits `ROOM_WALLS_n` (20 bytes per tile row, index `y*20+x` — max 219, so one byte index covers the room; 1 = solid, with an ASCII picture of the grid in the comments) via `ROOM_WALL_LO/HI`; `WALL_AT` (A = room) looks a tile up, and both `TRY_MOVE` (human) and `TRY_ACT` (driven robot) treat a solid tile like a wall before checking lasers. The build **fails** if a player start, a robot start or any tile on a patrol path, an item, or a door arrival lands on a solid tile (or a terminal zone is all wall) — so new art and the config can't silently drift apart for walls. Furniture isn't solid unless its codes are added to `solid_tiles`.
 - **Lasers** (`LASER_*` tables) are rectangles inside the room; `LASER_AT` checks the attempted position against every active laser in the current room. The human steps onto the tile but is already dying (`PLR_DYING=1`: `MOVE_PLAYER` ignores input) and `UPDATE_SPRITE0` calls `PLAYER_DIE` once the sprite has glided onto the beam — the same "finish the slide, then die" as a driven robot; a player-driven robot enters the tile and `ROBOT_LASER_DEATH` destroys both robot and laser.
 
 Doorway transitions call `DRAW_ROOM`, which blits 22×40 chars via the `ROOM_MAP_LO/HI` pointer tables and then calls `ASSIGN_SPRITES` to remap the new room's actors onto hardware sprites 1–2.
@@ -322,9 +323,10 @@ Interior walls are derived from the room art at build time (see "Interior walls"
 | Feature | Config (titan.yaml) | Colour |
 |---------|---------------------|--------|
 | Laser wall | room1 laser rect X=9, Y 0–10 — kills player on contact, unless destroyed (`LASER_STATE`) | Lt Red (visual) |
-| Terminals | found in the art: room1 zones X 0–2 and X 16–18, room2 zone X 16–18, all Y 0–2 (the consoles against the top wall); press fire | Lt Green (visual) |
+| Terminals | found in the art: room1 zones X 0–2 and X 16–18, room2 and room3 zones X 16–18, room4 zone X 0–2, all Y 0–2 (the consoles against the top wall); press fire | Lt Green (visual) |
 | Room 1 ↔ room 2 doorway | door rects at x=-1 (room1) / x=20 (room2), Y 5–6 | — |
-| Win exit | room2 door rect y=11, X 6–10, `leads_to: exit`, `key: red_card` — locked popup without the card | — |
+| Room 2 ↔ room 3 doorway | door rects at y=-1 (room2) / y=11 (room3), X 6–10 | — |
+| Room 2 ↔ room 4 (missiles) | room2 door rect y=11, X 6–10, `key: red_card` — locked popup without the card, opens (art `$A3` → floor) with it; room4 door rect y=-1, X 6–10 | — |
 
 ## HUD Layout (row 0, 40 chars)
 
@@ -363,7 +365,7 @@ Room/HUD art is authored with **vchar64** (charset + screen + colour editor). `g
 ### Code growth can silently corrupt TILE_COLORS/CHARSET — watch for ACME warnings
 `TILE_COLORS` (256 bytes, in `src/charset.asm`) has no fixed address — it starts wherever the code before it (all of `titanfall.asm` + every `!source`d module) happens to end, and the next segment, the sprite block (`SPRITES_START`, right below the charset pinned at `* = $3800`), is fixed. If code+`TILE_COLORS` ever grows past it, ACME does **not** fail the build — it prints `Warning - ... Segment starts inside another one, overwriting it.` and silently overwrites the tail of `TILE_COLORS` with sprite data (with the old layout the charset came right after it — same symptom). Since most room tiles use screen codes in the `$80s`-`$A0s`, this corrupts colour lookups for most of the room art (tiles render in wrong/black colours) while leaving the charset bitmaps themselves intact — exactly the "graphics look horrible, wrong colours" symptom, with no build error to point at it.
 - **Always check `make`'s full output for `Warning` lines, not just for a nonzero exit code** — a successful build can still have silently corrupted data.
-- To check headroom: `acme -f cbm -o /tmp/g.prg -l /tmp/labels.txt src/titanfall.asm` then `grep TILE_COLORS /tmp/labels.txt` — its start address + 256 must stay under `SPRITES_START`. **As of 2026-10-07 `TILE_COLORS` starts at `$26C4` (ends `$27C3`) and `SPRITES_START` is `$2E80`, leaving ~1720 bytes.** Every sprite frame added costs 64 bytes of that. Unrolled 40-byte row-copy loops are the usual bloat: prefer a `DRAW_ROWS` table (see "Screen Art") for new screens.
+- To check headroom: `acme -f cbm -o /tmp/g.prg -l /tmp/labels.txt src/titanfall.asm` then `grep TILE_COLORS /tmp/labels.txt` — its start address + 256 must stay under `SPRITES_START`. **As of 2026-10-07 `TILE_COLORS` starts at `$2715` (ends `$2814`) and `SPRITES_START` is `$2E80`, leaving ~1640 bytes.** Every sprite frame added costs 64 bytes of that. Unrolled 40-byte row-copy loops are the usual bloat: prefer a `DRAW_ROWS` table (see "Screen Art") for new screens.
 - Keep *data* out of the code area where possible: the intro logo, sprites and all generated world data already live outside the code area (sprites below the charset, logo and world data from `$4000`); prefer `$4000+` for new tables/strings too.
 - `CHARSET` was moved `$2000` → `$2800` → `$3800` for exactly this reason. `$3800` is the top of VIC bank 0, so **the charset can't move any higher**. Sprites can't go above it either: sprite pointers are 8 bits (`address/64`), so every frame must be below `$4000`. That's why the sprite block is packed *below* the charset — a sprite block at `$3800+` only holds 32 frames. If the code area fills up again, the options are: move CPU-only code (whole modules such as `intro.asm`/`gameover.asm`/`win.asm`/`map.asm`) after the world data above `$4000` with its own `* =` — no VIC constraint there, up to the music at `$C000`; or switch the VIC to another bank (screen, charset and sprites all move — a much bigger change). If the charset ever moves, update `VIC_VMCSB` in `titanfall.asm` (`$D018 = (screen_base/1024)*16 + (charset_base/2048)*2`; `$0400`/`$3800` → `$1E`).
 
@@ -418,7 +420,7 @@ Linking a robot at a terminal costs a security code. `titan.yaml`'s `security_co
 - `SETUP_GAME` copies `CODE_START` into `CODE_CNT`. Codes are inventory: a death/respawn (`RESET_ROUND`) keeps them, and spent codes stay spent.
 - `TERM_LINK` (`terminal.asm`) checks dead → locked → code. With `CODE_CNT` = 0 it refuses with the code's message on the terminal's message row (row 16, light red, like locked/destroyed); otherwise it decrements the count and starts the link.
 - An item with `code: <letter>` is a findable code: `SETUP_SEARCH` adds one to `CODE_CNT` (capped at 9 — one digit) besides marking it found. A code item can't be a door `key:` (build error).
-- `DRAW_STATUS`: the counts in yellow over the template, then after `card:` the label of the first found item that isn't a code (`ITEM_STATE`≠0 and `ITEM_CODE`=0), light red.
+- `DRAW_STATUS`: the counts in yellow over the template, then after `card:` the label of the first *carried* item that isn't a code (`ITEM_STATE`=1 — a used-up key, 2, isn't shown — and `ITEM_CODE`=0), light red.
 - Current config: start with 2 × A, 0 × B; splicer and drone cost A, the sentry costs B (but is also `locked: true`). No B codes are hidden yet.
 
 ### Terminal menu
@@ -475,11 +477,11 @@ All string-copy loops call `jsr PET2SCREEN` to convert PETSCII to screen codes b
 
 Star characters (`*`) in the game over / win titles are recoloured to YELLOW after the row loop by writing to individual CRAM addresses.
 
-**Intro layout:** `DRAW_INTRO_SCREEN` copies the logo (`TITLE_SCR`/`TITLE_COL`, raw screen codes, no `PET2SCREEN`) into rows 1–8, the unframed author line (`ITR_AUTH`, "by johan berntsson", centred from its own length `ITR_AUTH_LEN`, MGRAY) on row 10, draws the mission box in rows 12–21 (top border, blank, tagline, separator, blank, 3 mission lines, blank, bottom border), and `BLINK_ON`/`BLINK_OFF` blink the prompt on row 23 (`SCRN+920`). The logo's solid block is screen code 224 (`$E0`), not the usual 160 (`$A0`) — `$80–$A2` in the custom charset are room-art tiles, and `$E0` is the other all-ones glyph in the ROM font. Any new full-screen PETSCII art must likewise avoid `$80–$A2` (check `src/charset.asm`).
+**Intro layout:** `DRAW_INTRO_SCREEN` copies the logo (`TITLE_SCR`/`TITLE_COL`, raw screen codes, no `PET2SCREEN`) into rows 1–8, the unframed author line (`ITR_AUTH`, "by johan berntsson", centred from its own length `ITR_AUTH_LEN`, MGRAY) on row 10, draws the mission box in rows 12–21 (top border, blank, tagline, separator, blank, 3 mission lines, blank, bottom border), and `BLINK_ON`/`BLINK_OFF` blink the prompt on row 23 (`SCRN+920`). The logo's solid block is screen code 224 (`$E0`), not the usual 160 (`$A0`) — `$80–$A2` in the custom charset are room-art tiles, and `$E0` is the other all-ones glyph in the ROM font. Any new full-screen PETSCII art must likewise avoid the room-art codes — `$80–$AA` and more as rooms are added (check `src/charset.asm`).
 
 ## Current Status
 
-The core puzzle loop is in place and playable end-to-end: explore, take over the splicer via the terminal, drive it into the laser (it slides into the beam, the beam vanishes from the art with a "bzzzt"), search for the access card, and reach the win screen through the now-unlockable room 2 door — with a real risk/reward death penalty (lose time + respawn) instead of an instant Game Over, and Game Over genuinely tied to the countdown clock hitting zero.
+The core puzzle loop is in place and playable end-to-end: explore, take over the splicer via the terminal, drive it into the laser (it slides into the beam, the beam vanishes from the art with a "bzzzt"), search for the access card, and open room 2's locked door into the missile room (the win condition there is still to be designed — the old win exit was replaced by that door) — with a real risk/reward death penalty (lose time + respawn) instead of an instant Game Over, and Game Over genuinely tied to the countdown clock hitting zero.
 
 The world is **config-driven**: rooms (bounds, player start, vchar64 map), robots (type, start, patrol waypoints), items (position, label, found-text), doors (rect, destination, arrival position, key), lasers, the starting clock, the death penalty and the art codes (floor, laser, wall chars) all live in `titan.yaml` and are compiled into `src/world.asm` data tables at build time. Interior walls, terminals and the laser-erase patches are derived from the room art by `genworld.py` (and the sector map from the doors), which also rejects placements inside walls. Adding a room = a vchar64 map export + a `rooms:` entry + its doors; the sector map is generated from the doors. Adding an item, door, laser or robot is config-only.
 
@@ -490,11 +492,11 @@ Controls and interface (as of 2026-10-06): the game is fully joystick-driven (ke
 ## What's Not Yet Implemented
 
 - Robot abilities: every linkable robot drives the same way (any of them would burn out a laser); the per-type capabilities from the design (loader immune to lasers, splicer through ducts, centurion armed) aren't implemented. The room-1 sentry is `locked: true` so the splicer stays the puzzle's key
-- Item states `carried` vs `used` aren't distinguished yet — door keys accept either, nothing sets `used` (=2)
+- No win condition: the win screen (`SETUP_WIN`, state 4) only triggers through a `leads_to: exit` door, and none is configured since room 2's bottom door now leads to the missile room
 - `ai:` in `titan.yaml` accepts `patrol` (two-waypoint shuttle), `hunter` (patrol + rush along the tile row on sight) and `shooter` (patrol + fire bolts along the row on sight). Ideas: sight only in the facing direction (sneaking up from behind), vertical line of sight, chasing around corners
 - Max 2 robots per room (hardware sprites 1–2; enforced by `genworld.py`) — a sprite multiplexer is deliberately out of scope
 - The reactor gauge is display-only — nothing happens when it's in the red (an idea: make it a real hazard)
 - Weapons: the bolt is used by `ai: shooter` (hw sprite 3); the force-field sprites are still unused. Sprites 4–7 are free for more projectiles/effects without a multiplexer
 - Furniture is walk-through (not in `art.solid_tiles`); walls only check the sprite's feet, so the upper body overlaps wall art in the oblique view (intended)
 - Every terminal shows the same menu (the current room's robots, map, logoff); there's no per-terminal behaviour yet (e.g. a terminal that only reaches certain robots or unlocks something)
-- The code area has ~1720 bytes left before the sprite block (`$2E80`) — keep new tables/strings in generated data above `$4000` where possible (see the TILE_COLORS gotcha)
+- The code area has ~1640 bytes left before the sprite block (`$2E80`) — keep new tables/strings in generated data above `$4000` where possible (see the TILE_COLORS gotcha)

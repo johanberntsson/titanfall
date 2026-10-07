@@ -2,8 +2,6 @@
 #           OPEN
 # ------------------------
 
-Make the door visible and remove it when card used
-
 I'm made two new sprites for later
 
 Robot AI that has a laser field like Impossible Mission (using the force filed sprite)
@@ -12,6 +10,8 @@ Robot AI that has a laser field like Impossible Mission (using the force filed s
 # ------------------------
 #           DONE
 # ------------------------
+
+Make the door visible and remove it when card used
 
 Add security codes (A and B to begin with) as something you can find (later) and something that is needed to
 take over robots. titan.yaml has to define what code is needed for each robot. Let's start with
