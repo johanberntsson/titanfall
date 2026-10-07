@@ -461,8 +461,10 @@ def main():
         # code: <letter> makes the item a security code: finding it adds one
         # to that code's count instead of going into the card slot
         item_code.append(code_ref(it["code"], f"item {name}") if "code" in it else 0)
-        if item_code[-1] and "found_text" not in it:
-            it["found_text"] = f"security code {code_names[item_code[-1] - 1]} found!"
+        if item_code[-1]:
+            cname = code_names[item_code[-1] - 1]
+            it.setdefault("found_text", f"security code {cname} found!")
+            it.setdefault("label", f"code {cname}")   # never shown (no card slot)
         label = check_pet(str(it.get("label", name)), f"item {name} label")
         if len(label) > LABEL_WIDTH:
             die(f"item {name}: label longer than {LABEL_WIDTH} chars")

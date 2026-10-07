@@ -107,6 +107,8 @@ items:
     name: red access card
     label: red
     found_text: red access card found!
+  code_b1:
+    code: b                            # a security code b: +1 to the B count
 
 rooms:
   - name: room1
@@ -173,6 +175,9 @@ rooms:
         code: a
         start: {x: 14, y: 7}
         patrol: [{x: 14, y: 7}, {x: 4, y: 7}]
+    things:
+      - item: code_b1                  # by the crates, bottom left
+        at: {x: 2, y: 9}
     doors:
       - at: {x1: 6, y1: 11, x2: 10, y2: 11}  # bottom wall opening, back to room 2
         leads_to: room2
