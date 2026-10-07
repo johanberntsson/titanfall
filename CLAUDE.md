@@ -11,6 +11,7 @@ This is a Commodore 64 game called **TITAN Fall** (working title) — a cinemati
 ```
 make        # generate world.asm + assemble + pack
 make run    # generate, assemble, pack, and launch in Vice
+make release # build release/titanfall.d64 (c1541: fresh disk "titan fall", the packed game as TITANFALL)
 make clean  # remove game.prg, titanfall.prg and the generated src/world.asm + src/charset.asm
 ```
 
