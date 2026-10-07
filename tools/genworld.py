@@ -490,6 +490,8 @@ def main():
     laser_tiles = {int(t) for t in art.get("laser_tiles") or []}
     terminal_tiles = {int(t) for t in art.get("terminal_tiles") or []}
     door_tiles = {int(t) for t in art.get("door_tiles") or []}
+    win_tiles = {int(t) for t in art.get("win_tiles") or []}
+    targets = []                        # per room: grid[y][x] of win-target tiles
     door_art = []                       # per door: [(map offset, new char), ...]
     if not laser_tiles:
         die("art.laser_tiles must list the laser beam/emitter screen codes")
@@ -632,6 +634,9 @@ def main():
     # ---- walls: solid tiles per room, from the art; validate placements --
     walls = []
     for room in rooms:
+        # win targets: tiles with any art.win_tiles char (same 2x2 test)
+        targets.append(wall_grid(read_vchar64_map(room["vchar64_map"]),
+                                 room["_maxx"], room["_maxy"], win_tiles))
         walls.append(wall_grid(read_vchar64_map(room["vchar64_map"]),
                                room["_maxx"], room["_maxy"], solid_tiles))
 
@@ -865,8 +870,9 @@ def main():
         o.append(tbl(name, [byte(v, "termz") for v in termz[key]]))
     o.append("")
 
-    o.append(f"; ---- walls: per room, {TILES_X} bytes per tile row (y*{TILES_X}+x), 1 = solid ----")
-    o.append("; (from the 2x2 chars of each tile -- see wall_grid in genworld.py)")
+    o.append(f"; ---- walls: per room, {TILES_X} bytes per tile row (y*{TILES_X}+x) ----")
+    o.append("; bit 0 = solid (#), bit 1 = win target (*: a bolt fired by a player-driven")
+    o.append("; robot entering it wins) -- from the 2x2 chars of each tile, see wall_grid")
     o.append("ROOM_WALL_LO")
     o.append("        !byte " + ",".join(f"<ROOM_WALLS_{i}" for i in range(len(rooms))))
     o.append("ROOM_WALL_HI")
@@ -874,8 +880,10 @@ def main():
     for i, grid in enumerate(walls):
         o.append(f"ROOM_WALLS_{i}      ; {rooms[i]['name']}")
         for y, row in enumerate(grid):
-            vals = [1 if b else 0 for b in row] + [0] * (TILES_X - len(row))
-            pic = "".join("#" if b else "." for b in row)
+            tgt = targets[i][y]
+            vals = [(1 if b else 0) | (2 if t else 0) for b, t in zip(row, tgt)]
+            vals += [0] * (TILES_X - len(row))
+            pic = "".join("#" if b else "*" if t else "." for b, t in zip(row, tgt))
             o.append(f"        !byte {','.join(str(v) for v in vals)}   ; y={y} {pic}")
     o.append("")
 

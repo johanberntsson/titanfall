@@ -41,6 +41,9 @@ art:
   # edge row(s) at the door; walking into it with the key turns them into
   # floor_tile (the door opens), and the next push goes through.
   door_tiles: [0xa3]
+  # Win targets: a bolt fired by a player-driven shooter robot that enters a
+  # tile containing any of these chars wins the game (the power cell).
+  win_tiles: [0xa6]
 
 # Actor types: name, sprite set (src/c64_*_sprites.asm, included by src/titanfall.asm),
 # colour, and AI routine used while computer-controlled. "human" is reserved

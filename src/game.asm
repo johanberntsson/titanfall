@@ -35,6 +35,7 @@ GA_NOLASER
         jsr UPDATE_SPRITE0
         jsr UPDATE_ROBOT_SPRITES
         jsr BOLT_TICK                    ; before the collision read
+        lda GAME_STATE : cmp #1 : bne GAME_TICK_DONE  ; the bolt won the game
         jsr CHECK_SPRITE_HIT
         jsr DRAW_HUD_DYNAMIC
         jsr DRAW_STATUS
@@ -469,7 +470,17 @@ RKTL    cpx #NUM_TERMZONES : bcs RKSEARCHCHK
         rts
 RKTN    inx : bne RKTL
 RKSEARCHCHK
+        lda PLAYER_MODE : bne RKPROXY
         jmp SEARCH_TICK                  ; hold fire to search (popup.asm)
+RKPROXY ; driving a robot: fire shoots, if it's a shooter (ai: shooter) —
+        ; in the direction it faces
+        lda KEY_SPC : beq RKPOUT
+        ldx PLAYER_MODE : dex
+        lda ACT_AI,x : cmp #AI_SHOOTER : bne RKPOUT
+        lda ACT_ALIVE,x : cmp #1 : bne RKPOUT
+        lda ACT_DIR,x : ldy #1
+        jmp FIRE_BOLT
+RKPOUT  rts
 
 ; =============================================================================
 ; MOVE_PLAYER — fully table-driven (world.asm): room bounds from ROOM_MAXX/Y,
@@ -647,9 +658,9 @@ TAOK    sec : rts
 
 ; =============================================================================
 ; WALL_AT — A = room, NEWX/NEWY = tile (in bounds). Carry set if the tile is
-; solid: genworld.py derives ROOM_WALLS_n (20 bytes per tile row, 1 = solid)
-; from the wall chars in each tile's 2x2 chars of room art. Preserves X;
-; clobbers A/Y/PTR/TMP.
+; solid; A != 0 if it's a win target (BOLT_TICK). genworld.py derives
+; ROOM_WALLS_n (20 bytes per tile row; bit 0 = solid, bit 1 = target) from
+; each tile's 2x2 chars of room art. Preserves X; clobbers A/Y/PTR/TMP.
 ; =============================================================================
 WALL_AT
         tay
@@ -658,7 +669,7 @@ WALL_AT
         lda NEWY : asl : asl : sta TMP   ; y*4
         asl : asl : adc TMP              ; + y*16 = y*20 (C clear: y <= 10)
         adc NEWX : tay                   ; + x (max 10*20+19 = 219)
-        lda (PTR),y : cmp #1             ; C = solid
+        lda (PTR),y : lsr                ; C = solid, A = target
         rts
 
 ; =============================================================================
@@ -1066,45 +1077,75 @@ STSEE   lda #0 : sta ACT_ANIM,x          ; stand and aim
         ldy TMP : beq STFACE
         lda #DIR_LEFT
 STFACE  jsr ACT_FACE
-        lda BOLT_ON : bne STOUT
-        lda TMP : sta BOLT_DIR
-        lda #1 : sta BOLT_ON             ; fire from the shooter's tile centre
-        lda ACT_Y,x : sta BOLT_TY
-        asl : asl : asl : asl : clc : adc #62 : sta BOLT_SY   ; = robot's sprite Y
+        ldy #0                           ; the AI's bolt (can't win the game)
+        jmp FIRE_BOLT
+STOUT   rts
+
+; FIRE_BOLT — X = actor, A = direction (DIR_*), Y = 1 if a player-driven
+; robot fires (BOLT_PLR). Launches the bolt from the actor's tile centre,
+; unless one is already in flight. Preserves X.
+FIRE_BOLT
+        pha
+        lda BOLT_ON : bne FBBUSY
+        pla : sta BOLT_DIR
+        sty BOLT_PLR
+        lda #1 : sta BOLT_ON
+        lda ACT_Y,x : asl : asl : asl : asl : ora #8 : sta BOLT_Y
         lda #0 : sta BOLT_XH
         lda ACT_X,x : asl : asl : asl : asl   ; only the last asl can carry
         rol BOLT_XH : ora #8 : sta BOLT_XL
-STOUT   rts
+        rts
+FBBUSY  pla
+        rts
 
 ; ---------------------------------------------------------------------------
-; BOLT_TICK — every game frame: fly the bolt BOLT_SPEED px along its row and
+; BOLT_TICK — every game frame: fly the bolt BOLT_SPEED px in BOLT_DIR (any
+; of the 4 directions; BOLT_XL/XH, BOLT_Y = its centre in room pixels) and
 ; show it on hw sprite 3 (bolt_1/bolt_2 alternating every 2 frames). It
-; vanishes when its centre enters a wall tile or leaves the room. It passes
-; robots and lasers; hitting the player is the ordinary sprite collision
-; (CHECK_SPRITE_HIT, bit 0). DRAW_ROOM clears BOLT_ON (room change, respawn,
-; redraw after terminal/map/popup).
+; vanishes when its centre's tile is a wall or off the room. It passes robots
+; and lasers; hitting the player is the ordinary sprite collision
+; (CHECK_SPRITE_HIT, bit 0). A bolt fired by a player-driven robot
+; (BOLT_PLR) that enters a win-target tile (art.win_tiles — the missile
+; room's power cell) wins the game. DRAW_ROOM clears BOLT_ON (room change,
+; respawn, redraw after terminal/map/popup).
 ; ---------------------------------------------------------------------------
 BOLT_SPEED = 3                          ; px per frame (player: 2)
 
 BOLT_TICK
-        lda BOLT_ON : beq BTOFF
-        lda BOLT_DIR : bne BTLEFT
+        lda BOLT_ON : bne BTGO
+        jmp BTOFF
+BTGO    ldx BOLT_DIR
+        cpx #DIR_RIGHT : bne BTNR
         lda BOLT_XL : clc : adc #BOLT_SPEED : sta BOLT_XL
         bcc BTMOVED : inc BOLT_XH : bne BTMOVED
-BTLEFT  lda BOLT_XL : sec : sbc #BOLT_SPEED : sta BOLT_XL
-        bcs BTMOVED : dec BOLT_XH : bmi BTKILL  ; past the left edge
+BTNR    cpx #DIR_LEFT : bne BTNL
+        lda BOLT_XL : sec : sbc #BOLT_SPEED : sta BOLT_XL
+        bcs BTMOVED : dec BOLT_XH : bpl BTMOVED
+        jmp BTKILL                       ; past the left edge
+BTNL    cpx #DIR_DOWN : bne BTUP
+        lda BOLT_Y : clc : adc #BOLT_SPEED : sta BOLT_Y
+        jmp BTMOVED                      ; (bottom edge: the tile test)
+BTUP    lda BOLT_Y : sec : sbc #BOLT_SPEED : sta BOLT_Y
+        bcc BTKILL                       ; past the top edge
 BTMOVED lda BOLT_XH : lsr                ; tile = X/16 (C = bit 8)
         lda BOLT_XL : ror : lsr : lsr : lsr
         cmp #20 : bcs BTKILL             ; past the right edge (tile 20)
         sta NEWX
-        lda BOLT_TY : sta NEWY
+        lda BOLT_Y : lsr : lsr : lsr : lsr
+        cmp #11 : bcs BTKILL             ; past the bottom edge (tile 11)
+        sta NEWY
         lda CUR_ROOM : jsr WALL_AT : bcs BTKILL
-        lda BOLT_XL : clc : adc #12 : sta VIC_SP3X   ; sprite X = centre+12
+        and BOLT_PLR : beq BTSHOW        ; a win target, hit by the player?
+        lda #0 : sta BOLT_ON
+        lda VIC_SPEN : and #$F7 : sta VIC_SPEN
+        jsr SOUND_ZAP_START
+        jmp SETUP_WIN                    ; the power cell is hit: mission won
+BTSHOW  lda BOLT_XL : clc : adc #12 : sta VIC_SP3X   ; sprite X = centre+12
         lda BOLT_XH : adc #0 : beq BTMSB0
         lda VIC_SP_MSB : ora #$08 : bne BTMSB
 BTMSB0  lda VIC_SP_MSB : and #$F7
 BTMSB   sta VIC_SP_MSB
-        lda BOLT_SY : sta VIC_SP3Y
+        lda BOLT_Y : clc : adc #54 : sta VIC_SP3Y    ; = a robot's sprite Y on that row
         lda ANIM_CNT : lsr : and #1 : clc : adc #SPRP_BOLT : sta SPRPTR+3
         lda VIC_SPEN : ora #$08 : sta VIC_SPEN
         rts

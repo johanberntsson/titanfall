@@ -59,8 +59,8 @@ BOLT_ON    = $3E   ; 1 = a shooter's bolt is in flight (hw sprite 3; one at a ti
 BOLT_DIR   = $3F   ; 0 = flying right, 1 = left
 BOLT_XL    = $40   ; bolt centre X in room pixels (tile*16+8), 9 bits
 BOLT_XH    = $41
-BOLT_TY    = $42   ; bolt tile row (wall checks)
-BOLT_SY    = $43   ; bolt sprite Y
+BOLT_Y     = $42   ; bolt centre Y in room pixels (tile*16+8)
+BOLT_PLR   = $43   ; 1 = the bolt was fired by a player-driven robot (can win)
 PLAYER_MODE = $31  ; 0=human (control PLR_X/Y)  else actor index+1 (proxy mode)
 LINK_S     = $32   ; robot link: seconds left (HUD "robot NN"; 0 -> human)
 LINK_JIF   = $44   ; robot link: frames into the current second (0-49)
