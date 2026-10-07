@@ -74,6 +74,14 @@ actor_types:
     sprite: robot_down_rest
     color: green
     ai: patrol
+  dozer:                               # tracked construction robot
+    sprite: dozer_down_rest
+    color: yellow
+    ai: patrol
+  tripod:
+    sprite: tripod_down_rest
+    color: ltgreen
+    ai: patrol
   drone:
     sprite: drone_down_hover
     anim: hover
@@ -117,8 +125,8 @@ rooms:
         start: {x: 3, y: 7}
         patrol: [{x: 3, y: 7}, {x: 6, y: 7}]
       - id: bot3312                    # referenced by the terminal menu (ACTOR_BOT3312)
-        type: splicer
-        name: bot-3312  splicer
+        type: dozer
+        name: bot-3312  dozer
         code: a
         start: {x: 11, y: 4}
         patrol: [{x: 11, y: 4}, {x: 14, y: 4}]   # y=3 at x=14 is inside a wall
@@ -159,6 +167,12 @@ rooms:
     vchar64_map: graphics/titan-map03.s
     label: room 3
     player_start: {x: 8, y: 9}
+    robots:
+      - type: tripod
+        name: bot-4410  tripod
+        code: a
+        start: {x: 14, y: 7}
+        patrol: [{x: 14, y: 7}, {x: 4, y: 7}]
     doors:
       - at: {x1: 6, y1: 11, x2: 10, y2: 11}  # bottom wall opening, back to room 2
         leads_to: room2
@@ -168,6 +182,13 @@ rooms:
     vchar64_map: graphics/titan-map04.s
     label: missiles
     player_start: {x: 8, y: 5}
+    robots:
+      - type: sentry
+        name: bot-6060  guard
+        code: b
+        ai: shooter                    # fires bolts along row 5 at you
+        start: {x: 10, y: 5}
+        patrol: [{x: 10, y: 5}, {x: 2, y: 5}]
     doors:
       - at: {x1: 6, y1: -1, x2: 10, y2: -1}  # top wall opening, back to room 2
         leads_to: room2

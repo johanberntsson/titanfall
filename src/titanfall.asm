@@ -414,15 +414,13 @@ ITR_SEP    !pet G_VERT_BAR, "  ==================================  " , G_VERT_BA
 SCR_BORDER_BOTTOM  !pet G_RD_LL, G_HORIZ_BAR, G_HORIZ_BAR, G_HORIZ_BAR, G_HORIZ_BAR, G_HORIZ_BAR, G_HORIZ_BAR, G_HORIZ_BAR, G_HORIZ_BAR, G_HORIZ_BAR, G_HORIZ_BAR, G_HORIZ_BAR, G_HORIZ_BAR, G_HORIZ_BAR, G_HORIZ_BAR, G_HORIZ_BAR, G_HORIZ_BAR, G_HORIZ_BAR, G_HORIZ_BAR, G_HORIZ_BAR, G_HORIZ_BAR, G_HORIZ_BAR, G_HORIZ_BAR, G_HORIZ_BAR, G_HORIZ_BAR, G_HORIZ_BAR, G_HORIZ_BAR, G_HORIZ_BAR, G_HORIZ_BAR, G_HORIZ_BAR, G_HORIZ_BAR, G_HORIZ_BAR, G_HORIZ_BAR, G_HORIZ_BAR, G_HORIZ_BAR, G_HORIZ_BAR, G_HORIZ_BAR, G_HORIZ_BAR, G_HORIZ_BAR, G_RD_LR
 
 ; =============================================================================
-; State modules
+; State modules. Only game.asm (the per-frame gameplay code) stays down here
+; in the code area below the sprite block; the other state modules are
+; CPU-only code and live above $4000, after the world data (see the end of
+; this file). The code area is bounded by SPRITES_START — check headroom
+; (CLAUDE.md, TILE_COLORS gotcha).
 ; =============================================================================
-        !source "src/intro.asm"
         !source "src/game.asm"
-        !source "src/gameover.asm"
-        !source "src/win.asm"
-        !source "src/terminal.asm"
-        !source "src/map.asm"
-        !source "src/popup.asm"
         !source "src/charset.asm"
 
 ; =============================================================================
@@ -440,12 +438,14 @@ SCR_BORDER_BOTTOM  !pet G_RD_LL, G_HORIZ_BAR, G_HORIZ_BAR, G_HORIZ_BAR, G_HORIZ_
 ; FRAME_PTR in game.asm picks the frame. Every actor set has all 4 facings
 ; (12 frames).
 ; =============================================================================
-SPRITE_FRAMES = 12+12+12+2
+SPRITE_FRAMES = 12+12+12+12+12+2
         * = CHARSET - SPRITE_FRAMES*64
 SPRITES_START
         !source "src/c64_walker_sprites.asm"    ; player:  12 frames
         !source "src/c64_robot_sprites.asm"     ; robot:   12 frames
         !source "src/c64_drone_sprites.asm"     ; drone:   12 frames
+        !source "src/c64_dozer_sprites.asm"     ; dozer:   12 frames
+        !source "src/c64_tripod_sprites.asm"    ; tripod:  12 frames
         !source "src/c64_bolt_sprites.asm"      ; bolt:     2 frames (shooter)
 SPRITES_END
 !if SPRITES_END != CHARSET {
@@ -462,5 +462,22 @@ SPRITES_END
 ; Room maps, actor/item/door/laser/terminal tables and runtime state arrays.
 ; =============================================================================
         !source "src/world.asm"
+
+; =============================================================================
+; CPU-only state modules — code with no VIC constraint, so it lives up here
+; (anywhere below the music at $C000) instead of eating the code area below
+; the sprite block. Each module ends in rts/jmp or data, so the order
+; doesn't matter (no fall-through between modules).
+; =============================================================================
+        !source "src/intro.asm"
+        !source "src/gameover.asm"
+        !source "src/win.asm"
+        !source "src/terminal.asm"
+        !source "src/map.asm"
+        !source "src/popup.asm"
+HIGH_END
+!if HIGH_END > $C000 {
+        !error "code/data above $4000 runs into the music at $C000"
+}
 
         !eof
