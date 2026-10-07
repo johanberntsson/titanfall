@@ -2,12 +2,6 @@
 #           OPEN
 # ------------------------
 
-When you take over robots then let it expire after 30 seconds and control revert to human. Currently
-using the terminal (as a robot) revers to human. Remove that and only have the expiry mechanism
-instead. Robots can't use the terminals. Add a countdown on the first line. So instead of just
-"ROBOT", let it be "ROBOT 30", "ROBOT 29" and so on so the player can see how much time there's
-left before expiry.
-
 Add security codes (A and B) as something you can find (later) and something that is needed to take
 over robots. titan.yaml has to define what code is needed for each robot. Let's start with
 two basic security codes (A), and later we can hide more codes for people to find. 
@@ -24,6 +18,12 @@ Robot AI that has a laser field like Impossible Mission (using the force filed s
 # ------------------------
 #           DONE
 # ------------------------
+
+When you take over robots then let it expire after 30 seconds and control revert to human. Currently
+using the terminal (as a robot) revers to human. Remove that and only have the expiry mechanism
+instead. Robots can't use the terminals. Add a countdown on the first line. So instead of just
+"ROBOT", let it be "ROBOT 30", "ROBOT 29" and so on so the player can see how much time there's
+left before expiry.
 
 A robot that can shoot at you (using the bolt sprite). Only one bolt at the time. The bolt disappears when it hits a wall. It doesn't kill other robots.
 

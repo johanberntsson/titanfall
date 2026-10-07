@@ -125,7 +125,7 @@ TERM_ROBOT
         lda #<TMSG_LCK : sta PTR
         lda #>TMSG_LCK : sta PTR+1
         lda ACT_LOCK,x : bne TERM_MSG
-        inx : stx PLAYER_MODE
+        jsr START_LINK                   ; PLAYER_MODE = X+1, timed (game.asm)
 TERM_ABORT
         lda #1 : sta GAME_STATE
         jsr DRAW_ROOM

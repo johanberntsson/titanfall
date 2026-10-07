@@ -20,6 +20,7 @@ game:
   start_room: room1
   start_time: "05:47:33"        # countdown clock at mission start (h:mm:ss)
   death_penalty_minutes: 30     # time lost per death (Impossible Mission style)
+  robot_link_seconds: 30        # a terminal link to a robot expires after this (1-99)
 
 # Room-art screen codes the game needs to know about (shared charset, see
 # graphics/). When a laser is destroyed its beam/emitter chars under the laser

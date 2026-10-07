@@ -21,6 +21,7 @@ GAME_ALIVE
         jsr SETUP_GAMEOVER
         jmp MAIN_LOOP
 GA_CLOCKOK
+        jsr TICK_LINK
         jsr TICK_REACTOR
         inc ANIM_CNT            ; drives the always-on hover animation
         lda ANIM_CNT : and #7 : bne GA_NOLASER
@@ -236,12 +237,17 @@ HUDML   lda LMODE_H,x : jsr PET2SCREEN : sta SCRN,x
         lda #CYAN : sta CRAM,x
         dex
         bpl HUDML
-        jmp HUDMLDONE
+        jmp HUDMLH
 HUDMLR  ldx #4
 HUDML2  lda LMODE_R,x : jsr PET2SCREEN : sta SCRN,x
         lda #GREEN : sta CRAM,x
         dex
         bpl HUDML2
+        lda LINK_S : jsr DEC2            ; "robot 30": seconds of link left
+        lda TMP : sta SCRN+6 : lda TMP2 : sta SCRN+7
+        lda #GREEN : sta CRAM+6 : sta CRAM+7
+        bne HUDMLDONE                    ; (always)
+HUDMLH  lda #CH_SPC : sta SCRN+6 : sta SCRN+7   ; human: clear the count
 HUDMLDONE
 
         ; reactor thermometer: 8 solid segments (cols 20-27), lit ones in
@@ -280,6 +286,30 @@ DEC2L   cmp #10 : bcc DEC2D
 DEC2D   clc : adc #CH_0 : sta TMP2
         txa : clc : adc #CH_0 : sta TMP
         rts
+
+; =============================================================================
+; TICK_LINK — a robot link (PLAYER_MODE != 0) lasts CFG_LINK_S seconds
+; (robot_link_seconds in titan.yaml), counted in game frames, so it pauses
+; with the clock in terminal/map/popup. On expiry control reverts to the
+; human, with a cyan border flash; there's no other way to end a link (robots can't use terminals).
+; START_LINK (from TERM_ROBOT, X = actor) starts a link.
+; =============================================================================
+START_LINK
+        inx : stx PLAYER_MODE
+        lda #CFG_LINK_S : sta LINK_S
+        lda #0 : sta LINK_JIF
+        rts
+
+TICK_LINK
+        lda PLAYER_MODE : beq TLOUT
+        inc LINK_JIF
+        lda LINK_JIF : cmp #50 : bcc TLOUT
+        lda #0 : sta LINK_JIF
+        dec LINK_S : bne TLOUT
+        sta PLAYER_MODE                  ; A = 0: back to human control
+        lda #CYAN : sta VIC_BRDCOL       ; flash the border in the "human"
+        lda #15 : sta BFLASH             ;  HUD colour (UPDATE_SPRITE0 ends it)
+TLOUT   rts
 
 ; =============================================================================
 ; TICK_CLOCK
@@ -343,7 +373,6 @@ REACT_K = (REACT_SPAN*256 + REACT_START_M DIV 2) DIV REACT_START_M
 ; =============================================================================
 READ_KEYS
         lda #0 : sta KEY_U : sta KEY_D : sta KEY_L : sta KEY_R
-        lda #0 : sta KEY_X
         lda #0 : sta KEY_SPC
 
         ; Joystick port 2 = CIA1 PRA ($DC00), read with no keyboard column
@@ -378,11 +407,6 @@ RKAN
         lda #1 : sta KEY_R
 RKDN
 
-        ; X key (exit robot proxy mode): col 2 (PA=$FB), row 7 (PB bit 7, active low)
-        lda #$FB : sta CIA1_PRA
-        lda CIA1_PRB : and #$80 : bne RKXN
-        lda #1 : sta KEY_X
-RKXN
 
         ; F2 = shift + F1 (hard to hit by mistake): the "where am I" popup
         ; with room and position (SETUP_WHERE). F1: col 0 (PA=$FE), row 4;
@@ -418,9 +442,9 @@ RKFUP   sta KEY_SPC : sta FIRE_PREV      ; A = 0
 RKFDONE
 
         ; Check proximity to a terminal zone (TERMZ_* tables) in this room.
-        ; Human mode only: while proxying a robot the human sprite still
-        ; stands in the zone, and space must not bounce back into the
-        ; terminal (fire / the X key end the link, see RKXCHK).
+        ; Human mode only: robots can't use terminals (the human sprite
+        ; still stands in the zone while a robot is driven; the link only
+        ; ends when it expires, TICK_LINK).
         lda #0 : sta NEAR_TERM
         lda PLAYER_MODE : bne RKSEARCHCHK
         ldx #0
@@ -437,14 +461,7 @@ RKTL    cpx #NUM_TERMZONES : bcs RKSEARCHCHK
         rts
 RKTN    inx : bne RKTL
 RKSEARCHCHK
-        jsr SEARCH_TICK                  ; hold fire to search (popup.asm)
-RKXCHK
-        ; End a robot link: a fresh fire press (fire is free in proxy mode —
-        ; a driven robot can't search or use terminals) or the X key.
-        lda PLAYER_MODE : beq RKDONE
-        lda KEY_SPC : ora KEY_X : beq RKDONE
-        lda #0 : sta PLAYER_MODE
-RKDONE  rts
+        jmp SEARCH_TICK                  ; hold fire to search (popup.asm)
 
 ; =============================================================================
 ; MOVE_PLAYER — fully table-driven (world.asm): room bounds from ROOM_MAXX/Y,

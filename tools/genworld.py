@@ -370,6 +370,9 @@ def main():
     if not 0 < penalty < 60:
         die("game.death_penalty_minutes must be 1-59 (APPLY_DEATH_PENALTY "
             "borrows at most one hour)")
+    link_s = int(game.get("robot_link_seconds", 30))
+    if not 0 < link_s < 100:
+        die("game.robot_link_seconds must be 1-99 (shown as 2 digits in the HUD)")
 
     # ---- actor types ---------------------------------------------------
     types = cfg.get("actor_types") or die("config needs an actor_types section")
@@ -621,6 +624,7 @@ def main():
     o.append(f"CFG_CLK_M     = {clk_m}")
     o.append(f"CFG_CLK_S     = {clk_s}")
     o.append(f"CFG_PENALTY_M = {penalty}")
+    o.append(f"CFG_LINK_S    = {link_s}")
     for rid, ai in actor_ids.items():
         o.append(f"ACTOR_{rid.upper()} = {ai}   ; actor index")
     for iname, ii in item_index.items():

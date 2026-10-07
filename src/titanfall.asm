@@ -62,7 +62,8 @@ BOLT_XH    = $41
 BOLT_TY    = $42   ; bolt tile row (wall checks)
 BOLT_SY    = $43   ; bolt sprite Y
 PLAYER_MODE = $31  ; 0=human (control PLR_X/Y)  else actor index+1 (proxy mode)
-KEY_X      = $32   ; X key flag (exit robot proxy mode)
+LINK_S     = $32   ; robot link: seconds left (HUD "robot NN"; 0 -> human)
+LINK_JIF   = $44   ; robot link: frames into the current second (0-49)
 POPUP_ST   = $33   ; popup: 0=waiting for opening space to be released, 1=armed
 F2_PREV    = $30   ; F2 held last game frame (edge detect for the where-am-I popup)
 JOY_PREV   = $34   ; joystick 2 bits held last frame (1=pressed, bits 0-4)
