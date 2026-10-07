@@ -56,11 +56,16 @@ POPUPDONE jmp MAIN_LOOP
 SRCH_SHOW = 10                          ; frames held before "searching"
 SRCH_DONE = SRCH_SHOW+50                ; ... and before the result
 
+SRCHSTOP jmp SRCHEND                    ; (SRCHEND is out of branch range)
 SEARCH_TICK
-        lda PLAYER_MODE : bne SRCHEND    ; a driven robot can't search
-        lda FIRE_PREV : beq SRCHEND      ; fire not held: stop
+        lda PLAYER_MODE : bne SRCHSTOP   ; a driven robot can't search
+        lda FIRE_PREV : beq SRCHSTOP     ; fire not held: stop
         lda SRCH_TMR : bne SRCHHOLD
         lda KEY_SPC : beq SRCHOUT        ; held over from before: no search
+        lda PLR_X : sta NEWX             ; only where something's drawn:
+        lda PLR_Y : sta NEWY             ;  plain floor can't be searched
+        lda CUR_ROOM : jsr WALL_AT       ;  (bit 2 of the tile, A bit 1 here)
+        and #2 : beq SRCHOUT
         lda #0 : sta PLR_ANIM            ; stand at rest while searching
 SRCHHOLD
         lda SRCH_TMR : cmp #SRCH_DONE : bcs SRCHOUT   ; finished: just wait

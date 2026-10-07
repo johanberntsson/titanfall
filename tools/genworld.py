@@ -633,7 +633,13 @@ def main():
 
     # ---- walls: solid tiles per room, from the art; validate placements --
     walls = []
+    searchable = []                     # per room: tiles that aren't plain floor
     for room in rooms:
+        # searchable: any of the tile's 2x2 chars isn't art.floor_tile
+        # (furniture, crates, ...) -- only there does holding fire search
+        searchable.append(wall_grid(read_vchar64_map(room["vchar64_map"]),
+                                    room["_maxx"], room["_maxy"],
+                                    set(range(256)) - {floor_tile}))
         # win targets: tiles with any art.win_tiles char (same 2x2 test)
         targets.append(wall_grid(read_vchar64_map(room["vchar64_map"]),
                                  room["_maxx"], room["_maxy"], win_tiles))
@@ -661,6 +667,10 @@ def main():
                 check_open(ri, x, y, what + f" patrol path {fx},{fy} -> {tx},{ty}")
     for ii, (ri, x, y) in item_pos.items():
         check_open(ri, x, y, f"item {list(item_index)[ii]!r}")
+        if not searchable[ri][y][x]:
+            die(f"item {list(item_index)[ii]!r} at ({x},{y}) in room "
+                f"{rooms[ri]['name']} is on plain floor: searching only works on "
+                f"tiles with something drawn on them (not all art.floor_tile)")
     for di in range(len(door["room"])):
         dest = door["dest"][di]
         if dest == 0xFF:
@@ -892,7 +902,8 @@ def main():
 
     o.append(f"; ---- walls: per room, {TILES_X} bytes per tile row (y*{TILES_X}+x) ----")
     o.append("; bit 0 = solid (#), bit 1 = win target (*, may be solid too: a bolt fired by a player-driven")
-    o.append("; robot entering it wins) -- from the 2x2 chars of each tile, see wall_grid")
+    o.append("; robot entering it wins), bit 2 = searchable (+ when walkable: not all floor_tile)")
+    o.append("; -- from the 2x2 chars of each tile, see wall_grid")
     o.append("ROOM_WALL_LO")
     o.append("        !byte " + ",".join(f"<ROOM_WALLS_{i}" for i in range(len(rooms))))
     o.append("ROOM_WALL_HI")
@@ -900,10 +911,12 @@ def main():
     for i, grid in enumerate(walls):
         o.append(f"ROOM_WALLS_{i}      ; {rooms[i]['name']}")
         for y, row in enumerate(grid):
-            tgt = targets[i][y]
-            vals = [(1 if b else 0) | (2 if t else 0) for b, t in zip(row, tgt)]
+            tgt, srch = targets[i][y], searchable[i][y]
+            vals = [(1 if b else 0) | (2 if t else 0) | (4 if f else 0)
+                    for b, t, f in zip(row, tgt, srch)]
             vals += [0] * (TILES_X - len(row))
-            pic = "".join("*" if t else "#" if b else "." for b, t in zip(row, tgt))
+            pic = "".join("*" if t else "#" if b else "+" if f else "."
+                          for b, t, f in zip(row, tgt, srch))
             o.append(f"        !byte {','.join(str(v) for v in vals)}   ; y={y} {pic}")
     o.append("")
 

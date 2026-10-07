@@ -662,9 +662,10 @@ TAOK    sec : rts
 
 ; =============================================================================
 ; WALL_AT — A = room, NEWX/NEWY = tile (in bounds). Carry set if the tile is
-; solid; A != 0 if it's a win target (BOLT_TICK). genworld.py derives
-; ROOM_WALLS_n (20 bytes per tile row; bit 0 = solid, bit 1 = target) from
-; each tile's 2x2 chars of room art. Preserves X; clobbers A/Y/PTR/TMP.
+; solid; A = the other bits shifted down: A bit 0 = win target (BOLT_TICK),
+; A bit 1 = searchable (SEARCH_TICK). genworld.py derives ROOM_WALLS_n (20
+; bytes per tile row; bit 0 = solid, bit 1 = target, bit 2 = not plain floor)
+; from each tile's 2x2 chars of room art. Preserves X; clobbers A/Y/PTR/TMP.
 ; =============================================================================
 WALL_AT
         tay

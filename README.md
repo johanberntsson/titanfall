@@ -46,8 +46,9 @@ Joystick in port 2. The keyboard works the same way: WASD moves and Space is fir
 - **Dying costs time.** Lasers, robots and their weapons kill on contact.
   Each death costs 30 minutes of countdown, and you start again from the
   entry room. Anything you've found stays found.
-- **Searching.** Stand on a spot and hold fire to search it, Impossible
-  Mission style. It takes a moment, and the robots don't wait while you
+- **Searching.** Stand on a piece of furniture or anything else in the room
+  and hold fire to search it, Impossible Mission style (bare floor has
+  nothing to search). It takes a moment, and the robots don't wait while you
   search.
 - **Terminals.** The consoles let you view the sector map and take over a
   robot in the same room. Taking one over costs a **security code** of the
