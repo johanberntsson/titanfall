@@ -67,6 +67,7 @@ SND_KIND   = $45   ; sound effect playing: 0 = laser zap, 1 = explosion
 EXPL_TMR   = $46   ; explosion (state 7): frames left
 EXP_D011   = $47   ; explosion: $D011/$D016 saved before the shake
 EXP_D016   = $48
+FIELD_ACT  = $49   ; forcefield robot showing its field (hw sprite 4): actor+1, 0 = none
 LINK_JIF   = $44   ; robot link: frames into the current second (0-49)
 POPUP_ST   = $33   ; popup: 0=waiting for opening space to be released, 1=armed
 F2_PREV    = $30   ; F2 held last game frame (edge detect for the where-am-I popup)
@@ -89,6 +90,7 @@ SPRP_PLAYER = sprite_down_rest/64   ; default pointers written after CLS
 SPRP_ROBOT  = robot_down_rest/64    ; (ASSIGN_SPRITES / FRAME_PTR set the
 SPRP_DRONE  = drone_down_hover/64   ;  real per-frame values in game state)
 SPRP_BOLT   = bolt_1/64             ; shooter's bolt (bolt_1/bolt_2), sprite 3
+SPRP_FIELD  = forcefield_1/64       ; forcefield robot's field (forcefield_1/2), sprite 4
 
 ; facings — also the frame-group order inside each sprite set
 DIR_DOWN   = 0
@@ -116,6 +118,9 @@ VIC_SP2Y   = $D005
 VIC_SP3X   = $D006
 VIC_SP3Y   = $D007
 VIC_SPCOL3 = $D02A
+VIC_SP4X   = $D008
+VIC_SP4Y   = $D009
+VIC_SPCOL4 = $D02B
 VIC_BRDCOL = $D020
 VIC_BGCOL  = $D021
 
@@ -196,7 +201,7 @@ SIDCLR  lda #0
         lda #SPRP_DRONE  : sta SPRPTR+2
         lda TYPE_COLOR+ATYPE_HUMAN : sta VIC_SPCOL0  ; slots 1-2 set by ASSIGN_SPRITES
         lda #WHITE : sta VIC_SPCOL3     ; the bolt's hot core
-        lda #$0F   : sta $D01C          ; sprites 0-3 multicolour
+        lda #$1F   : sta $D01C          ; sprites 0-4 multicolour
         lda #DGRAY : sta $D025          ; MC0 (%01) — outlines
         lda #LTGRAY : sta $D026         ; MC1 (%11) — shared light grey
         lda #$00   : sta $D01D
@@ -444,7 +449,7 @@ SCR_BORDER_BOTTOM  !pet G_RD_LL, G_HORIZ_BAR, G_HORIZ_BAR, G_HORIZ_BAR, G_HORIZ_
 ; FRAME_PTR in game.asm picks the frame. Every actor set has all 4 facings
 ; (12 frames).
 ; =============================================================================
-SPRITE_FRAMES = 12+12+12+12+12+2
+SPRITE_FRAMES = 12+12+12+12+12+2+2
         * = CHARSET - SPRITE_FRAMES*64
 SPRITES_START
         !source "src/c64_walker_sprites.asm"    ; player:  12 frames
@@ -453,6 +458,7 @@ SPRITES_START
         !source "src/c64_dozer_sprites.asm"     ; dozer:   12 frames
         !source "src/c64_tripod_sprites.asm"    ; tripod:  12 frames
         !source "src/c64_bolt_sprites.asm"      ; bolt:     2 frames (shooter)
+        !source "src/c64_forcefield_sprites.asm" ; field:   2 frames (forcefield)
 SPRITES_END
 !if SPRITES_END != CHARSET {
         !error "SPRITE_FRAMES doesn't match the sprite files - update it"

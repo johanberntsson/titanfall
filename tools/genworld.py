@@ -32,7 +32,7 @@ TILES_X = 40 // 2
 TILES_Y = 22 // 2
 
 MAX_ROBOTS_PER_ROOM = 2   # hardware sprites 1 and 2 (sprite 0 = player)
-AI_NAMES = ["patrol", "hunter", "shooter"]      # ai: values; index = AI_* constant in world.asm
+AI_NAMES = ["patrol", "hunter", "shooter", "forcefield"]      # ai: values; index = AI_* constant in world.asm
 LABEL_WIDTH = 12          # status-line item label field width
 MAX_CODES = 3             # security code types (status line: " code: a 2 b 0 c 0    card: " + label)
 MSG_INTERIOR = 30         # popup box interior width (matches SBOX_* strings)
@@ -552,8 +552,8 @@ def main():
             # its patrol X-first, so the patrol must be one horizontal line
             # through its start: rush and return then only cover tiles of
             # that row that the line-of-sight test found free of walls.
-            if ai == "hunter" and not (int(start["y"]) == act["wy0"][-1] == act["wy1"][-1]):
-                die(f"room {rname}: robot {aname!r}: an ai: hunter robot needs a "
+            if ai in ("hunter", "forcefield") and not (int(start["y"]) == act["wy0"][-1] == act["wy1"][-1]):
+                die(f"room {rname}: robot {aname!r}: an ai: {ai} robot needs a "
                     f"horizontal patrol (both waypoints on its start row)")
             act["ai"].append(AI_NAMES.index(ai))
 

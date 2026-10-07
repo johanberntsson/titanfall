@@ -62,6 +62,10 @@ actor_types:
   #             hunter = patrol, but rush the player at double speed while
   #                      on the same tile row with no wall in between;
   #                      needs a horizontal patrol through its start
+  #             forcefield = patrol, but while the player is on its row (no wall
+  #                       between) raise a force field toward them and advance
+  #                       at normal speed; needs a horizontal patrol through
+  #                       its start
   #             shooter = patrol, but stop and fire a bolt along the row while
   #                       the player is on it with no wall in between
   #                       (one bolt in flight at a time, shared by all)
@@ -177,6 +181,7 @@ rooms:
       - type: tripod
         name: bot-4410  tripod
         code: a
+        ai: forcefield                 # advances behind a force field when it sees you
         start: {x: 14, y: 7}
         patrol: [{x: 14, y: 7}, {x: 4, y: 7}]
     things:

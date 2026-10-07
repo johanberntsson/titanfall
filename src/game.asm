@@ -37,7 +37,8 @@ GA_NOWIN
         lda GAME_STATE : cmp #1 : bne GAME_TICK_DONE  ; terminal/win/map/popup entered this frame
         jsr UPDATE_SPRITE0
         jsr UPDATE_ROBOT_SPRITES
-        jsr BOLT_TICK                    ; before the collision read
+        jsr FIELD_TICK                   ; (both before the collision read)
+        jsr BOLT_TICK
         lda GAME_STATE : cmp #1 : bne GAME_TICK_DONE  ; the bolt won the game
         jsr CHECK_SPRITE_HIT
         jsr DRAW_HUD_DYNAMIC
@@ -986,10 +987,12 @@ TROBD   rts
 ; has finished: a normal-pace robot is only asked on even half periods
 ; (TICK_ROBOT), and one that loses sight on an odd one waits for the next.
 ; ---------------------------------------------------------------------------
-; AI_SHOOTER: see SHOOTER_THINK.
+; AI_SHOOTER: see SHOOTER_THINK. AI_FORCEFIELD: see FIELD_THINK.
 ACTOR_THINK
         lda ACT_AI,x : cmp #AI_HUNTER : beq ATHUNT
-        cmp #AI_SHOOTER : bne ACTOR_PATROL_STEP
+        cmp #AI_FORCEFIELD : bne ATNFF
+        jmp FIELD_THINK
+ATNFF   cmp #AI_SHOOTER : bne ACTOR_PATROL_STEP
         jmp SHOOTER_THINK
 ATHUNT  jsr SEES_PLAYER : bcc ATNOSEE
         jmp HUNT_RUSH
@@ -1051,6 +1054,9 @@ HSYES   sec : rts
 ; the player already, or the next tile is an active laser).
 HUNT_RUSH
         lda #1 : sta ACT_FAST,x
+; ADVANCE — X = actor: one step along its row toward the player (shared by
+; the hunter's rush and the forcefield robot, which advances at normal pace).
+ADVANCE
         lda ACT_Y,x : sta NEWY
         lda ACT_X,x : sta NEWX
         cmp PLR_X : beq HRSTOP
@@ -1062,6 +1068,58 @@ HRGO    jsr ACT_FACE                     ; turn to face the player even if block
         lda NEWX : sta ACT_X,x
         jmp ACT_STEP_ANIM
 HRSTOP  lda #0 : sta ACT_ANIM,x
+        rts
+
+; ---------------------------------------------------------------------------
+; FIELD_THINK — X = actor with AI_FORCEFIELD, at normal pace. Patrols; while
+; it sees the player (SEES_PLAYER: same row, no wall between) it raises its
+; force field (FIELD_ACT = X+1; FIELD_TICK draws it on hw sprite 4 in front
+; of the robot, toward the player) and advances along the row at normal
+; pace (ADVANCE). Touching the robot or the field is the ordinary sprite
+; collision. Losing sight drops the field and it walks back onto its patrol.
+; There is one field: a second forcefield robot that sees the player takes
+; it over.
+; ---------------------------------------------------------------------------
+FIELD_THINK
+        jsr SEES_PLAYER : bcs FTSEE
+        txa : clc : adc #1 : cmp FIELD_ACT : bne FTPAT
+        lda #0 : sta FIELD_ACT           ; lost sight: field down
+FTPAT   jmp ACTOR_PATROL_STEP
+FTSEE   txa : clc : adc #1 : sta FIELD_ACT
+        jmp ADVANCE
+
+; ---------------------------------------------------------------------------
+; FIELD_TICK — every game frame: show the force field of actor FIELD_ACT-1
+; on hw sprite 4 (forcefield_1/2 alternating every 2 frames, in the robot's
+; own colour) FIELD_OFS px ahead of the robot's glided sprite, on the side it
+; faces — or hide it (no field, the robot is dead/driven/elsewhere, or it
+; faces up/down). Clobbers A/X/Y.
+; ---------------------------------------------------------------------------
+FIELD_OFS = 20                          ; px from the robot's sprite X
+
+FIELD_TICK
+        ldx FIELD_ACT : beq FKOFF
+        dex
+        lda ACT_ALIVE,x : cmp #1 : bne FKOFF
+        lda ACT_ROOM,x : cmp CUR_ROOM : bne FKOFF
+        txa : clc : adc #1 : cmp PLAYER_MODE : beq FKOFF
+        lda ACT_DIR,x : cmp #DIR_LEFT : beq FKLEFT
+        cmp #DIR_RIGHT : bne FKOFF
+        lda GL_PXL,x : clc : adc #FIELD_OFS : sta VIC_SP4X
+        lda GL_PXH,x : adc #0
+        jmp FKMSB
+FKLEFT  lda GL_PXL,x : sec : sbc #FIELD_OFS : sta VIC_SP4X
+        lda GL_PXH,x : sbc #0
+FKMSB   beq FKM0
+        lda VIC_SP_MSB : ora #$10 : bne FKM1
+FKM0    lda VIC_SP_MSB : and #$EF
+FKM1    sta VIC_SP_MSB
+        lda GL_PY,x : sta VIC_SP4Y
+        ldy ACT_TYPE,x : lda TYPE_COLOR,y : sta VIC_SPCOL4
+        lda ANIM_CNT : lsr : and #1 : clc : adc #SPRP_FIELD : sta SPRPTR+4
+        lda VIC_SPEN : ora #$10 : sta VIC_SPEN
+        rts
+FKOFF   lda VIC_SPEN : and #$EF : sta VIC_SPEN
         rts
 
 ; ---------------------------------------------------------------------------
@@ -1230,7 +1288,8 @@ FPWALK  lda TMP : sec : sbc TYPE_DIR0,x : sta TMP   ; facing group 0-3
 ; =============================================================================
 DRAW_ROOM
         lda #0 : sta SRCH_TMR : sta SRCH_ST ; the redraw ends any search (and
-        sta BOLT_ON                      ;  any bolt in flight)
+        sta BOLT_ON                      ;  any bolt in flight, any force
+        sta FIELD_ACT                    ;  field)
         lda #1 : sta FIRE_PREV           ;  its small popup); want a new press
         jsr DRMSETPTR
         lda #<(SCRN+80) : sta PTR2 : lda #>(SCRN+80) : sta PTR2+1
