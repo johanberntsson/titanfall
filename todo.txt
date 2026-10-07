@@ -2,14 +2,13 @@
 #           OPEN
 # ------------------------
 
-Let the power stack change between cyan and purple. Also it's a wall-type, we can't walk there.
-
 Robot AI that has a laser field like Impossible Mission (using the force filed sprite)
-
 
 # ------------------------
 #           DONE
 # ------------------------
+
+Let the power stack change between cyan and purple. Also it's a wall-type, we can't walk there.
 
 I'm made two new sprites for the new rooms
 

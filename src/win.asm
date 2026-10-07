@@ -144,7 +144,7 @@ TXT_WINPRESS !pet "       press fire to continue           "
 ; =============================================================================
 ; EXPLOSION (GAME_STATE = 7) — the payoff before the win screen. SETUP_EXPLODE
 ; (jmp from BOLT_TICK when a player-fired bolt enters a win-target tile)
-; turns every power-cell char on screen dark grey, starts the explosion sound
+; turns the room's power-cell chars dark grey (PAINT_WIN), starts the explosion sound
 ; and saves $D011/$D016; DO_EXPLODE then shakes the whole screen for
 ; EXPL_LEN frames with random fine-scroll values (bits 0-2 of $D011/$D016,
 ; the amplitude dying away with the timer) and flickers the border, then
@@ -157,33 +157,11 @@ SETUP_EXPLODE
         lda #7 : sta GAME_STATE
         lda #0 : sta BOLT_ON
         lda VIC_SPEN : and #$F7 : sta VIC_SPEN   ; the bolt is gone
-        ; the power cell burns out: its chars (art.win_tiles) go dark grey —
-        ; rows 2-23 = SCRN+80.., 3 pages + 112 bytes
-        ldx #0
-EXSL    lda SCRN+80,x : jsr EXP_ISCELL : bne EXS1
-        lda #DGRAY : sta CRAM+80,x
-EXS1    lda SCRN+336,x : jsr EXP_ISCELL : bne EXS2
-        lda #DGRAY : sta CRAM+336,x
-EXS2    lda SCRN+592,x : jsr EXP_ISCELL : bne EXS3
-        lda #DGRAY : sta CRAM+592,x
-EXS3    cpx #112 : bcs EXS4
-        lda SCRN+848,x : jsr EXP_ISCELL : bne EXS4
-        lda #DGRAY : sta CRAM+848,x
-EXS4    inx : bne EXSL
+        lda #DGRAY : jsr PAINT_WIN       ; the power cell burns out
         lda VIC_CR1 : sta EXP_D011
         lda $D016 : sta EXP_D016
         lda #EXPL_LEN : sta EXPL_TMR
         jmp SOUND_BOOM_START
-
-; EXP_ISCELL — A = screen code. Z set if it's a win-target char (WIN_CHARS,
-; generated from art.win_tiles). Preserves X.
-EXP_ISCELL
-        ldy #0
-EICL    cpy #NUM_WIN_CHARS : bcs EICNO
-        cmp WIN_CHARS,y : beq EICOUT
-        iny : bne EICL
-EICNO   ldy #1                          ; Z clear
-EICOUT  rts
 
 ; DO_EXPLODE — called each frame in state 7
 DO_EXPLODE

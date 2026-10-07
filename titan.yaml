@@ -33,7 +33,8 @@ art:
   # the build computes the wall map from the art and rejects starts,
   # patrols, items or door arrivals inside a wall.
   solid_tiles: [0x84, 0x85, 0x86, 0x87, 0x88, 0x89, 0x8a, 0x8b,
-                0xa4]                  # 0xa4: the missile bay's "keep out" border
+                0xa4,                  # 0xa4: the missile bay's "keep out" border
+                0xa6]                  # 0xa6: the power cell (also a win target)
   # Terminal chars. Every group of these in a room's art is a terminal,
   # used with fire from its own tiles or any tile next to them.
   terminal_tiles: [0x8c, 0x8d, 0x8e, 0x8f]
@@ -196,7 +197,7 @@ rooms:
         code: b
         ai: shooter                    # fires bolts along row 5 at you
         start: {x: 10, y: 5}
-        patrol: [{x: 10, y: 5}, {x: 2, y: 5}]
+        patrol: [{x: 10, y: 5}, {x: 4, y: 5}]   # x 1-3 is the (solid) power cell
     doors:
       - at: {x1: 6, y1: -1, x2: 10, y2: -1}  # top wall opening, back to room 2
         leads_to: room2

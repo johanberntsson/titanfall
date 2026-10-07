@@ -870,14 +870,26 @@ def main():
         o.append(tbl(name, [byte(v, "termz") for v in termz[key]]))
     o.append("")
 
-    o.append("; ---- win-target chars (art.win_tiles): darkened when the target is shot ----")
-    o.append(f"NUM_WIN_CHARS = {len(win_tiles)}")
-    o.append("WIN_CHARS")
-    o.append("        !byte " + (",".join(f"${t:02x}" for t in sorted(win_tiles)) or "0"))
+    o.append("; ---- win-target art: per room, the map offsets of every art.win_tiles char")
+    o.append("; (lo, hi; a $ff hi byte ends the list) -- PAINT_WIN recolours them: the")
+    o.append("; cyan/purple flicker while intact, dark grey when shot")
+    o.append("ROOM_WINART_LO")
+    o.append("        !byte " + ",".join(f"<ROOM_WINART_{i}" for i in range(len(rooms))))
+    o.append("ROOM_WINART_HI")
+    o.append("        !byte " + ",".join(f">ROOM_WINART_{i}" for i in range(len(rooms))))
+    for i, room in enumerate(rooms):
+        mapdata = read_vchar64_map(room["vchar64_map"])
+        offs = [o_ for o_ in range(ROOM_MAP_BYTES) if mapdata[o_] in win_tiles]
+        if len(offs) > 127:
+            die(f"room {room['name']}: too many art.win_tiles chars ({len(offs)} > 127)")
+        o.append(f"ROOM_WINART_{i}      ; {room['name']}: {len(offs)} cells")
+        for k in range(0, len(offs), 8):
+            o.append("        !byte " + ",".join(f"${x & 0xff:02x},${x >> 8:02x}" for x in offs[k:k + 8]))
+        o.append("        !byte $00,$ff")
     o.append("")
 
     o.append(f"; ---- walls: per room, {TILES_X} bytes per tile row (y*{TILES_X}+x) ----")
-    o.append("; bit 0 = solid (#), bit 1 = win target (*: a bolt fired by a player-driven")
+    o.append("; bit 0 = solid (#), bit 1 = win target (*, may be solid too: a bolt fired by a player-driven")
     o.append("; robot entering it wins) -- from the 2x2 chars of each tile, see wall_grid")
     o.append("ROOM_WALL_LO")
     o.append("        !byte " + ",".join(f"<ROOM_WALLS_{i}" for i in range(len(rooms))))
@@ -889,7 +901,7 @@ def main():
             tgt = targets[i][y]
             vals = [(1 if b else 0) | (2 if t else 0) for b, t in zip(row, tgt)]
             vals += [0] * (TILES_X - len(row))
-            pic = "".join("#" if b else "*" if t else "." for b, t in zip(row, tgt))
+            pic = "".join("*" if t else "#" if b else "." for b, t in zip(row, tgt))
             o.append(f"        !byte {','.join(str(v) for v in vals)}   ; y={y} {pic}")
     o.append("")
 

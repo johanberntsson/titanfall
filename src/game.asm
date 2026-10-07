@@ -27,6 +27,9 @@ GA_CLOCKOK
         lda ANIM_CNT : and #7 : bne GA_NOLASER
         jsr ANIM_LASER          ; flicker the beams ~6 times a second
 GA_NOLASER
+        lda ANIM_CNT : and #15 : bne GA_NOWIN
+        jsr WIN_FLICKER         ; power cell: cyan <-> purple
+GA_NOWIN
         jsr TICK_ROBOT
         jsr READ_KEYS
         lda GAME_STATE : cmp #1 : bne GAME_TICK_DONE  ; terminal/popup opened by a key
@@ -1134,9 +1137,11 @@ BTMOVED lda BOLT_XH : lsr                ; tile = X/16 (C = bit 8)
         lda BOLT_Y : lsr : lsr : lsr : lsr
         cmp #11 : bcs BTKILL             ; past the bottom edge (tile 11)
         sta NEWY
-        lda CUR_ROOM : jsr WALL_AT : bcs BTKILL
-        and BOLT_PLR : beq BTSHOW        ; a win target, hit by the player?
-        lda #0 : sta BOLT_ON
+        lda CUR_ROOM : jsr WALL_AT       ; C = solid, A = win target
+        and BOLT_PLR : bne BTWIN         ; a win target, hit by the player?
+        bcc BTSHOW                       ;  (checked first: the cell is solid)
+        jmp BTKILL
+BTWIN   lda #0 : sta BOLT_ON
         lda VIC_SPEN : and #$F7 : sta VIC_SPEN
         jmp SETUP_EXPLODE                ; the power cell is hit (win.asm)
 BTSHOW  lda BOLT_XL : clc : adc #12 : sta VIC_SP3X   ; sprite X = centre+12
@@ -1151,6 +1156,34 @@ BTMSB   sta VIC_SP_MSB
 BTKILL  lda #0 : sta BOLT_ON
 BTOFF   lda VIC_SPEN : and #$F7 : sta VIC_SPEN
         rts
+
+; ---------------------------------------------------------------------------
+; WIN_FLICKER — every 16 game frames (and on every DRAW_ROOM): the intact
+; power cell alternates cyan / purple. Not while the small search popup is
+; up (it would recolour the box). PAINT_WIN (A = colour) recolours this
+; room's win-target chars (ROOM_WINART_n, generated) — SETUP_EXPLODE uses it
+; to turn them dark grey. Clobbers A/Y/PTR/PTR2/TMP/TMP2; preserves X.
+; ---------------------------------------------------------------------------
+WIN_FLICKER
+        lda SRCH_ST : bne WFOUT
+        lda ANIM_CNT : and #16 : beq WFCYAN
+        lda #PURPLE : bne PAINT_WIN
+WFCYAN  lda #CYAN
+PAINT_WIN
+        sta TMP2
+        txa : pha
+        ldx CUR_ROOM
+        lda ROOM_WINART_LO,x : sta PTR
+        lda ROOM_WINART_HI,x : sta PTR+1
+        pla : tax
+        ldy #0
+PWL     lda (PTR),y : clc : adc #<(CRAM+80) : sta PTR2   ; map offset -> colour RAM
+        iny : lda (PTR),y : bmi WFOUT                    ; ($ff = end)
+        adc #>(CRAM+80) : sta PTR2+1
+        iny : sty TMP
+        ldy #0 : lda TMP2 : sta (PTR2),y
+        ldy TMP : jmp PWL
+WFOUT   rts
 
 ; ---------------------------------------------------------------------------
 ; ACT_FACE — X = actor, A = DIR_*. Turns the actor to face that way, unless
@@ -1239,6 +1272,7 @@ DRMDOOR cpy #NUM_DOORS : bcs DRMDOORD
         pla : tay
 DRMDOORN iny : bne DRMDOOR
 DRMDOORD
+        jsr WIN_FLICKER              ; power cell in its current colour
         jsr SNAP_ALL                 ; no gliding across a room change
         jmp ASSIGN_SPRITES           ; room changed: remap actors -> sprites
 
