@@ -2,13 +2,7 @@
 #           OPEN
 # ------------------------
 
-Add security codes (A and B) as something you can find (later) and something that is needed to take
-over robots. titan.yaml has to define what code is needed for each robot. Let's start with
-two basic security codes (A), and later we can hide more codes for people to find. 
-The bottom line could be "CODE: A 2 B 0    CARD: RED " instead (assuming we have found the red card
-and have two A type codes). If a code is used in the terminal we decrease the count of course.
-And if we don't have a code we'll get a poup in the terminal saying so.
-
+Make the door visible and remove it when card used
 
 I'm made two new sprites for later
 
@@ -18,6 +12,13 @@ Robot AI that has a laser field like Impossible Mission (using the force filed s
 # ------------------------
 #           DONE
 # ------------------------
+
+Add security codes (A and B to begin with) as something you can find (later) and something that is needed to
+take over robots. titan.yaml has to define what code is needed for each robot. Let's start with
+two basic security codes (A), and later we can hide more codes for people to find. 
+The bottom line could be "CODE: A 2 B 0    CARD: RED " instead (assuming we have found the red card
+and have two A type codes). If a code is used in the terminal we decrease the count of course.
+And if we don't have a code we'll get a poup in the terminal saying so.
 
 When you take over robots then let it expire after 30 seconds and control revert to human. Currently
 using the terminal (as a robot) revers to human. Remove that and only have the expiry mechanism

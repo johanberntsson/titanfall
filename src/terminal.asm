@@ -117,15 +117,9 @@ TERM_FIRE
         jmp TERM_DONE
 
 ; Link to robot X: drop straight back into gameplay, now piloting it
-; (PLAYER_MODE = actor+1) — unless it's destroyed or locked.
+; (PLAYER_MODE = actor+1) — unless TERM_LINK refuses (message in PTR).
 TERM_ROBOT
-        lda #<TMSG_DEAD : ldy #>TMSG_DEAD
-        sta PTR : sty PTR+1
-        lda ACT_ALIVE,x : beq TERM_MSG
-        lda #<TMSG_LCK : sta PTR
-        lda #>TMSG_LCK : sta PTR+1
-        lda ACT_LOCK,x : bne TERM_MSG
-        jsr START_LINK                   ; PLAYER_MODE = X+1, timed (game.asm)
+        jsr TERM_LINK : bcs TERM_MSG
 TERM_ABORT
         lda #1 : sta GAME_STATE
         jsr DRAW_ROOM
@@ -141,6 +135,24 @@ TERM_MSG                                ; PTR = message: show it in light red
 
 TERM_DONE
         jmp MAIN_LOOP
+
+; TERM_LINK — X = actor. Refuses (carry set, PTR = message) if it's
+; destroyed, locked, or needs a security code (ACT_CODE) the player has none
+; of; otherwise spends that code, starts the link (START_LINK) and returns
+; carry clear.
+TERM_LINK
+        lda #<TMSG_DEAD : sta PTR : lda #>TMSG_DEAD : sta PTR+1
+        lda ACT_ALIVE,x : beq TLREF
+        lda #<TMSG_LCK : sta PTR : lda #>TMSG_LCK : sta PTR+1
+        lda ACT_LOCK,x : bne TLREF
+        ldy ACT_CODE,x : beq TLGO
+        dey
+        lda CODE_MSG_LO,y : sta PTR : lda CODE_MSG_HI,y : sta PTR+1
+        lda CODE_CNT,y : beq TLREF
+        sec : sbc #1 : sta CODE_CNT,y    ; spend one
+TLGO    jsr START_LINK                   ; PLAYER_MODE = X+1, timed (game.asm)
+        clc : rts
+TLREF   sec : rts
 
 ; ---------------------------------------------------------------------------
 ; TERM_DRAW_SEL — recolour every entry and put the '>' on the selected one:

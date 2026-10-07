@@ -159,7 +159,11 @@ SPCN    inx : iny : cpy #SPOP_W : bne SPCL
 ; ---------------------------------------------------------------------------
 SETUP_SEARCH
         lda #1 : sta ITEM_STATE,x
-        lda ITEM_MSG_LO,x : sta PTR
+        ldy ITEM_CODE,x : beq SSMSG      ; a security code: one more of it
+        dey
+        lda CODE_CNT,y : cmp #9 : bcs SSMSG   ; (one digit on the status line)
+        adc #1 : sta CODE_CNT,y          ; (C clear)
+SSMSG   lda ITEM_MSG_LO,x : sta PTR
         lda ITEM_MSG_HI,x : sta PTR+1
         jmp SHOW_POPUP
 

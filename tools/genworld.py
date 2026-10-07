@@ -34,6 +34,7 @@ TILES_Y = 22 // 2
 MAX_ROBOTS_PER_ROOM = 2   # hardware sprites 1 and 2 (sprite 0 = player)
 AI_NAMES = ["patrol", "hunter", "shooter"]      # ai: values; index = AI_* constant in world.asm
 LABEL_WIDTH = 12          # status-line item label field width
+MAX_CODES = 3             # security code types (status line: " code: a 2 b 0 c 0    card: " + label)
 MSG_INTERIOR = 30         # popup box interior width (matches SBOX_* strings)
 TERM_NAME_WIDTH = 22      # robot name in the terminal menu (cols 5-26; the
                           # status word is drawn at cols 28-36)
@@ -403,11 +404,42 @@ def main():
                 die(f"actor type {name}: ai must be one of {', '.join(AI_NAMES)}")
             type_ai[name] = ai
 
+    # ---- security codes ------------------------------------------------
+    # name -> how many the player starts with. Linking a robot that needs a
+    # code spends one; items with code: add one when found.
+    codes = cfg.get("security_codes") or {}
+    code_names, code_start = [], []
+    for cname, n in codes.items():
+        cname = str(cname).lower()
+        if len(cname) != 1 or cname not in "abcdefghijklmnopqrstuvwxyz":
+            die(f"security_codes: code names must be one letter, not {cname!r}")
+        if not 0 <= int(n) <= 9:
+            die(f"security_codes: {cname}: start count must be 0-9 (one digit)")
+        code_names.append(cname)
+        code_start.append(int(n))
+    if len(code_names) > MAX_CODES:
+        die(f"security_codes: at most {MAX_CODES} code types fit the status line")
+
+    def code_ref(v, what):
+        """code: value -> 0 (none) or code index + 1"""
+        v = str(v).lower()
+        if v == "none":
+            return 0
+        if v not in code_names:
+            die(f"{what}: unknown security code {v!r} (security_codes: "
+                f"{', '.join(code_names) or 'none defined'})")
+        return code_names.index(v) + 1
+
     # ---- items ---------------------------------------------------------
     items = cfg.get("items") or {}
     item_index = {name: i for i, name in enumerate(items)}
-    item_labels, item_msgs = [], []
+    item_labels, item_msgs, item_code = [], [], []
     for name, it in items.items():
+        # code: <letter> makes the item a security code: finding it adds one
+        # to that code's count instead of going into the card slot
+        item_code.append(code_ref(it["code"], f"item {name}") if "code" in it else 0)
+        if item_code[-1] and "found_text" not in it:
+            it["found_text"] = f"security code {code_names[item_code[-1] - 1]} found!"
         label = check_pet(str(it.get("label", name)), f"item {name} label")
         if len(label) > LABEL_WIDTH:
             die(f"item {name}: label longer than {LABEL_WIDTH} chars")
@@ -419,7 +451,7 @@ def main():
         item_msgs.append(text.center(MSG_INTERIOR))   # framed when emitted
 
     # ---- walk rooms, flattening everything into parallel arrays --------
-    act = {k: [] for k in ("type", "room", "sx", "sy", "wx0", "wy0", "wx1", "wy1", "lock", "ai")}
+    act = {k: [] for k in ("type", "room", "sx", "sy", "wx0", "wy0", "wx1", "wy1", "lock", "ai", "code")}
     act_names = []                      # terminal menu name per actor
     actor_ids = {}
     item_pos = {}                       # item index -> (room, x, y)
@@ -472,6 +504,10 @@ def main():
                     f"{TERM_NAME_WIDTH} chars")
             act_names.append(aname)
             act["lock"].append(1 if r.get("locked") else 0)
+            if "code" not in r:
+                die(f"room {rname}: robot {aname!r} needs a code: (the security "
+                    f"code its terminal link costs, or none)")
+            act["code"].append(code_ref(r["code"], f"room {rname} robot {aname!r}"))
             act["type"].append(type_index[tname])
             act["room"].append(ri)
             act["sx"].append(int(start["x"]))
@@ -537,6 +573,9 @@ def main():
             key = d.get("key")
             if key is not None and key not in item_index:
                 die(f"room {rname}: door key references unknown item {key!r}")
+            if key is not None and item_code[item_index[key]]:
+                die(f"room {rname}: door key {key!r} is a security code - "
+                    f"codes are spent on robot links, not doors")
             door["room"].append(ri)
             for k in ("x1", "y1", "x2", "y2"):
                 door[k].append(int(at[k]))
@@ -678,16 +717,36 @@ def main():
             ("ACT_WX1", "wx1", "patrol waypoint 1"),
             ("ACT_WY1", "wy1", ""),
             ("ACT_LOCK", "lock", "1 = terminal refuses to link (locked: true)"),
-            ("ACT_AI", "ai", "AI_* routine while computer-controlled")):
+            ("ACT_AI", "ai", "AI_* routine while computer-controlled"),
+            ("ACT_CODE", "code", "security code a link costs: code index + 1, 0 = none")):
         o.append(tbl(name, [byte(v, name) for v in act[key]], comment))
     o.append("ACT_TROW_LO     ; 40-char terminal menu row (name, locked tag)")
     o.append("        !byte " + (",".join(f"<ACT_TROW_{i}" for i in range(len(act_names))) or "0"))
     o.append("ACT_TROW_HI")
     o.append("        !byte " + (",".join(f">ACT_TROW_{i}" for i in range(len(act_names))) or "0"))
     for i, aname in enumerate(act_names):
-        row = ("    " + aname.ljust(TERM_NAME_WIDTH + 1)
-               + ("locked" if act["lock"][i] else "")).ljust(38)
+        status = ("locked" if act["lock"][i] else
+                  f"code {code_names[act['code'][i] - 1]}" if act["code"][i] else "")
+        row = ("    " + aname.ljust(TERM_NAME_WIDTH + 1) + status).ljust(38)
         o.append(f'ACT_TROW_{i} !pet G_VERT_BAR, "{row}", G_VERT_BAR')
+    o.append("")
+
+    o.append("; ---- security codes and the status line (row 24) ----")
+    o.append(f"NUM_CODES     = {len(code_names)}")
+    o.append(tbl("CODE_START", code_start, "count at mission start (SETUP_GAME)"))
+    if code_names:
+        tmpl = " code:" + "".join(f" {c} 0" for c in code_names) + "    card: "
+    else:
+        tmpl = " card: "
+    o.append("STAT_CNT_COL  = 9      ; column of code 0's digit; codes are 4 columns apart")
+    o.append(f"STAT_LBL_COL  = {len(tmpl)}     ; column of the card label (LABEL_WIDTH chars)")
+    o.append(f'STAT_TMPL !pet "{tmpl.ljust(40)}"')
+    o.append("CODE_MSG_LO     ; terminal message: link refused, no code of this type")
+    o.append("        !byte " + (",".join(f"<CODE_MSG_{i}" for i in range(len(code_names))) or "0"))
+    o.append("CODE_MSG_HI")
+    o.append("        !byte " + (",".join(f">CODE_MSG_{i}" for i in range(len(code_names))) or "0"))
+    for i, c in enumerate(code_names):
+        o.append(f'CODE_MSG_{i} !pet "{("  access denied. no security code " + c + ".").ljust(40)}"')
     o.append("")
 
     o.append("; ---- items ----")
@@ -695,6 +754,7 @@ def main():
     o.append(tbl("ITEM_ROOM", [byte(p[0], "ITEM_ROOM") for p in ipr]))
     o.append(tbl("ITEM_X", [byte(p[1], "ITEM_X") for p in ipr]))
     o.append(tbl("ITEM_Y", [byte(p[2], "ITEM_Y") for p in ipr]))
+    o.append(tbl("ITEM_CODE", item_code, "security code it adds when found: index + 1, 0 = a card/key item"))
     if items:
         o.append("ITEM_LABEL_LO   ; 12-char status-line label")
         o.append("        !byte " + ",".join(f"<ITEM_LBL_{i}" for i in range(len(items))))
@@ -804,6 +864,7 @@ def main():
     o.append("GL_PXL      !fill NUM_ACTORS+1  ; sprite pixel X lo (smooth movement;")
     o.append("GL_PXH      !fill NUM_ACTORS+1  ;  last slot = the human), X hi bit")
     o.append("GL_PY       !fill NUM_ACTORS+1  ; sprite pixel Y")
+    o.append("CODE_CNT    !fill NUM_CODES+1   ; security codes carried, per code type (0-9)")
     o.append("ITEM_STATE  !fill NUM_ITEMS+1   ; 0=hidden 1=carried 2=used (+1 pads the empty case)")
     o.append("LASER_STATE !fill NUM_LASERS+1  ; 0=active 1=destroyed")
     o.append("SPR_SLOT_ACT !fill 2            ; actor shown by hw sprite 1/2, $ff = none")

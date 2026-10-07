@@ -75,9 +75,19 @@ actor_types:
     color: yellow
     ai: patrol
 
+# Security codes: one-letter code types and how many the player starts with
+# (0-9, at most 3 types). Every robot names the code its terminal link
+# costs (code: a / b / none); linking spends one. More can be hidden as
+# items with code: <letter> (finding one adds one).
+security_codes:
+  a: 2
+  b: 0
+
 # Hidden items. Key order defines the item index (ITEM_* equates in world.asm).
-# label: shown in the status line (max 12 chars).
+# label: shown in the status line after "card:" (max 12 chars).
 # found_text: popup message when searched (max 30 chars).
+# code: <letter> makes it a security code instead (no label; adds one to
+#   that code's count; default found_text "security code <letter> found!").
 # Runtime state per item: 0=hidden 1=carried 2=used.
 items:
   red_card:
@@ -97,12 +107,14 @@ rooms:
       - type: sentry
         name: bot-5150  sentry
         locked: true
+        code: b                        # the link costs a security code b
         ai: shooter                    # shoots bolts along its row at you
         start: {x: 3, y: 7}
         patrol: [{x: 3, y: 7}, {x: 6, y: 7}]
       - id: bot3312                    # referenced by the terminal menu (ACTOR_BOT3312)
         type: splicer
         name: bot-3312  splicer
+        code: a
         start: {x: 11, y: 4}
         patrol: [{x: 11, y: 4}, {x: 14, y: 4}]   # y=3 at x=14 is inside a wall
     things:
@@ -122,6 +134,7 @@ rooms:
     robots:
       - type: drone
         name: bot-8808  drone
+        code: a
         ai: hunter                     # rushes you when you're on its row
         start: {x: 3, y: 5}
         patrol: [{x: 3, y: 5}, {x: 11, y: 5}]

@@ -57,7 +57,11 @@ SETUP_GAME
 SGITEM  cpx #NUM_ITEMS : bcs SGITEMD
         lda #0 : sta ITEM_STATE,x
         inx : bne SGITEM
-SGITEMD jmp RESET_ROUND
+SGITEMD ldx #0                           ; security codes back to the start counts
+SGCODE  cpx #NUM_CODES : bcs SGCODED
+        lda CODE_START,x : sta CODE_CNT,x
+        inx : bne SGCODE
+SGCODED jmp RESET_ROUND
 
 ; =============================================================================
 ; RESET_ROUND — reset all per-round world state (player, reactor, robots,
@@ -1221,27 +1225,32 @@ COL_BYTE
 ; DRAW_STATUS
 ; =============================================================================
 DRAW_STATUS
-        ldx #39
+        ldx #39                          ; template generated from titan.yaml
 DSTL    lda STAT_TMPL,x : jsr PET2SCREEN : sta SCRN+960,x
         lda #DGRAY : sta CRAM+960,x
         dex : bpl DSTL
 
-        ; item field: label of the first non-hidden item (12 chars, world.asm)
+        ; security code counts: one digit each, 4 columns apart
+        ldx #0 : ldy #STAT_CNT_COL
+DSTCL   cpx #NUM_CODES : bcs DSTCD
+        lda CODE_CNT,x : clc : adc #CH_0 : sta SCRN+960,y
+        lda #YELLOW : sta CRAM+960,y
+        iny : iny : iny : iny
+        inx : bne DSTCL
+DSTCD
+        ; card: label of the first found item that isn't a security code
         ldx #0
 DSTIL   cpx #NUM_ITEMS : bcs DSTOUT
-        lda ITEM_STATE,x : bne DSTIF
-        inx : bne DSTIL
+        lda ITEM_STATE,x : beq DSTIN
+        lda ITEM_CODE,x : beq DSTIF
+DSTIN   inx : bne DSTIL
 DSTIF   lda ITEM_LABEL_LO,x : sta PTR
         lda ITEM_LABEL_HI,x : sta PTR+1
         ldy #11
-DSTLL   lda (PTR),y : jsr PET2SCREEN : sta SCRN+967,y
-        lda #LTRED : sta CRAM+967,y
+DSTLL   lda (PTR),y : jsr PET2SCREEN : sta SCRN+960+STAT_LBL_COL,y
+        lda #LTRED : sta CRAM+960+STAT_LBL_COL,y
         dey : bpl DSTLL
 DSTOUT  rts
-
-; room and position moved to the F2 popup (SETUP_WHERE, popup.asm)
-STAT_TMPL
-        !pet " item:                                  "
 
 ; =============================================================================
 ; SID SOUND EFFECTS — voice 1, one effect at a time. While SND_TMR > 0,
