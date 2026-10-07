@@ -142,6 +142,18 @@ rooms:
       - at: {x1: 20, y1: 5, x2: 20, y2: 6}   # right wall, back to room 1
         leads_to: room1
         arrive: {x: 0}
+      - at: {x1: 6, y1: -1, x2: 10, y2: -1}  # top wall opening (cols 12-21)
+        leads_to: room3
+        arrive: {y: 10}                # x omitted = keep current x
       - at: {x1: 6, y1: 11, x2: 10, y2: 11}  # bottom wall — mission exit
         leads_to: exit                 # special: win screen
         key: red_card                  # locked (popup) without this item
+
+  - name: room3
+    vchar64_map: graphics/titan-map03.s
+    label: room 3
+    player_start: {x: 8, y: 9}
+    doors:
+      - at: {x1: 6, y1: 11, x2: 10, y2: 11}  # bottom wall opening, back to room 2
+        leads_to: room2
+        arrive: {y: 0}
