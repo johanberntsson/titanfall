@@ -210,6 +210,7 @@ SC_UL, SC_UR, SC_LL, SC_LR = 0x55, 0x49, 0x4A, 0x4B   # rounded corners
 DIRS = {"left": (-1, 0), "right": (1, 0), "up": (0, -1), "down": (0, 1)}
 MAP_BOX_H = 4                            # top border, label, blank, bottom
 MAP_GAP_X, MAP_GAP_Y = 6, 2              # corridor length between boxes
+MAP_MIN_GAP_X = 2                        # shortest horizontal corridor when space is tight
 MAP_EXIT_X, MAP_EXIT_Y = 7, 2            # room an exit marker needs outside
 
 
@@ -272,12 +273,18 @@ def build_map(rooms, start, doors):
     rm = MAP_EXIT_X if any(d == "right" and pos[r][0] == gw - 1 for r, d in exits) else 0
     tm = MAP_EXIT_Y if any(d == "up" and pos[r][1] == 0 for r, d in exits) else 0
     bm = MAP_EXIT_Y if any(d == "down" and pos[r][1] == gh - 1 for r, d in exits) else 0
-    min_w = max(len(l) for l in labels) + 4
-    box_w = 12
-    while box_w > min_w and lm + rm + gw * box_w + (gw - 1) * MAP_GAP_X > MAP_COLS - 2:
+    # Narrow the boxes first (down to the label + a space each side), then
+    # shorten the horizontal corridors, until the grid fits.
+    min_w = max(len(l) for l in labels) + 2
+    box_w, gap_x = 12, MAP_GAP_X
+    def width():
+        return lm + rm + gw * box_w + (gw - 1) * gap_x
+    while box_w > min_w and width() > MAP_COLS - 2:
         box_w -= 1
     box_w = max(box_w, min_w)
-    total_w = lm + rm + gw * box_w + (gw - 1) * MAP_GAP_X
+    while gap_x > MAP_MIN_GAP_X and width() > MAP_COLS - 2:
+        gap_x -= 1
+    total_w = width()
     grid_h = tm + bm + gh * MAP_BOX_H + (gh - 1) * MAP_GAP_Y
     block_h = 2 + grid_h + 2                 # title, blank, grid, blank, prompt
     if total_w > MAP_COLS - 2 or block_h > MAP_ROWS:
@@ -303,7 +310,7 @@ def build_map(rooms, start, doors):
 
     def box_at(ri):
         x, y = pos[ri]
-        return gy0 + y * (MAP_BOX_H + MAP_GAP_Y), gx0 + x * (box_w + MAP_GAP_X)
+        return gy0 + y * (MAP_BOX_H + MAP_GAP_Y), gx0 + x * (box_w + gap_x)
 
     boxes = []
     for ri in range(len(rooms)):

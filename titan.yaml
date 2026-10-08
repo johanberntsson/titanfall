@@ -17,7 +17,7 @@
 # =============================================================================
 
 game:
-  start_room: room1
+  start_room: room5
   start_time: "05:47:33"        # countdown clock at mission start (h:mm:ss)
   death_penalty_minutes: 30     # time lost per death (Impossible Mission style)
   robot_link_seconds: 30        # a terminal link to a robot expires after this (1-99)
@@ -169,6 +169,9 @@ rooms:
       - at: {x1: 20, y1: 5, x2: 20, y2: 6}   # right wall, back to room 1
         leads_to: room1
         arrive: {x: 0}
+      - at: {x1: -1, y1: 5, x2: -1, y2: 6}   # left wall opening, to the entrance
+        leads_to: room5
+        arrive: {x: 19, y: 5}          # y 6 at the entrance's right edge is wall
       - at: {x1: 6, y1: -1, x2: 10, y2: -1}  # top wall opening (cols 12-21)
         leads_to: room3
         arrive: {y: 10}                # x omitted = keep current x
@@ -211,3 +214,12 @@ rooms:
       - at: {x1: 6, y1: -1, x2: 10, y2: -1}  # top wall opening, back to room 2
         leads_to: room2
         arrive: {y: 10}
+
+  - name: room5
+    vchar64_map: graphics/titan-map05.s
+    label: entrance
+    player_start: {x: 7, y: 1}         # in the corridor by the exit sign
+    doors:
+      - at: {x1: 20, y1: 4, x2: 20, y2: 5}   # right wall opening, to room 2
+        leads_to: room2
+        arrive: {x: 0, y: 5}           # y 4 at room 2's left edge is wall
