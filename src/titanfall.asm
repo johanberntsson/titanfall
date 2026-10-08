@@ -154,7 +154,6 @@ CH_BANG = $21
 CH_BAR  = $7C
 CH_LBRK = $5B
 CH_RBRK = $5D
-CH_HBLK = $A0
 CH_SOLID = $E0   ; solid block (ROM glyph; $A0 is a room tile in our charset)
 
 
@@ -508,6 +507,7 @@ SPRITES_END
         !source "src/map.asm"
         !source "src/popup.asm"
         !source "src/cutscene.asm"
+        !source "src/orders.asm"
 HIGH_END
 !if HIGH_END > $C000 {
         !error "code/data above $4000 runs into the music at $C000"

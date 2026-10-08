@@ -43,6 +43,7 @@ GA_NOWIN
         jsr CHECK_SPRITE_HIT
         jsr DRAW_HUD_DYNAMIC
         jsr DRAW_STATUS
+        jsr DRAW_ORDERS
 GAME_TICK_DONE
         jmp MAIN_LOOP
 
@@ -66,7 +67,11 @@ SGITEMD ldx #0                           ; keyed doors closed again (an opened
 SGDOOR  cpx #NUM_DOORS : bcs SGDOORD     ;  door stays open across respawns)
         lda #0 : sta DOOR_OPEN,x
         inx : bne SGDOOR
-SGDOORD ldx #0                           ; security codes back to the start counts
+SGDOORD ldx #0                           ; no room visited yet (goal visited:)
+SGSEEN  cpx #NUM_ROOMS : bcs SGSEEND
+        lda #0 : sta ROOM_SEEN,x
+        inx : bne SGSEEN
+SGSEEND ldx #0                           ; security codes back to the start counts
 SGCODE  cpx #NUM_CODES : bcs SGCODED
         lda CODE_START,x : sta CODE_CNT,x
         inx : bne SGCODE
@@ -232,16 +237,11 @@ ADPCODED
 ; DRAW_HUD_STATIC
 ; =============================================================================
 DRAW_HUD_STATIC
-        ldx #39
+        ldx #39                          ; (row 1, the orders, is DRAW_ORDERS)
 HUDST1  lda HUD_TMPL,x : jsr PET2SCREEN : sta SCRN,x
         lda #CYAN : sta CRAM,x
         dex
         bpl HUDST1
-        ldx #39
-HUDST2  lda #CH_HBLK : sta SCRN+40,x
-        lda #BLUE : sta CRAM+40,x
-        dex
-        bpl HUDST2
         rts
 
 HUD_TMPL

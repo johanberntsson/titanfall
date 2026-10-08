@@ -211,6 +211,9 @@ DIRS = {"left": (-1, 0), "right": (1, 0), "up": (0, -1), "down": (0, 1)}
 MAP_BOX_H = 4                            # top border, label, blank, bottom
 MAP_GAP_X, MAP_GAP_Y = 6, 2              # corridor length between boxes
 MAP_MIN_GAP_X = 2                        # shortest horizontal corridor when space is tight
+GOAL_WIDTH = 32                          # orders line: 40 cols - "orders: "
+GOAL_DONE = " - done"                    # appended once the goal is achieved
+GOAL_FOUND, GOAL_OPENED, GOAL_VISITED = 1, 2, 3
 MAP_EXIT_X, MAP_EXIT_Y = 7, 2            # room an exit marker needs outside
 
 
@@ -660,6 +663,45 @@ def main():
         if ii not in item_pos:
             die(f"item {iname!r} is never placed in a room")
 
+    # ---- goals: the orders line (row 1) per room ----
+    goal_text, goal_kind, goal_arg = [], [], []
+    for ri, room in enumerate(rooms):
+        rname = room["name"]
+        g = room.get("goal") or {}
+        if isinstance(g, str):
+            g = {"text": g}
+        text = check_pet(str(g.get("text", "")), f"room {rname} goal text")
+        if len(text) > GOAL_WIDTH - len(GOAL_DONE):
+            die(f"room {rname}: goal text longer than "
+                f"{GOAL_WIDTH - len(GOAL_DONE)} chars: {text!r}")
+        goal_text.append(text)
+        done = g.get("done") or {}
+        if len(done) > 1:
+            die(f"room {rname}: goal done: takes one condition, got {sorted(done)}")
+        kind, arg = 0, 0
+        if "found" in done:
+            if done["found"] not in item_index:
+                die(f"room {rname}: goal done: found: unknown item {done['found']!r}")
+            kind, arg = GOAL_FOUND, item_index[done["found"]]
+        elif "opened" in done:              # this room's keyed door to <room>
+            dest = room_index.get(done["opened"])
+            hits = [i for i in range(len(door["room"]))
+                    if door["room"][i] == ri and door["dest"][i] == dest and door["key"][i]]
+            if not hits:
+                die(f"room {rname}: goal done: opened: no keyed door from "
+                    f"{rname} to {done['opened']!r}")
+            kind, arg = GOAL_OPENED, hits[0]
+        elif "visited" in done:
+            if done["visited"] not in room_index:
+                die(f"room {rname}: goal done: visited: unknown room {done['visited']!r}")
+            kind, arg = GOAL_VISITED, room_index[done["visited"]]
+        elif done:
+            die(f"room {rname}: goal done: must be found:, opened: or visited:")
+        if kind and not text:
+            die(f"room {rname}: goal done: without a goal text")
+        goal_kind.append(kind)
+        goal_arg.append(arg)
+
     # ---- walls: solid tiles per room, from the art; validate placements --
     walls = []
     searchable = []                     # per room: tiles that aren't plain floor
@@ -780,6 +822,26 @@ def main():
     o.append(tbl("ROOM_PSX", [byte(int(r["player_start"]["x"]), "ROOM_PSX") for r in rooms],
                  "player start position"))
     o.append(tbl("ROOM_PSY", [byte(int(r["player_start"]["y"]), "ROOM_PSY") for r in rooms]))
+    o.append("")
+
+    o.append("; ---- goals: the orders line (row 1) per room; DRAW_ORDERS ----")
+    o.append(f"GOAL_WIDTH = {GOAL_WIDTH}    ; chars per goal string")
+    o.append(f"GOAL_FOUND = {GOAL_FOUND}     ; GOAL_KIND: done when ITEM_STATE,arg <> 0")
+    o.append(f"GOAL_OPENED = {GOAL_OPENED}    ;  ... DOOR_OPEN,arg <> 0")
+    o.append(f"GOAL_VISITED = {GOAL_VISITED}   ;  ... ROOM_SEEN,arg <> 0 (0 = never done)")
+    o.append(tbl("GOAL_KIND", goal_kind))
+    o.append(tbl("GOAL_ARG", goal_arg))
+    o.append(f"GOAL_LO         ; {GOAL_WIDTH}-char goal (after \"orders: \"), and the same + \"{GOAL_DONE}\"")
+    o.append("        !byte " + ",".join(f"<GOAL_{i}" for i in range(len(rooms))))
+    o.append("GOAL_HI")
+    o.append("        !byte " + ",".join(f">GOAL_{i}" for i in range(len(rooms))))
+    o.append("GOALD_LO")
+    o.append("        !byte " + ",".join(f"<GOALD_{i}" for i in range(len(rooms))))
+    o.append("GOALD_HI")
+    o.append("        !byte " + ",".join(f">GOALD_{i}" for i in range(len(rooms))))
+    for i, t in enumerate(goal_text):
+        o.append(f'GOAL_{i}  !pet "{t.ljust(GOAL_WIDTH)}"')
+        o.append(f'GOALD_{i} !pet "{(t + GOAL_DONE).ljust(GOAL_WIDTH)}"')
     o.append("")
 
     o.append("; ---- sector map: highlight box per room (colour RAM) ----")
@@ -1026,6 +1088,7 @@ def main():
     o.append("CODE_ENT    !fill NUM_CODES+1   ; CODE_CNT on entering the current room (restored on death)")
     o.append("ITEM_STATE  !fill NUM_ITEMS+1   ; 0=hidden 1=carried 2=used (+1 pads the empty case)")
     o.append("DOOR_OPEN   !fill NUM_DOORS+1   ; 1 = keyed door opened (art erased, passable)")
+    o.append("ROOM_SEEN   !fill NUM_ROOMS     ; 1 = the player has been in this room (goal visited:)")
     o.append("LASER_STATE !fill NUM_LASERS+1  ; 0=active 1=destroyed")
     o.append("SPR_SLOT_ACT !fill 2            ; actor shown by hw sprite 1/2, $ff = none")
     o.append("")

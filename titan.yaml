@@ -122,12 +122,19 @@ items:
   code_b1:
     code: b                            # a security code b: +1 to the B count
 
+# Rooms. goal: is the room's line of orders, shown on row 1 as "orders:
+# <text>" while the player is in the room (max 25 chars). Optional done:
+# names when it's achieved — then " - done" is added and it turns green:
+#   found: <item>     the item has been found
+#   opened: <room>    this room's keyed door to <room> has been opened
+#   visited: <room>   the player has been in <room>
 rooms:
   - name: room1
     vchar64_map: graphics/titan-map01.s
     label: room 1                      # name on the sector map (default: name)
     # bounds: {max_x: 19, max_y: 10}   # optional; default is the whole room
     player_start: {x: 6, y: 4}
+    goal: {text: find red card, done: {found: red_card}}
     # Robots: name is shown in the terminal menu (max 22 chars; default: id
     # or type); locked: true lists it there but refuses the link.
     robots:
@@ -158,6 +165,7 @@ rooms:
     vchar64_map: graphics/titan-map02.s
     label: room 2
     player_start: {x: 17, y: 5}
+    goal: {text: open blast door, done: {opened: room4}}   # the keyed door to room 4
     robots:
       - type: drone
         name: bot-8808  drone
@@ -184,6 +192,7 @@ rooms:
     vchar64_map: graphics/titan-map03.s
     label: room 3
     player_start: {x: 8, y: 9}
+    goal: {text: find security code, done: {found: code_b1}}
     robots:
       - type: tripod
         name: bot-4410  tripod
@@ -203,6 +212,7 @@ rooms:
     vchar64_map: graphics/titan-map04.s
     label: missiles
     player_start: {x: 8, y: 5}
+    goal: {text: disable missile}       # done = the game is won
     robots:
       - type: sentry
         name: bot-6060  guard
@@ -219,6 +229,7 @@ rooms:
     vchar64_map: graphics/titan-map05.s
     label: entrance
     player_start: {x: 7, y: 1}         # in the corridor by the exit sign
+    goal: {text: enter complex, done: {visited: room2}}
     doors:
       - at: {x1: 20, y1: 4, x2: 20, y2: 5}   # right wall opening, to room 2
         leads_to: room2
