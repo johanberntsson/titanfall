@@ -70,7 +70,21 @@ SGDOORD ldx #0                           ; security codes back to the start coun
 SGCODE  cpx #NUM_CODES : bcs SGCODED
         lda CODE_START,x : sta CODE_CNT,x
         inx : bne SGCODE
-SGCODED jmp RESET_ROUND
+SGCODED jsr SAVE_CODES                   ; entering the start room
+        jmp RESET_ROUND
+
+; -----------------------------------------------------------------------------
+; SAVE_CODES — remember the security code counts on entering a room
+; (SETUP_GAME, room change through a door); a death restores them
+; (APPLY_DEATH_PENALTY), so a code spent on a failed attempt in this room
+; comes back. Uses Y only (DOOR_ENTER's door index is in X).
+; -----------------------------------------------------------------------------
+SAVE_CODES
+        ldy #0
+SVCODE  cpy #NUM_CODES : bcs SVCODED
+        lda CODE_CNT,y : sta CODE_ENT,y
+        iny : bne SVCODE
+SVCODED rts
 
 ; =============================================================================
 ; RESET_ROUND — reset all per-round world state (player, reactor, robots,
@@ -203,12 +217,15 @@ ADPCHECK
         jsr SETUP_GAMEOVER
         rts
 ADPRESPAWN
-        ; never respawn without a way to link a robot: at least one code A
-        ; (the first security code type; CODE_CNT is NUM_CODES+1 long, so
-        ; this is harmless padding even in a config with no codes)
-        lda CODE_CNT : bne ADPHASA
-        inc CODE_CNT
-ADPHASA
+        ; security codes back to what they were on entering the room the
+        ; player died in (codes spent there on a failed attempt come back;
+        ; codes spent in earlier rooms stay spent). The respawn in the start
+        ; room counts as entering it with these counts, so CODE_ENT stays.
+        ldx #0
+ADPCODE cpx #NUM_CODES : bcs ADPCODED
+        lda CODE_ENT,x : sta CODE_CNT,x
+        inx : bne ADPCODE
+ADPCODED
         jmp RESET_ROUND
 
 ; =============================================================================
@@ -311,7 +328,8 @@ DEC2D   clc : adc #CH_0 : sta TMP2
 ; TICK_LINK — a robot link (PLAYER_MODE != 0) lasts CFG_LINK_S seconds
 ; (robot_link_seconds in titan.yaml), counted in game frames, so it pauses
 ; with the clock in terminal/map/popup. On expiry control reverts to the
-; human, with a cyan border flash; there's no other way to end a link (robots can't use terminals).
+; human, with a cyan border flash (END_LINK). F7 ends it early (READ_KEYS,
+; RKPROXY), through the same END_LINK; robots can't use terminals.
 ; START_LINK (from TERM_ROBOT, X = actor) starts a link.
 ; =============================================================================
 START_LINK
@@ -326,7 +344,8 @@ TICK_LINK
         lda LINK_JIF : cmp #50 : bcc TLOUT
         lda #0 : sta LINK_JIF
         dec LINK_S : bne TLOUT
-        sta PLAYER_MODE                  ; A = 0: back to human control
+END_LINK
+        lda #0 : sta PLAYER_MODE         ; back to human control
         lda #CYAN : sta VIC_BRDCOL       ; flash the border in the "human"
         lda #15 : sta BFLASH             ;  HUD colour (UPDATE_SPRITE0 ends it)
 TLOUT   rts
@@ -483,8 +502,15 @@ RKTN    inx : bne RKTL
 RKSEARCHCHK
         lda PLAYER_MODE : bne RKPROXY
         jmp SEARCH_TICK                  ; hold fire to search (popup.asm)
-RKPROXY ; driving a robot: fire shoots, if it's a shooter (attack: shoot) —
-        ; in the direction it faces
+RKPROXY ; driving a robot: F7 (col 0, PA=$FE, row 3) ends the link early —
+        ; not while the robot is dying in a laser (ROBOT_LASER_DEATH ends it)
+        lda #$FE : sta CIA1_PRA
+        lda CIA1_PRB : and #$08 : bne RKPF7N
+        ldx PLAYER_MODE : dex
+        lda ACT_ALIVE,x : cmp #1 : bne RKPF7N
+        jmp END_LINK
+RKPF7N  ; fire shoots, if it's a shooter (attack: shoot) — in the direction
+        ; it faces
         lda KEY_SPC : beq RKPOUT
         ldx PLAYER_MODE : dex
         lda ACT_ATTACK,x : cmp #ATK_SHOOT : bne RKPOUT
@@ -607,6 +633,7 @@ DENOPEN lda DOOR_DEST,x : cmp #$FF : bne DENGO
         jsr SETUP_WIN                ; $FF = mission exit
         sec : rts
 DENGO   sta CUR_ROOM
+        jsr SAVE_CODES               ; entering a room (preserves X)
         lda DOOR_AX,x : cmp #$FF : beq DENAY   ; $FF = keep current coord
         sta PLR_X
 DENAY   lda DOOR_AY,x : cmp #$FF : beq DENDRW

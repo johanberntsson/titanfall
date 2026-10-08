@@ -117,10 +117,18 @@ TERM_FIRE
         jsr SETUP_MAP
         jmp TERM_DONE
 
-; Link to robot X: drop straight back into gameplay, now piloting it
-; (PLAYER_MODE = actor+1) — unless TERM_LINK refuses (message in PTR).
+; Link to robot X: back to the room, now piloting it (PLAYER_MODE =
+; actor+1), with the "now controlling" popup over it (SETUP_LINKED; the link
+; timer only starts once it's closed) — unless TERM_LINK refuses (message in
+; PTR).
 TERM_ROBOT
         jsr TERM_LINK : bcs TERM_MSG
+        jsr DRAW_ROOM
+        jsr DRAW_STATUS
+        jsr DRAW_HUD_DYNAMIC             ; "robot 30"
+        ldx PLAYER_MODE : dex
+        jsr SETUP_LINKED
+        jmp TERM_DONE
 TERM_ABORT
         lda #1 : sta GAME_STATE
         jsr DRAW_ROOM
@@ -188,7 +196,7 @@ TERM_ROWS
         !byte 11, GREEN,   <TBOX_MAP, >TBOX_MAP
         !byte 12, GREEN,   <TBOX_OFF, >TBOX_OFF
         !byte 13, GREEN,   <SCR_BLANK, >SCR_BLANK
-        !byte 14, DGRAY,   <TBOX_HNT, >TBOX_HNT
+        !byte 14, LTRED,   <TBOX_HNT, >TBOX_HNT
         !byte 15, LTGREEN, <SCR_BORDER_BOTTOM, >SCR_BORDER_BOTTOM
         !byte $FF
 

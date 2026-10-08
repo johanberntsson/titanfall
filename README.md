@@ -33,6 +33,7 @@ Joystick in port 2. The keyboard works the same way: WASD moves and Space is fir
 | Open a terminal (stand by a console) | fire | Space |
 | Search (hold) | hold fire | hold Space |
 | Shoot (while driving a robot that has a gun) | fire | Space |
+| End a robot link early | — | F7 |
 | Terminal menu: move / select / leave | up, down / fire | W, S / Space or Return / F7 |
 
 ## How to play
@@ -42,7 +43,9 @@ Joystick in port 2. The keyboard works the same way: WASD moves and Space is fir
   as time runs out.
 - **Dying costs time.** Lasers, robots and their weapons kill on contact.
   Each death costs 30 minutes of countdown, and you start again from the
-  entry room. Anything you've found stays found.
+  entry room. Anything you've found stays found, and any security codes you
+  spent in the room where you died are given back (codes spent in earlier
+  rooms stay spent).
 - **Searching.** Stand on a piece of furniture or anything else in the room
   and hold fire to search it, Impossible Mission style (bare floor has
   nothing to search). It takes a moment, and the robots don't wait while you
@@ -50,8 +53,9 @@ Joystick in port 2. The keyboard works the same way: WASD moves and Space is fir
 - **Terminals.** The consoles let you view the sector map and take over a
   robot in the same room. Taking one over costs a **security code** of the
   right type (shown on the bottom line, e.g. `CODE: A 2 B 0`). The link
-  lasts **30 seconds**: the countdown is shown in the top left, and then
-  control snaps back to you.
+  lasts **30 seconds** (a popup names the robot; the time starts when you
+  close it): the countdown is shown in the top left, and then control snaps
+  back to you. Press F7 to hand control back sooner.
 - **Robots** each behave differently. Some patrol a fixed route and some
   wander the whole room. When they spot you, some charge, some shoot, and
   some advance behind a force field. They see along their own row, so keep

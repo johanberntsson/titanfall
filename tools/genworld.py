@@ -804,6 +804,12 @@ def main():
                   f"code {code_names[act['code'][i] - 1]}" if act["code"][i] else "")
         row = ("    " + aname.ljust(TERM_NAME_WIDTH + 1) + status).ljust(38)
         o.append(f'ACT_TROW_{i} !pet G_VERT_BAR, "{row}", G_VERT_BAR')
+    o.append("ACT_LNAME_LO    ; 40-char popup row: the name, centred (SETUP_LINKED)")
+    o.append("        !byte " + (",".join(f"<ACT_LNAME_{i}" for i in range(len(act_names))) or "0"))
+    o.append("ACT_LNAME_HI")
+    o.append("        !byte " + (",".join(f">ACT_LNAME_{i}" for i in range(len(act_names))) or "0"))
+    for i, aname in enumerate(act_names):
+        o.append(f'ACT_LNAME_{i} !pet "    ", G_VERT_BAR, "{aname.center(30)}", G_VERT_BAR, "    "')
     o.append("")
 
     o.append("; ---- security codes and the status line (row 24) ----")
@@ -979,6 +985,7 @@ def main():
     o.append("GL_PXH      !fill NUM_ACTORS+1  ;  last slot = the human), X hi bit")
     o.append("GL_PY       !fill NUM_ACTORS+1  ; sprite pixel Y")
     o.append("CODE_CNT    !fill NUM_CODES+1   ; security codes carried, per code type (0-9)")
+    o.append("CODE_ENT    !fill NUM_CODES+1   ; CODE_CNT on entering the current room (restored on death)")
     o.append("ITEM_STATE  !fill NUM_ITEMS+1   ; 0=hidden 1=carried 2=used (+1 pads the empty case)")
     o.append("DOOR_OPEN   !fill NUM_DOORS+1   ; 1 = keyed door opened (art erased, passable)")
     o.append("LASER_STATE !fill NUM_LASERS+1  ; 0=active 1=destroyed")

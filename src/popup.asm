@@ -168,6 +168,8 @@ SETUP_SEARCH
         dey
         lda CODE_CNT,y : cmp #9 : bcs SSMSG   ; (one digit on the status line)
         adc #1 : sta CODE_CNT,y          ; (C clear)
+        lda CODE_ENT,y : cmp #9 : bcs SSMSG   ; a found code survives a death
+        adc #1 : sta CODE_ENT,y          ;  in this room too (the item is gone)
 SSMSG   lda ITEM_MSG_LO,x : sta PTR
         lda ITEM_MSG_HI,x : sta PTR+1
         jmp SHOW_POPUP
@@ -180,6 +182,29 @@ SETUP_DOOR_LOCKED
         lda #<SBOX_MSG_LOCKED : sta PTR
         lda #>SBOX_MSG_LOCKED : sta PTR+1
         jmp SHOW_POPUP
+
+; ---------------------------------------------------------------------------
+; SETUP_LINKED — "now controlling <robot>" popup after a terminal link
+; (TERM_ROBOT, X = actor): the generated name row (ACT_LNAME_n) as the
+; message, and the lines above/below it drawn over the box's blank rows.
+; ---------------------------------------------------------------------------
+SETUP_LINKED
+        lda ACT_LNAME_LO,x : sta PTR
+        lda ACT_LNAME_HI,x : sta PTR+1
+        jsr SHOW_POPUP
+        lda #4  : sta DR_L               ; (FR_L/FR_R are still 4/35)
+        lda #35 : sta DR_R
+        lda #<SBOX_MSG_CTRL : sta PTR
+        lda #>SBOX_MSG_CTRL : sta PTR+1
+        lda #LTGREEN : sta TMP2
+        lda #9 : jsr DRAW_ROW
+        lda #<SBOX_MSG_LINK : sta PTR
+        lda #>SBOX_MSG_LINK : sta PTR+1
+        lda #LTGREEN : sta TMP2
+        lda #11 : jsr DRAW_ROW
+        lda #0  : sta DR_L
+        lda #39 : sta DR_R
+        lda #LTGREEN : ldx #8 : ldy #13 : jmp FRAME_EDGES_LR
 
 ; ---------------------------------------------------------------------------
 ; SETUP_WHERE — F2 "where am I" popup: room number and tile X/Y of whoever
@@ -227,7 +252,7 @@ SBOX_ROWS
         !byte 8,  LTGREEN, <SBOX_TOP, >SBOX_TOP
         !byte 9,  LTGREEN, <SBOX_BLK, >SBOX_BLK
         !byte 11, LTGREEN, <SBOX_BLK, >SBOX_BLK
-        !byte 12, DGRAY,   <SBOX_HNT, >SBOX_HNT
+        !byte 12, LTRED,   <SBOX_HNT, >SBOX_HNT
         !byte 13, LTGREEN, <SBOX_BOT, >SBOX_BOT
         !byte $FF
 
@@ -256,6 +281,10 @@ SBOX_MSG_WHERE  !pet "    ", G_VERT_BAR, "     room "      ; digits patched
 SBW_ROOM        !pet "1   x="                               ;  by SETUP_WHERE
 SBW_X           !pet "00   y="
 SBW_Y           !pet "00     ", G_VERT_BAR, "    "
+SBOX_MSG_CTRL   !pet "    ", G_VERT_BAR, "   you are now controlling    ", G_VERT_BAR, "    "
+SBOX_MSG_LINK   !pet "    ", G_VERT_BAR, "  for "
+                !byte $30+CFG_LINK_S/10, $30+CFG_LINK_S%10   ; robot_link_seconds
+                !pet " seconds. f7 aborts.  ", G_VERT_BAR, "    "
 SBOX_HNT        !pet "    ", G_VERT_BAR, "          press fire          ", G_VERT_BAR, "    "
 SBOX_BOT        !pet "    ", G_RD_LL
                 !fill 30, G_HORIZ_BAR
