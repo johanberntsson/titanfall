@@ -8,7 +8,7 @@ automated missile launch complex run by robots. The launch countdown is
 already running. Take over the robots from the complex's own terminals and
 use them to stop the launch before the clock reaches zero.
 
-By Johan Berntsson. Music: *Licence to Kill* by David Whittaker (Domark, 1989).
+By Johan Berntsson. Music: the original theme *Countdown*.
 
 | | |
 |---|---|

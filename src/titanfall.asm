@@ -7,6 +7,12 @@
         !cpu 6510
 
 ; ---------------------------------------------------------------------------
+; Music: our own tune, music/titan_theme.asm, packed at $C000 by exomizer
+; ---------------------------------------------------------------------------
+MUSIC_INIT = $C000
+MUSIC_PLAY = $C003
+
+; ---------------------------------------------------------------------------
 ; Zero page
 ; ---------------------------------------------------------------------------
 PLR_X      = $02
@@ -186,9 +192,9 @@ SIDCLR  lda #0
         dex
         bpl SIDCLR
 
-        ; Init music (song 1; A must be 0)
+        ; Init music (titan_theme ignores A)
         lda #0
-        jsr $C000
+        jsr MUSIC_INIT
 
         ; VIC init
         lda #BLACK : sta VIC_BRDCOL : sta VIC_BGCOL
@@ -417,7 +423,7 @@ RASTER_IRQ
         jsr SOUND_TICK                 ;  the SID, music waits (game.asm)
         jmp $EA31
 RIRQ_MUSIC
-        jsr $C127                      ; music play
+        jsr MUSIC_PLAY                 ; music play
         jmp $EA31
 
 ; =============================================================================

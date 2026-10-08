@@ -13,6 +13,9 @@ EXOMIZER = exomizer
 C1541 = c1541
 PYTHON = python3
 
+MUSIC_PRG = music/titan_theme.prg
+MUSIC_SID = music/titan_theme.sid
+
 all: $(PRG)
 
 # world.asm is generated from the config — edit titan.yaml, not world.asm
@@ -26,8 +29,17 @@ $(CHARSET): graphics/titan-charset.s graphics/titan-tile-colors.s tools/genchars
 $(BIN): $(SRCS)
 	$(ACME) -f cbm -o $(BIN) $(SRC)
 
-$(PRG): $(BIN)
-	$(EXOMIZER) sfx sys,0x0801 $(BIN) music/Licence_to_Kill.prg -o $(PRG)
+music/titan_theme.prg: music/titan_theme.asm
+	$(ACME) -f cbm -o $@ $<
+
+# the tune on its own as a PSID file, for SID players (sidplayfp, vsid)
+sid: $(MUSIC_SID)
+
+$(MUSIC_SID): music/titan_theme_sid.asm $(MUSIC_PRG)
+	$(ACME) -f plain -o $@ $<
+
+$(PRG): $(BIN) $(MUSIC_PRG)
+	$(EXOMIZER) sfx sys,0x0801 $(BIN) $(MUSIC_PRG) -o $(PRG)
 
 # release disk image: the packed game as the only file on a fresh D64
 release: $(D64)
@@ -41,6 +53,6 @@ run: $(PRG)
 	$(VICE) $(PRG)
 
 clean:
-	rm -f $(PRG) $(BIN) $(WORLD) $(CHARSET)
+	rm -f $(PRG) $(BIN) $(WORLD) $(CHARSET) $(MUSIC_PRG) $(MUSIC_SID)
 
-.PHONY: all release run clean
+.PHONY: all release run clean sid

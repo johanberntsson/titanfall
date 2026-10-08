@@ -12,14 +12,15 @@ This is a Commodore 64 game called **TITAN Fall** (working title) — a cinemati
 make        # generate world.asm + assemble + pack
 make run    # generate, assemble, pack, and launch in Vice
 make release # build release/titanfall.d64 (c1541: fresh disk "titan fall", the packed game as TITANFALL)
-make clean  # remove game.prg, titanfall.prg and the generated src/world.asm + src/charset.asm
+make sid    # build music/titan_theme.sid — the tune alone as a PSID file for SID players
+make clean  # remove game.prg, titanfall.prg, music/titan_theme.prg/.sid and the generated src/world.asm + src/charset.asm
 ```
 
 The build is four steps handled by the Makefile:
 1. **tools/genworld.py** (Python 3 + PyYAML) generates `src/world.asm` from `titan.yaml` — all world data tables (rooms, actors, items, doors, lasers, terminal zones) plus the room map data converted from the vchar64 exports
 2. **tools/gencharset.py** generates `src/charset.asm` (`TILE_COLORS` + `CHARSET`) from the vchar64 exports `graphics/titan-charset.s` and `graphics/titan-tile-colors.s`
 3. **ACME 0.97** assembles `src/titanfall.asm` → `game.prg` (`-f cbm`, 2-byte load header)
-4. **Exomizer** packs `game.prg` + the music PRG into a self-extracting `titanfall.prg`
+4. **Exomizer** packs `game.prg` + the music PRG (`music/titan_theme.prg`, assembled by ACME from `music/titan_theme.asm`) into a self-extracting `titanfall.prg`
 
 Emulator: **x64sc** (Vice). Do not run `acme` directly; always use `make`.
 
@@ -51,10 +52,10 @@ Other files:
 - `graphics/` — vchar64 project files (`.vchar64proj`) and their raw ASM exports (`.s`); source of truth for room art, edited in vchar64 and re-exported, not hand-edited
 - `game.prg` — intermediate assembled output (not committed)
 - `titanfall.prg` — final self-extracting packed output (not committed)
-- `music/Licence_to_Kill.prg` — the SID music binary packed into the build (load `$C000–$CFFF`; see "SID / Music")
-- `music/Licence_to_Kill.sid` / `.info` — source SID file and its sidplayfp info dump
-- `music/armalyte.prg` — the previous tune, kept as an alternative (same `$C000` load address, but play is `$C059` not `$C127`)
-- `music/find_sids_in_range.py`, `music/possible_songs.txt` — HVSC scan for tunes that fit `$C000-$CFFF`; `music/lok_disasm.asm`/`lok_raw.bin` — disassembly of the Licence to Kill player
+- `music/titan_theme.asm` — the game's music, our own tune *Countdown*, and its player (see "SID / Music")
+- `music/titan_theme_sid.asm` — PSID header wrapper for `make sid`
+- `music/armalyte.prg` — an older third-party tune, unused (same `$C000` load address, play `$C059`)
+- `music/find_sids_in_range.py`, `music/possible_songs.txt` — HVSC scan for tunes that fit `$C000-$CFFF`
 
 `!source` paths in `titanfall.asm` are relative to the project root (where `make` runs), so they are written as `!source "src/intro.asm"` etc.
 
@@ -90,7 +91,7 @@ The SYS address in `!pet` must be kept in sync manually if the header ever chang
 | `$2800–$37FF` | Sprite frames (`SPRITE_FRAMES` = 64 × 64 bytes, pointers `$A0–$DF`): player 12, robot 12, drone 12, dozer 12, tripod 12, bolt 2, force field 2 — packed to end right at `CHARSET`, so the start moves down 64 bytes per added frame — see "Sprites" |
 | `$3800–$3FFF` | `CHARSET` — custom 2K room-art charset, the top 2K of VIC bank 0 (see below) |
 | `$4000` | `TITLE_SCR`/`TITLE_COL` intro logo (640 bytes), then the generated world data (`src/world.asm`: tables, room maps, wall grids, runtime state arrays), then the CPU-only state modules (`intro`, `gameover`, `win`, `terminal`, `map`, `popup` — code with no VIC constraint, moved up here to free the code area), ending at `HIGH_END` (~`$6C00` today). No VIC constraints here; must stay below `$C000` (an `!error` checks `HIGH_END`) |
-| `$C000–$CFFF` | Licence to Kill SID music (init `$C000`, play `$C127`; loaded by exomizer) |
+| `$C000–$CFFF` | Music `titan_theme` (init `$C000`, play `$C003`, ~1.4 KB; loaded by exomizer) |
 
 ## Core Design Constraints
 
@@ -452,15 +453,13 @@ Sprite X is 9 bits: `X pixel = tile*16+20` exceeds 255 for tiles 15–19, and th
 ## SID / Music
 
 ### Background music
-`music/Licence_to_Kill.prg` is the Licence to Kill SID tune (David Whittaker, 1989 Domark), loading at `$C000–$CFFF` (PSID, 5 subtunes; the game plays tune 1). The Makefile packs it into `titanfall.prg` via exomizer.
-
-- **Init:** `lda #0 : jsr $C000` — called once during startup (after SID clear, before `cli`). `A` selects the subtune (0 = tune 1).
-- **Play:** `jsr $C127` — called from `RASTER_IRQ` every frame (50 Hz PAL). (The old Armalyte tune used `$C059` — if the music file is swapped, the play address in `RASTER_IRQ` must change with it; check with `sidplayfp -v <file>.sid`.)
-- **Sound effect interlock:** while `SND_TMR > 0`, `RASTER_IRQ` calls `SOUND_TICK` instead of `$C127`, giving the effect (the laser zap) exclusive SID control. Music resumes automatically when `SND_TMR` reaches 0.
+**Our own tune, *Countdown*** (`music/titan_theme.asm`, assembled on its own into `music/titan_theme.prg` and packed at `$C000` by exomizer; `MUSIC_INIT`/`MUSIC_PLAY` at the top of `titanfall.asm`): a small 3-voice player plus song data, both in that file (format documented in its header). D minor, 125 BPM (6 frames per row): 4 bars of bass and snare (the title screen), then a 24-bar loop: arpeggio chords + a bell motif, the theme on a pulse lead with vibrato, a bridge. Voice 1 lead/bell (the sound effects' voice), voice 2 bass with the snare interleaved, voice 3 chord arpeggios. Init `jsr $C000`, play `jsr $C003`. The player saves/restores the only zero page it uses (`$FB/$FC`), rewrites freq/pulse/waveform and `$D418` every frame and AD/SR every note (so it recovers after an effect took voice 1), and hard-restarts every note. To audition it outside the game, `make sid` builds `music/titan_theme.sid` (`music/titan_theme_sid.asm`: a PSID v2 header — title/author/released strings live there — plus `!binary` of the PRG, assembled with `acme -f plain`; not committed) for `sidplayfp`/`vsid`. (The game used to play David Whittaker's *Licence to Kill*; it was replaced so the game ships only its own music.)
+- Init is called once during startup (after SID clear, before `cli`), play from `RASTER_IRQ` every frame (50 Hz PAL).
+- **Sound effect interlock:** while `SND_TMR > 0`, `RASTER_IRQ` calls `SOUND_TICK` instead of `MUSIC_PLAY`, giving the effect (the laser zap) exclusive SID control. Music resumes automatically when `SND_TMR` reaches 0.
 - Candidate replacement tunes that fit the `$C000–$CFFF` window are listed in `music/possible_songs.txt` (HVSC scan via `music/find_sids_in_range.py`); `music/README.txt` documents the sid→prg conversion (`psid64`).
 
 ### $D418 (master volume) discipline
-The Whittaker player writes `$D418` itself during play (unlike the old Armalyte player, which set it only at init — the original reason for this rule). But while `SND_TMR > 0` the play routine is not called, so nothing restores volume during the death-sound window:
+The player writes `$D418` every frame (unlike the old Armalyte player, which set it only at init — the original reason for this rule). But while `SND_TMR > 0` the play routine is not called, so nothing restores volume during the death-sound window:
 
 **Rule:** never leave `$D418` at `$00`. `SOUND_ZAP_START` sets `$D418 = $0F` (the zap fades through `$D418` but never reaches 0), and `SNDOFF` restores `$0F` after gating off voice 1. `SETUP_GAMEOVER` and `SETUP_WIN` must not write to `$D418` — let music continue. `SND_TMR` is zeroed explicitly in the init before `cli` — the KERNAL may leave `$1E` non-zero, which would permanently block music in intro.
 
