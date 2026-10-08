@@ -2,6 +2,8 @@
 
 *Infiltrate. Subvert. Stop launch.*
 
+[Cover](screenshots/titanfall-cover.png)
+
 A cinematic infiltration puzzle game for the Commodore 64, in the spirit of
 *Impossible Mission* and *Paradroid*. You have broken into TITAN, an
 automated missile launch complex run by robots. The launch countdown is
