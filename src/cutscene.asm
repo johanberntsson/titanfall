@@ -51,8 +51,8 @@ CS_AN   !byte 0          ; walk animation counter
 ; per speaker: commander, agent
 CS_BCOL  !byte GREEN, LTBLUE     ; bubble frame (and tail)
 CS_TCOL  !byte LTGREEN, CYAN     ; bubble text
-CS_TAIL1 !byte 11, 28            ; tail column on row CS_BOT+1
-CS_TAIL2 !byte 10, 29            ; ... and on row CS_BOT+2 (above the head)
+CS_TAIL1 !byte 13, 24            ; tail column on row CS_BOT+1
+CS_TAIL2 !byte 12, 25            ; ... and on row CS_BOT+2 (above the head)
 CS_TAILC !byte CS_SC_SL, CS_SC_BSL
 CS_WALKF !byte CS_SPRP+2, CS_SPRP+1, CS_SPRP+3, CS_SPRP+1
 
