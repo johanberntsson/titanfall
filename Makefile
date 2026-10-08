@@ -44,9 +44,10 @@ $(PRG): $(BIN) $(MUSIC_PRG)
 # release disk image: the packed game as the only file on a fresh D64
 release: $(D64)
 
-$(D64): $(PRG)
+$(D64): $(PRG) sid
 	mkdir -p release
 	rm -f $(D64)
+	cp ${PRG} release
 	$(C1541) -format "titan fall,tf" d64 $(D64) -write $(PRG) $(TARGET)
 
 run: $(PRG)
