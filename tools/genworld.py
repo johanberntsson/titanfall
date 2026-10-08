@@ -736,6 +736,7 @@ def main():
     o.append(f"CFG_CLK_S     = {clk_s}")
     o.append(f"CFG_PENALTY_M = {penalty}")
     o.append(f"CFG_LINK_S    = {link_s}")
+    o.append(f"CFG_FLOOR     = ${floor_tile:02x}   ; art.floor_tile (cut scene floor)")
     for rid, ai in actor_ids.items():
         o.append(f"ACTOR_{rid.upper()} = {ai}   ; actor index")
     for iname, ii in item_index.items():

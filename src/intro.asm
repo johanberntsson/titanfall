@@ -12,7 +12,7 @@ DO_INTRO
 INTNK   lda JOY_NEW : and #$10          ; or joystick fire / Space
         beq INTRO_NOBTN
 INTRO_GO
-        jsr SETUP_GAME
+        jsr SETUP_CUTSCENE              ; the briefing, then the game
         jmp MAIN_LOOP
 
 INTRO_NOBTN

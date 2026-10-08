@@ -37,6 +37,7 @@ PTR2       = $16
 TMP        = $18
 TMP2       = $19
 GAME_STATE = $1A   ; 0=intro  1=game  2=gameover  3=terminal  4=win  5=map  6=popup
+                   ; 7=explosion  8=cut scene
 DEATH_TMR  = $1B   ; death pause countdown (= length of the death sound)
 BLINK_TMR  = $1C   ; blink counter
 BLINK_ST   = $1D   ; 0=text visible  1=hidden
@@ -291,7 +292,9 @@ MLNOT4  cmp #5 : bne MLNOT5
         jmp DO_MAP
 MLNOT5  cmp #6 : bne MLNOT6
         jmp DO_POPUP
-MLNOT6  jmp DO_EXPLODE
+MLNOT6  cmp #7 : bne MLNOT7
+        jmp DO_EXPLODE
+MLNOT7  jmp DO_CUTSCENE
 
 ; =============================================================================
 ; CLS — clears all 1024 bytes of screen + colour RAM
@@ -464,7 +467,7 @@ SCR_BORDER_BOTTOM  !pet G_RD_LL, G_HORIZ_BAR, G_HORIZ_BAR, G_HORIZ_BAR, G_HORIZ_
 ; FRAME_PTR in game.asm picks the frame. Every actor set has all 4 facings
 ; (12 frames).
 ; =============================================================================
-SPRITE_FRAMES = 12+12+12+12+12+2+2
+SPRITE_FRAMES = 12+12+12+12+12+2+2+4
         * = CHARSET - SPRITE_FRAMES*64
 SPRITES_START
         !source "src/c64_walker_sprites.asm"    ; player:  12 frames
@@ -474,6 +477,8 @@ SPRITES_START
         !source "src/c64_tripod_sprites.asm"    ; tripod:  12 frames
         !source "src/c64_bolt_sprites.asm"      ; bolt:     2 frames (shooter)
         !source "src/c64_forcefield_sprites.asm" ; field:   2 frames (forcefield)
+CS_FRAMES                                       ; cut scene:  4 frames, filled
+        !fill 4*64, 0                           ;  by SETUP_CUTSCENE (cutscene.asm)
 SPRITES_END
 !if SPRITES_END != CHARSET {
         !error "SPRITE_FRAMES doesn't match the sprite files - update it"
@@ -502,6 +507,7 @@ SPRITES_END
         !source "src/terminal.asm"
         !source "src/map.asm"
         !source "src/popup.asm"
+        !source "src/cutscene.asm"
 HIGH_END
 !if HIGH_END > $C000 {
         !error "code/data above $4000 runs into the music at $C000"

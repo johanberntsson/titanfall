@@ -2,9 +2,13 @@
 #           OPEN
 # ------------------------
 
+
 # ------------------------
 #           DONE
 # ------------------------
+
+Add a cut scene in the beginning with two player sprites facing
+each other and tell the background story.
 
 Robot AI that has a laser field like Impossible Mission (using the force filed sprite)
 

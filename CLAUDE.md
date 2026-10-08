@@ -28,7 +28,7 @@ Emulator: **x64sc** (Vice). Do not run `acme` directly; always use `make`.
 
 ## Code Layout
 
-The source is split into one orchestrator and eight state/data modules, all `!source`d into a single ACME assembly pass. Only `game.asm` (with `titanfall.asm` itself and the generated `TILE_COLORS`) sits in the code area below the sprite block; `intro.asm`, `gameover.asm`, `win.asm`, `terminal.asm`, `map.asm` and `popup.asm` are `!source`d at the end of `titanfall.asm`, after the world data above `$4000` (see "Memory Layout"):
+The source is split into one orchestrator and eight state/data modules, all `!source`d into a single ACME assembly pass. Only `game.asm` (with `titanfall.asm` itself and the generated `TILE_COLORS`) sits in the code area below the sprite block; `intro.asm`, `gameover.asm`, `win.asm`, `terminal.asm`, `map.asm`, `popup.asm` and `cutscene.asm` are `!source`d at the end of `titanfall.asm`, after the world data above `$4000` (see "Memory Layout"):
 
 | File | Contents |
 |------|----------|
@@ -41,6 +41,7 @@ The source is split into one orchestrator and eight state/data modules, all `!so
 | `src/terminal.asm` | `SETUP_TERMINAL`, `DO_TERMINAL`, `TERM_DRAW_SEL`, `CLEAR_ROOM`, strings |
 | `src/map.asm` | `DO_MAP`, `SETUP_MAP` (copies the generated `MAP_SCR`/`MAP_COL`, lights the current room) |
 | `src/popup.asm` | `DO_POPUP`, `SHOW_POPUP`, `SETUP_SEARCH`, `SETUP_DOOR_LOCKED`, popup strings |
+| `src/cutscene.asm` | `SETUP_CUTSCENE`, `DO_CUTSCENE` — the briefing cut scene between intro and game (state 8), speech bubbles, dialog data |
 | `src/c64_walker_sprites.asm`, `src/c64_robot_sprites.asm`, `src/c64_drone_sprites.asm`, `src/c64_dozer_sprites.asm`, `src/c64_tripod_sprites.asm`, `src/c64_bolt_sprites.asm`, `src/c64_forcefield_sprites.asm` | Multicolour sprite sets (player / walking robot / flying drone / tracked dozer / tripod walker / the shooter's bolt / the force field), `!source`d into the sprite block right below the charset (`$2800–$37FF` today). All five actor sets have all four facings (robots need up/down too — the terminal lets you drive them in any direction) |
 | `src/charset.asm` | **Generated** by `tools/gencharset.py` (never edit it; in `.gitignore`): `TILE_COLORS` (256-byte tile→colour table) and `CHARSET` (custom 2K charset at `$3800`) from the vchar64 exports — see "Custom Charset / Screen Art" |
 | `src/world.asm` | **Generated** by `tools/genworld.py` from `titan.yaml` (data only, no code): `NUM_*`/`ACTOR_*`/`ITEM_*`/`CFG_*` constants, `ROOM_*`/`TYPE_*`/`ACT_*`/`ITEM_*`/`DOOR_*`/`LASER_*`/`TERMZ_*`/`MAPHL_*` tables, the generated sector map `MAP_SCR`/`MAP_COL`, `ROOM_MAP_n` screen-code data, and the runtime state arrays (`ACT_X/Y/TGT/ALIVE/DIR/ANIM/FAST`, `GL_PXL/PXH/PY`, `ITEM_STATE`, `CODE_CNT/ENT`, `DOOR_OPEN`, `LASER_STATE`, `SPR_SLOT_ACT`) |
@@ -81,12 +82,12 @@ The SYS address in `!pet` must be kept in sync manually if the header ever chang
 | Address | Purpose |
 |---------|---------|
 | `$0801` | BASIC stub (SYS 2064) |
-| `$0810` | Entry point / code start (code + `TILE_COLORS` must end before `SPRITES_START`, `$2800` today — ~2.9 KB left, see the TILE_COLORS gotcha). Holds `titanfall.asm`'s code + `game.asm` + `TILE_COLORS` |
+| `$0810` | Entry point / code start (code + `TILE_COLORS` must end before `SPRITES_START`, `$2700` today — ~2.8 KB left, see the TILE_COLORS gotcha). Holds `titanfall.asm`'s code + `game.asm` + `TILE_COLORS` |
 | `$0340–$0397` | Tape buffer, reused as `SP_BUF` (screen + colour cells under the small search popup) |
 | `$0400–$07FF` | Screen RAM (default VIC bank) |
 | `$D800–$DBFF` | Colour RAM |
 | `$07F8` | Sprite pointer table (end of screen RAM — **must be restored after every CLS call**) |
-| `$2800–$37FF` | Sprite frames (`SPRITE_FRAMES` = 64 × 64 bytes, pointers `$A0–$DF`): player 12, robot 12, drone 12, dozer 12, tripod 12, bolt 2, force field 2 — packed to end right at `CHARSET`, so the start moves down 64 bytes per added frame — see "Sprites" |
+| `$2700–$37FF` | Sprite frames (`SPRITE_FRAMES` = 68 × 64 bytes, pointers `$9C–$DF`): player 12, robot 12, drone 12, dozer 12, tripod 12, bolt 2, force field 2, cut scene 4 (`CS_FRAMES`, filled at runtime) — packed to end right at `CHARSET`, so the start moves down 64 bytes per added frame — see "Sprites" |
 | `$3800–$3FFF` | `CHARSET` — custom 2K room-art charset, the top 2K of VIC bank 0 (see below) |
 | `$4000` | `TITLE_SCR`/`TITLE_COL` intro logo (640 bytes), then the generated world data (`src/world.asm`: tables, room maps, wall grids, runtime state arrays), then the CPU-only state modules (`intro`, `gameover`, `win`, `terminal`, `map`, `popup` — code with no VIC constraint, moved up here to free the code area), ending at `HIGH_END` (~`$6C00` today). No VIC constraints here; must stay below `$C000` (an `!error` checks `HIGH_END`) |
 | `$C000–$CFFF` | Music `titan_theme` (init `$C000`, play `$C003`, ~1.4 KB; loaded by exomizer) |
@@ -114,6 +115,7 @@ When implementing code, always respect these C64 hardware limits:
 | 4 | Win | Mission complete screen — reached when a bolt fired by a player-driven shooter robot enters a win-target tile (the missile room's power cell, `art.win_tiles`), or through a `leads_to: exit` door (none configured now) |
 | 5 | Map | Sector map overlay (terminal's "view map" entry; time paused; sprite hidden; fire/any key returns to the terminal) |
 | 7 | Explosion | The payoff after the power cell is shot (`SETUP_EXPLODE`/`DO_EXPLODE` in `win.asm`): the cell chars turn dark grey (`PAINT_WIN`), the explosion sound plays, the screen shakes and the border flickers for `EXPL_LEN` = 100 frames (2 s), then the win screen. Time/robots paused |
+| 8 | Cut scene | The briefing after the intro's fire press (`cutscene.asm`): the commander (left, green) and the agent (right) as double-size walker sprites, the dialog (`CS_DIALOG`: speaker byte, text lines separated by 1, 0-terminated, `$FF` ends) in speech bubbles above the speaker that close by themselves (50 frames + 2 per character), then the agent walks off to the right and `SETUP_GAME` runs. Fire, Space or Return skip it (straight to `CS_END`). The figures use `CS_FRAMES` (4 frames at the end of the sprite block): copies of walker frames with `%10`/`%11` swapped, made by `SETUP_CUTSCENE`, so the skin comes from `$D026` (light red during the scene) and the clothes from each sprite's own colour. `CS_END` restores `$D017`/`$D01D`/`$D026`/`VIC_SP_MSB`/sprite 0's colour |
 | 6 | Popup | "Found item", "door locked" or F2 "where am I" popup (end of a held-fire search that found something, blocked at a locked door, or F2; time/robots paused; a fresh fire/Space press closes it — see the popup section) |
 
 **Stack discipline:** The state machine uses fall-through / `jmp` between states, not `jsr`/`rts`. `MAIN_LOOP` is entered by falling through from init code, never by `jsr`. State transitions use `jmp SETUP_*` not `jsr`, so the return address on the stack is always the one from `DISPATCH`'s `jsr TICK_*`. Never `jsr` into anything that falls into `MAIN_LOOP`.
@@ -280,7 +282,7 @@ $14/$15  PTR      source pointer (indirect addressing)
 $16/$17  PTR2     dest pointer
 $18  TMP          scratch
 $19  TMP2         scratch / bar colour
-$1A  GAME_STATE   0=intro 1=game 2=gameover 3=terminal 4=win 5=map 6=popup 7=explosion
+$1A  GAME_STATE   0=intro 1=game 2=gameover 3=terminal 4=win 5=map 6=popup 7=explosion 8=cut scene
 $1B  DEATH_TMR    frames remaining after a laser/robot hit (`ZAP_LEN`, as long as the zap, so border, sound and pause end together); on expiry, APPLY_DEATH_PENALTY runs (see Death & Respawn)
 $1C  BLINK_TMR    blink frame counter
 $1D  BLINK_ST     blink state (0=visible 1=hidden)
@@ -381,7 +383,7 @@ Room/HUD art is authored with **vchar64** (charset + screen + colour editor). `g
 ### Code growth can silently corrupt TILE_COLORS/CHARSET — watch for ACME warnings
 `TILE_COLORS` (256 bytes, in `src/charset.asm`) has no fixed address — it starts wherever the code before it (all of `titanfall.asm` + every `!source`d module) happens to end, and the next segment, the sprite block (`SPRITES_START`, right below the charset pinned at `* = $3800`), is fixed. If code+`TILE_COLORS` ever grows past it, ACME does **not** fail the build — it prints `Warning - ... Segment starts inside another one, overwriting it.` and silently overwrites the tail of `TILE_COLORS` with sprite data (with the old layout the charset came right after it — same symptom). Since most room tiles use screen codes in the `$80s`-`$A0s`, this corrupts colour lookups for most of the room art (tiles render in wrong/black colours) while leaving the charset bitmaps themselves intact — exactly the "graphics look horrible, wrong colours" symptom, with no build error to point at it.
 - **Always check `make`'s full output for `Warning` lines, not just for a nonzero exit code** — a successful build can still have silently corrupted data.
-- To check headroom: `acme -f cbm -o /tmp/g.prg -l /tmp/labels.txt src/titanfall.asm` then `grep TILE_COLORS /tmp/labels.txt` — its start address + 256 must stay under `SPRITES_START`. **As of 2026-10-08 `TILE_COLORS` starts at `$1B82` (ends `$1C81`) and `SPRITES_START` is `$2800`, leaving ~2.9 KB** (after moving six modules above `$4000`). Every sprite frame added costs 64 bytes of that. Unrolled 40-byte row-copy loops are the usual bloat: prefer a `DRAW_ROWS` table (see "Screen Art") for new screens.
+- To check headroom: `acme -f cbm -o /tmp/g.prg -l /tmp/labels.txt src/titanfall.asm` then `grep TILE_COLORS /tmp/labels.txt` — its start address + 256 must stay under `SPRITES_START`. **As of 2026-10-08 `TILE_COLORS` starts at `$1BC1` (ends `$1CC0`) and `SPRITES_START` is `$2700` (the cut scene's 4 frames), leaving ~2.6 KB** (after moving six modules above `$4000`). Every sprite frame added costs 64 bytes of that. Unrolled 40-byte row-copy loops are the usual bloat: prefer a `DRAW_ROWS` table (see "Screen Art") for new screens.
 - Keep *data* out of the code area where possible: the intro logo, sprites and all generated world data already live outside the code area (sprites below the charset, logo and world data from `$4000`); prefer `$4000+` for new tables/strings too.
 - `CHARSET` was moved `$2000` → `$2800` → `$3800` for exactly this reason. `$3800` is the top of VIC bank 0, so **the charset can't move any higher**. Sprites can't go above it either: sprite pointers are 8 bits (`address/64`), so every frame must be below `$4000`. That's why the sprite block is packed *below* the charset — a sprite block at `$3800+` only holds 32 frames. The CPU-only modules (`intro`, `gameover`, `win`, `terminal`, `map`, `popup`) have already been moved above `$4000`, after the world data. If the code area fills up again: put new non-time-critical code in a module up there too (just `!source` it after `popup.asm` — modules must end in `rts`/`jmp`/data, never fall through into the next), move parts of `game.asm` up as well (only the VIC data — charset, sprites — has to stay below `$4000`; code can live anywhere below `$C000`), or switch the VIC to another bank (screen, charset and sprites all move — a much bigger change). If the charset ever moves, update `VIC_VMCSB` in `titanfall.asm` (`$D018 = (screen_base/1024)*16 + (charset_base/2048)*2`; `$0400`/`$3800` → `$1E`).
 
@@ -517,4 +519,4 @@ Controls and interface (as of 2026-10-07; tested on a real C64 with a joystick):
 - Weapons: the bolt (`attack: shoot`, hw sprite 3) and the force field (`attack: forcefield`, hw sprite 4) are in use; sprites 5–7 are free for more projectiles/effects without a multiplexer. A player-driven forcefield robot doesn't raise its field (only a driven shooter can fire)
 - Furniture is walk-through (not in `art.solid_tiles`); walls only check the sprite's feet, so the upper body overlaps wall art in the oblique view (intended)
 - Every terminal shows the same menu (the current room's robots, map, logoff); there's no per-terminal behaviour yet (e.g. a terminal that only reaches certain robots or unlocks something)
-- The code area has ~2.9 KB left before the sprite block (`$2800`); new CPU-only modules can go above `$4000` instead (see the TILE_COLORS gotcha)
+- The code area has ~2.6 KB left before the sprite block (`$2700`); new CPU-only modules can go above `$4000` instead (see the TILE_COLORS gotcha)
