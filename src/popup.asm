@@ -231,13 +231,13 @@ SWXY    jsr DEC2                     ; X 0-19, Y 0-10: 2 digits each
 ; ---------------------------------------------------------------------------
 ; SHOW_POPUP — draw the popup box with the message row pointed to by
 ; PTR/PTR+1 (40 PETSCII bytes, of which columns 4-35 are drawn), switch to
-; state 6.
+; state 6. DRAW_POPUP_BOX (jsr) only draws the box (the game over screen).
 ; ---------------------------------------------------------------------------
 SHOW_POPUP
         lda #6 : sta GAME_STATE
         lda #0 : sta POPUP_ST          ; opening space is still held down
         lda #$00 : sta VIC_SPEN
-
+DRAW_POPUP_BOX
         lda #4  : sta DR_L : sta FR_L    ; draw only the box (columns
         lda #35 : sta DR_R : sta FR_R    ;  4-35): the room stays visible
         lda #YELLOW : sta TMP2           ; message row first (DRAW_ROWS
@@ -276,6 +276,7 @@ SBOX_TOP        !pet "    ", G_RD_UL
                 !fill 30, G_HORIZ_BAR
                 !pet G_RD_UR, "    "
 SBOX_BLK        !pet "    ", G_VERT_BAR, "                              ", G_VERT_BAR, "    "
+SBOX_MSG_GAMEOVER !pet "    ", G_VERT_BAR, "          game over           ", G_VERT_BAR, "    "
 SBOX_MSG_LOCKED !pet "    ", G_VERT_BAR, "         door locked!         ", G_VERT_BAR, "    "
 SBOX_MSG_WHERE  !pet "    ", G_VERT_BAR, "     room "      ; digits patched
 SBW_ROOM        !pet "1   x="                               ;  by SETUP_WHERE

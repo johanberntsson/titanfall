@@ -2,6 +2,12 @@
 #           OPEN
 # ------------------------
 
+The game over screen could show the missile room (without sprites), and then move/scroll
+the missile up and out of the screen (leaving empty characters where the missile had been before).
+Then add a "GAME OVER PRESS FIRE" popup
+
+The win screen can be replace with a "YOU WIN PRESS SPACE" popup on the missile room
+after the explosion effect
 
 # ------------------------
 #           DONE

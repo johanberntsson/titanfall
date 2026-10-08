@@ -250,6 +250,7 @@ CSBTE   iny : sty CS_SRC
         rts
 
 ; A = screen row, X = column -> PTR2 = its screen address, PTR3 = colour RAM
+; (also used by the game over screen, gameover.asm)
 CS_ROWP jsr ROW_PTR
         txa : clc : adc PTR2 : sta PTR2 : sta PTR3
         lda PTR2+1 : adc #0 : sta PTR2+1

@@ -36,7 +36,7 @@ The source is split into one orchestrator and eight state/data modules, all `!so
 | `src/intro.asm` | `DO_INTRO`, `DRAW_INTRO_SCREEN`, `BLINK_ON/OFF`, intro strings |
 | `src/titanfall_title.asm` | `TITLE_SCR`/`TITLE_COL` — the 8-row "TITAN FALL" block-letter logo on the intro screen (data only; `!source`d after the sprite block, not in the code area). Reference image: `screenshots/titanfall_title.png` |
 | `src/game.asm` | `DO_GAME`, `SETUP_GAME`, HUD, clock, reactor, player/robot movement, sound |
-| `src/gameover.asm` | `DO_GAMEOVER`, `SETUP_GAMEOVER`, `GO_BLINK` helpers, strings |
+| `src/gameover.asm` | `DO_GAMEOVER`, `SETUP_GAMEOVER`, `GO_DRAW` — the missile launch and the game over popup |
 | `src/win.asm` | `DO_WIN`, `SETUP_WIN`, `WIN_BLINK` helpers, strings; also the explosion before it (`SETUP_EXPLODE`/`DO_EXPLODE`, state 7) |
 | `src/terminal.asm` | `SETUP_TERMINAL`, `DO_TERMINAL`, `TERM_DRAW_SEL`, `CLEAR_ROOM`, strings |
 | `src/map.asm` | `DO_MAP`, `SETUP_MAP` (copies the generated `MAP_SCR`/`MAP_COL`, lights the current room) |
@@ -110,7 +110,7 @@ When implementing code, always respect these C64 hardware limits:
 |-------|-------|-------------|
 | 0 | Intro | Title screen, tagline, blinking "press fire" prompt |
 | 1 | Game | Playfield with HUD, player sprite, room map, countdown clock, reactor meter |
-| 2 | Game over | Red border + descending-pitch sound, then game-over screen |
+| 2 | Game over | The clock ran out: red border, the missile room (`MSL_ROOM`, drawn by `DRAW_ROOM`, no sprites) with the clock at `00:00:00` on row 0; after `GO_PAUSE` the missile lifts off (explosion sound as the rumble) and `GO_DRAW` moves it up one char row per step, speeding up (2×(`GO_D0`−k) frames, min 4), through the top wall and off the screen (~4 s; the rumble is restarted while it flies), leaving the art behind it (`GO_BG`, saved at setup with the missile cells blanked). Then the shared popup box (`DRAW_POPUP_BOX`, "game over / press fire") and fire/any key → intro. The missile is whatever `art.missile_tiles` chars are in the art (all in one room — the build fails otherwise): `genworld.py` emits their bounding box `MSL_X/Y/W/H` and `MSL_CHARS` (the box, 0 = not missile) |
 | 3 | Terminal | Terminal menu: this room's robots, view map, logoff (fire next to a terminal; time paused; sprites hidden) |
 | 4 | Win | Mission complete screen — reached when a bolt fired by a player-driven shooter robot enters a win-target tile (the missile room's power cell, `art.win_tiles`), or through a `leads_to: exit` door (none configured now) |
 | 5 | Map | Sector map overlay (terminal's "view map" entry; time paused; sprite hidden; fire/any key returns to the terminal) |
@@ -250,7 +250,7 @@ Dying (laser or sprite collision, `DEATH_TMR` counting down to 0 in `DO_GAME`) n
 `src/popup.asm` implements one shared popup overlay used by two features:
 - **Searching (items) — hold fire, Impossible Mission style.** `SEARCH_TICK` (`popup.asm`, called from `READ_KEYS` at `RKSEARCHCHK`) starts a search on a *fresh* fire/Space press outside a terminal zone (the terminal check runs first and takes the press) and only in human mode — **like the terminal, search is human-only** — and **only on a searchable tile**: one whose 2×2 chars aren't all `art.floor_tile` (furniture, crates, the POWER box…; bit 2 of `ROOM_WALLS_n`, `+` in the comment pictures, read via `WALL_AT`). On plain floor fire does nothing at all (no box, you keep walking). `genworld.py` fails the build if an item is placed on plain floor. While fire stays held, `SRCH_TMR` counts up and `MOVE_PLAYER` stands still; time and robots keep running, so searching is a risk. At `SRCH_SHOW` (10 frames — long enough to ignore a tap) a small 11×4 box saying "searching ..." appears just above the player's sprite (below it near the top wall; `SPOP_PLACE`). At `SRCH_DONE` (+50 frames) the generated `ITEM_ROOM/X/Y` tables are checked for a still-hidden (`ITEM_STATE=0`) item on the player's exact tile: if found, the small box goes and `SETUP_SEARCH` (item index in `X`) sets `ITEM_STATE=1` and shows the big popup with the item's generated found-message (`ITEM_MSG_*`, from `found_text` in `titan.yaml`); otherwise the box changes to "nothing / here" and stays until fire is released. Releasing fire at any point removes the small box. The small box (`SPOP`) saves the 44 screen + 44 colour cells under it in `SP_BUF` (`$0340`, the unused tape buffer) and restores them on close, so the room art — including an erased laser — comes back exactly; `DRAW_ROOM` resets the search (`SRCH_TMR`/`SRCH_ST`) since a full redraw makes the saved cells stale. Adding a search spot = adding an `items:` entry plus a `things:` placement in the config — no code.
 - **Locked door.** `DOOR_ENTER` calls `SETUP_DOOR_LOCKED` when the door's `DOOR_KEY` item is still hidden — the door just acts like a wall.
-- All of them (with F2's where-am-I and the robot-link popup) funnel into the shared `SHOW_POPUP`, which draws the box/border/hint rows (the "press fire" hint in light red — dark grey was hardly readable; the terminal's hint row is light red too) and takes only the message row's address via `PTR`/`PTR+1` (a 40-byte PETSCII string) — a new popup means one more message string and a one-line caller, not touching the drawing code.
+- All of them (with F2's where-am-I and the robot-link popup) funnel into the shared `SHOW_POPUP`, which draws the box/border/hint rows (`DRAW_POPUP_BOX`, its drawing part, also used by the game over screen) (the "press fire" hint in light red — dark grey was hardly readable; the terminal's hint row is light red too) and takes only the message row's address via `PTR`/`PTR+1` (a 40-byte PETSCII string) — a new popup means one more message string and a one-line caller, not touching the drawing code.
 - **The popup closes on a fresh Space press, not `GETIN`.** The Space press that opened it is still in the KERNAL keyboard buffer (the raster IRQ's `$EA31` tail runs the KERNAL keyboard scan every frame), so a `GETIN`-based wait closes the popup after one frame. `DO_POPUP` instead polls the CIA matrix directly with edge detection (`POPUP_ST`, `$33`: 0=opening press still held, 1=released/armed, 2=new press seen; closes on that press's release so the closing Space can't leak into `READ_KEYS` either), and drops any buffered keys (`$C6=0`) on close.
 - Unlike terminal/map, the popup does **not** `CLEAR_ROOM` first — `SHOW_POPUP` only overwrites rows 8-13 with a small bordered box, so the room art stays visible underneath. `DO_POPUP` erases it on close by calling `DRAW_ROOM` (full redraw) rather than restoring specific rows.
 - Time and robot patrol are paused for free, the same way terminal/map already pause them: `DO_GAME` (and hence `TICK_CLOCK`/`TICK_ROBOT`) simply isn't called while `GAME_STATE=6`.
@@ -478,7 +478,7 @@ Both set `$D418 = $0F` on start, and `SNDOFF` gates off and restores `$0F` at th
 
 ## Screen Art
 
-Non-game screens (intro, game over, win) use a PETSCII box design: a bordered panel (rows 3–13 on game over / win, rows 12–21 under the logo and author line on the intro) drawn at 50 Hz by the relevant setup routine. All three share the subroutine `DRAW_INTRO_SCREEN` for the intro layout (called from `SHOW_INTRO`, the `DO_GAMEOVER` restart path, and the `DO_WIN` restart path).
+Non-game screens (intro, game over, win) use a PETSCII box design: a bordered panel (rows 3–13 on win — game over shows the missile launch instead —, rows 12–21 under the logo and author line on the intro) drawn at 50 Hz by the relevant setup routine. All three share the subroutine `DRAW_INTRO_SCREEN` for the intro layout (called from `SHOW_INTRO`, the `DO_GAMEOVER` restart path, and the `DO_WIN` restart path).
 
 **Row lists.** `DRAW_ROWS` (`titanfall.asm`, A/Y = list address) draws a screen from a table of `(screen row, colour, string lo, string hi)` entries ended by `$FF` — the terminal (`TERM_ROWS`) and popup (`SBOX_ROWS`) use it instead of one unrolled copy loop per row. `DRAW_ROW` draws a single row (A = row, `PTR` = string, `TMP2` = colour), `PAINT_ROW` recolours the row at `PTR2`, `ROW_PTR` turns a row number into its screen address.
 
@@ -492,11 +492,10 @@ Non-game screens (intro, game over, win) use a PETSCII box design: a bordered pa
 
 All string-copy loops call `jsr PET2SCREEN` to convert PETSCII to screen codes before writing to screen RAM. `PET2SCREEN` is defined in `src/titanfall.asm` after `CLS`.
 - `ITR_TAG`, `ITR_M1`–`ITR_M3` — intro panel content (the intro has no title row in the box any more — the logo above it replaces it)
-- `GO_TITLE`, `GO_M1`–`GO_M3` — game over panel content
 - `WIN_TITLE`, `WIN_M1`–`WIN_M3` — win panel content
-- `TXT_PRESS`, `TXT_GOPRESS`, `TXT_WINPRESS` — blinking footer prompts
+- `TXT_PRESS`, `TXT_WINPRESS` — blinking footer prompts
 
-Star characters (`*`) in the game over / win titles are recoloured to YELLOW after the row loop by writing to individual CRAM addresses.
+Star characters (`*`) in the win title are recoloured to YELLOW after the row loop by writing to individual CRAM addresses.
 
 **Intro layout:** `DRAW_INTRO_SCREEN` copies the logo (`TITLE_SCR`/`TITLE_COL`, raw screen codes, no `PET2SCREEN`) into rows 1–8, the unframed author line (`ITR_AUTH`, "by johan berntsson", centred from its own length `ITR_AUTH_LEN`, MGRAY) on row 10, draws the mission box in rows 12–21 (top border, blank, tagline, separator, blank, 3 mission lines, blank, bottom border), and `BLINK_ON`/`BLINK_OFF` blink the prompt on row 23 (`SCRN+920`). The logo's solid block is screen code 224 (`$E0`), not the usual 160 (`$A0`) — `$80–$A2` in the custom charset are room-art tiles, and `$E0` is the other all-ones glyph in the ROM font. Any new full-screen PETSCII art must likewise avoid the room-art codes — `$80–$AA` and more as rooms are added (check `src/charset.asm`).
 

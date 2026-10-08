@@ -502,6 +502,9 @@ def main():
     terminal_tiles = {int(t) for t in art.get("terminal_tiles") or []}
     door_tiles = {int(t) for t in art.get("door_tiles") or []}
     win_tiles = {int(t) for t in art.get("win_tiles") or []}
+    missile_tiles = {int(t) for t in art.get("missile_tiles") or []}
+    if not missile_tiles:
+        die("art.missile_tiles is missing (the missile's chars, launched on game over)")
     targets = []                        # per room: grid[y][x] of win-target tiles
     door_art = []                       # per door: [(map offset, new char), ...]
     if not laser_tiles:
@@ -927,6 +930,33 @@ def main():
         for k in range(0, len(offs), 8):
             o.append("        !byte " + ",".join(f"${x & 0xff:02x},${x >> 8:02x}" for x in offs[k:k + 8]))
         o.append("        !byte $00,$ff")
+    o.append("")
+
+    # the missile: the bounding box of the art.missile_tiles chars, which must
+    # all be in one room; SETUP_GAMEOVER shows that room and launches it
+    msl_rooms = []
+    for i, room in enumerate(rooms):
+        mapdata = read_vchar64_map(room["vchar64_map"])
+        cells = [(o_ // 40, o_ % 40) for o_ in range(ROOM_MAP_BYTES) if mapdata[o_] in missile_tiles]
+        if cells:
+            msl_rooms.append((i, mapdata, cells))
+    if len(msl_rooms) != 1:
+        die("art.missile_tiles chars must appear in exactly one room "
+            f"(found in {len(msl_rooms)})")
+    mi, mapdata, cells = msl_rooms[0]
+    my0 = min(r for r, c in cells); my1 = max(r for r, c in cells)
+    mx0 = min(c for r, c in cells); mx1 = max(c for r, c in cells)
+    o.append("; ---- the missile (art.missile_tiles), launched on the game over screen ----")
+    o.append(f"MSL_ROOM = {mi}   ; {rooms[mi]['name']}")
+    o.append(f"MSL_X    = {mx0}   ; bounding box: map column, row, width, height")
+    o.append(f"MSL_Y    = {my0}")
+    o.append(f"MSL_W    = {mx1 - mx0 + 1}")
+    o.append(f"MSL_H    = {my1 - my0 + 1}")
+    o.append("MSL_CHARS       ; the box row by row: the missile's chars, 0 = not missile")
+    for r in range(my0, my1 + 1):
+        row = [mapdata[r * 40 + c] if mapdata[r * 40 + c] in missile_tiles else 0
+               for c in range(mx0, mx1 + 1)]
+        o.append("        !byte " + ",".join(f"${v:02x}" for v in row))
     o.append("")
 
     o.append(f"; ---- walls: per room, {TILES_X} bytes per tile row (y*{TILES_X}+x) ----")

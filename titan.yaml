@@ -45,6 +45,9 @@ art:
   # Win targets: a bolt fired by a player-driven shooter robot that enters a
   # tile containing any of these chars wins the game (the power cell).
   win_tiles: [0xa6]
+  # The missile: on game over its room is shown (no sprites) and these chars
+  # fly up off the screen, leaving the art around them. All in one room.
+  missile_tiles: [0xa5, 0xa7, 0xa8, 0xc3, 0xdf, 0xe9]
 
 # Actor types: name, sprite set (src/c64_*_sprites.asm, included by src/titanfall.asm),
 # colour, and AI routine used while computer-controlled. "human" is reserved
