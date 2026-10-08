@@ -277,6 +277,7 @@ SBOX_TOP        !pet "    ", G_RD_UL
                 !pet G_RD_UR, "    "
 SBOX_BLK        !pet "    ", G_VERT_BAR, "                              ", G_VERT_BAR, "    "
 SBOX_MSG_GAMEOVER !pet "    ", G_VERT_BAR, "          game over           ", G_VERT_BAR, "    "
+SBOX_MSG_WIN    !pet "    ", G_VERT_BAR, "  launch aborted. you win!    ", G_VERT_BAR, "    "
 SBOX_MSG_LOCKED !pet "    ", G_VERT_BAR, "         door locked!         ", G_VERT_BAR, "    "
 SBOX_MSG_WHERE  !pet "    ", G_VERT_BAR, "     room "      ; digits patched
 SBW_ROOM        !pet "1   x="                               ;  by SETUP_WHERE
