@@ -34,7 +34,6 @@ Joystick in port 2. The keyboard works the same way: WASD moves and Space is fir
 | Search (hold) | hold fire | hold Space |
 | Shoot (while driving a robot that has a gun) | fire | Space |
 | Terminal menu: move / select / leave | up, down / fire | W, S / Space or Return / F7 |
-| Where am I? (room and position) | | F2 |
 
 ## How to play
 
@@ -53,9 +52,10 @@ Joystick in port 2. The keyboard works the same way: WASD moves and Space is fir
   right type (shown on the bottom line, e.g. `CODE: A 2 B 0`). The link
   lasts **30 seconds**: the countdown is shown in the top left, and then
   control snaps back to you.
-- **Robots** each behave differently. Some patrol, some charge when they see
-  you, some shoot, and some advance behind a force field. Most of them see
-  along their own row, so keep that in mind.
+- **Robots** each behave differently. Some patrol a fixed route and some
+  wander the whole room. When they spot you, some charge, some shoot, and
+  some advance behind a force field. They see along their own row, so keep
+  that in mind.
 - **Cards** open locked doors. A carried card is shown on the bottom line
   (`CARD:`), and it's used up when it opens its door.
 

@@ -56,19 +56,25 @@ actor_types:
   # directions: 4 = down/up/left/right, 2 = left/right only (the type's
   #             down/up frames aren't assembled; vertical moves keep facing)
   # anim:       walk = animates while stepping, hover = always animating
-  # ai:         what a robot of this type does while not player-driven
-  #             (a robot entry can override it with its own ai:):
-  #             patrol = shuttle between the two patrol waypoints
-  #             hunter = patrol, but rush the player at double speed while
-  #                      on the same tile row with no wall in between;
-  #                      needs a horizontal patrol through its start
-  #             forcefield = patrol, but while the player is on its row (no wall
-  #                       between) raise a force field toward them and advance
-  #                       at normal speed; needs a horizontal patrol through
-  #                       its start
-  #             shooter = patrol, but stop and fire a bolt along the row while
-  #                       the player is on it with no wall in between
-  #                       (one bolt in flight at a time, shared by all)
+  # A robot's behaviour while not player-driven has two independent parts,
+  # set per type and overridable per robot entry:
+  # idle:       what it does while it doesn't see the player (default patrol)
+  #             patrol = shuttle between the robot's two patrol: waypoints
+  #                      (no patrol: = stand at its start)
+  #             roam   = wander the whole room: a random direction for 2-9
+  #                      tiles, then another; a wall, the room's edge or a
+  #                      laser makes it pick a new direction. Takes no patrol:
+  # attack:     what it does while it sees the player — on the same tile
+  #             row with no wall in between (default none)
+  #             none       = nothing, it keeps idling
+  #             rush       = charge along the row at double speed
+  #             shoot      = stop and fire a bolt along the row (one bolt in
+  #                          flight at a time, shared by all); a player-driven
+  #                          shooter fires too
+  #             forcefield = raise a force field toward the player and
+  #                          advance at normal speed
+  #             A patrolling robot with rush or forcefield needs a horizontal
+  #             patrol through its start (it walks back along its row).
   # color:      the multicolour sprite's own colour (%10 pixels); black and
   #             light grey are shared by all sprites ($D025/$D026)
   human:
@@ -77,24 +83,19 @@ actor_types:
   sentry:
     sprite: robot_down_rest
     color: orange
-    ai: patrol
   splicer:
     sprite: robot_down_rest
     color: green
-    ai: patrol
   dozer:                               # tracked construction robot
     sprite: dozer_down_rest
     color: yellow
-    ai: patrol
   tripod:
     sprite: tripod_down_rest
     color: ltgreen
-    ai: patrol
   drone:
     sprite: drone_down_hover
     anim: hover
     color: yellow
-    ai: patrol
 
 # Security codes: one-letter code types and how many the player starts with
 # (0-9, at most 3 types). Every robot names the code its terminal link
@@ -131,7 +132,7 @@ rooms:
         name: bot-5150  sentry
         locked: true
         code: b                        # the link costs a security code b
-        ai: shooter                    # shoots bolts along its row at you
+        attack: shoot                  # shoots bolts along its row at you
         start: {x: 3, y: 7}
         patrol: [{x: 3, y: 7}, {x: 6, y: 7}]
       - id: bot3312                    # referenced by the terminal menu (ACTOR_BOT3312)
@@ -158,9 +159,9 @@ rooms:
       - type: drone
         name: bot-8808  drone
         code: a
-        ai: hunter                     # rushes you when you're on its row
+        idle: roam                     # wanders the whole room
+        attack: rush                   # rushes you when you're on its row
         start: {x: 3, y: 5}
-        patrol: [{x: 3, y: 5}, {x: 11, y: 5}]
     doors:
       - at: {x1: 20, y1: 5, x2: 20, y2: 6}   # right wall, back to room 1
         leads_to: room1
@@ -181,7 +182,7 @@ rooms:
       - type: tripod
         name: bot-4410  tripod
         code: a
-        ai: forcefield                 # advances behind a force field when it sees you
+        attack: forcefield             # advances behind a force field when it sees you
         start: {x: 14, y: 7}
         patrol: [{x: 14, y: 7}, {x: 4, y: 7}]
     things:
@@ -200,7 +201,7 @@ rooms:
       - type: sentry
         name: bot-6060  guard
         code: b
-        ai: shooter                    # fires bolts along row 5 at you
+        attack: shoot                  # fires bolts along row 5 at you
         start: {x: 10, y: 5}
         patrol: [{x: 10, y: 5}, {x: 4, y: 5}]   # x 1-3 is the (solid) power cell
     doors:

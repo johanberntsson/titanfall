@@ -91,7 +91,8 @@ RESET_ROUND
         lda #0   : sta REACT_TEMP          ; set from the clock each frame
         lda #0   : sta REACT_CNT
         lda #0   : sta REACT_JIT
-        lda #$A3 : sta LFSR_ST
+        lda CIA1_TALO : ora #1 : sta LFSR_ST   ; seed from the free-running
+                                         ;  CIA timer (time of the fire press)
         lda #0   : sta MOVE_TMR
         lda #0   : sta KEY_U : sta KEY_D : sta KEY_L : sta KEY_R
         lda #0   : sta DEATH_TMR
@@ -202,6 +203,12 @@ ADPCHECK
         jsr SETUP_GAMEOVER
         rts
 ADPRESPAWN
+        ; never respawn without a way to link a robot: at least one code A
+        ; (the first security code type; CODE_CNT is NUM_CODES+1 long, so
+        ; this is harmless padding even in a config with no codes)
+        lda CODE_CNT : bne ADPHASA
+        inc CODE_CNT
+ADPHASA
         jmp RESET_ROUND
 
 ; =============================================================================
@@ -476,11 +483,11 @@ RKTN    inx : bne RKTL
 RKSEARCHCHK
         lda PLAYER_MODE : bne RKPROXY
         jmp SEARCH_TICK                  ; hold fire to search (popup.asm)
-RKPROXY ; driving a robot: fire shoots, if it's a shooter (ai: shooter) —
+RKPROXY ; driving a robot: fire shoots, if it's a shooter (attack: shoot) —
         ; in the direction it faces
         lda KEY_SPC : beq RKPOUT
         ldx PLAYER_MODE : dex
-        lda ACT_AI,x : cmp #AI_SHOOTER : bne RKPOUT
+        lda ACT_ATTACK,x : cmp #ATK_SHOOT : bne RKPOUT
         lda ACT_ALIVE,x : cmp #1 : bne RKPOUT
         lda ACT_DIR,x : ldy #1
         jmp FIRE_BOLT
@@ -679,13 +686,17 @@ WALL_AT
 
 ; =============================================================================
 ; LASER_AT — carry set if NEWX/NEWY is inside an active laser rectangle of
-; the current room; Y = that laser's index. Preserves X.
+; the current room; Y = that laser's index. Preserves X. LASER_AT_A takes
+; the room in A instead (a roaming robot off-screen).
 ; =============================================================================
 LASER_AT
+        lda CUR_ROOM
+LASER_AT_A
+        sta LA_ROOM
         ldy #0
 LAL     cpy #NUM_LASERS : bcs LANONE
         lda LASER_STATE,y : bne LAN
-        lda LASER_ROOM,y : cmp CUR_ROOM : bne LAN
+        lda LASER_ROOM,y : cmp LA_ROOM : bne LAN
         lda NEWX : cmp LASER_X1,y : bcc LAN
         lda LASER_X2,y : cmp NEWX : bcc LAN
         lda NEWY : cmp LASER_Y1,y : bcc LAN
@@ -796,7 +807,7 @@ UPD_SLOT
 UPDSOFF lda VIC_SPEN : and SLOT_ANDBIT,y : sta VIC_SPEN
         rts
 UPDON   ; glide toward its tile: patrol pace, or the player's pace while
-        ; driven or rushing (a hunter that has seen the player)
+        ; driven or rushing (attack: rush, it has seen the player)
         lda #GL_SLOW_X : sta GL_SX
         lda #GL_SLOW_Y : sta GL_SY
         lda ACT_FAST,x : bne UPDFAST
@@ -980,26 +991,38 @@ TROBN   inx : bne TROBL
 TROBD   rts
 
 ; ---------------------------------------------------------------------------
-; ACTOR_THINK — X = actor; one step of its AI (ACT_AI, ai: in titan.yaml).
-; AI_PATROL just patrols. AI_HUNTER patrols too, but while it can see the
-; human (SEES_PLAYER) it rushes at the player at double pace (ACT_FAST=1: steps every
-; ROB_HALF frames, glides 2 px/frame). Losing sight drops it back to normal
-; pace and it walks back onto its patrol. Speed only changes when a glide
+; ACTOR_THINK — X = actor; one step of its AI. Two independent parts, both
+; from titan.yaml: ACT_ATTACK (attack:) is what it does while it sees the
+; player (SEES_PLAYER), ACT_IDLE (idle:) what it does otherwise — every
+; attack handler falls back to ACTOR_IDLE when the player isn't in sight.
+; ATK_NONE: always idle. ATK_RUSH: RUSH_THINK. ATK_SHOOT: SHOOTER_THINK.
+; ATK_FORCEFIELD: FIELD_THINK.
+; ---------------------------------------------------------------------------
+ACTOR_THINK
+        lda ACT_ATTACK,x : beq ACTOR_IDLE      ; ATK_NONE
+        cmp #ATK_RUSH : beq RUSH_THINK
+        cmp #ATK_FORCEFIELD : bne ATNFF
+        jmp FIELD_THINK
+ATNFF   jmp SHOOTER_THINK
+
+; ACTOR_IDLE — X = actor: one idle step, IDLE_PATROL (ACTOR_PATROL_STEP) or
+; IDLE_ROAM (ROAM_STEP).
+ACTOR_IDLE
+        lda ACT_IDLE,x : cmp #IDLE_ROAM : bne ACTOR_PATROL_STEP
+        jmp ROAM_STEP
+
+; RUSH_THINK — X = actor with ATK_RUSH: while it can see the human
+; (SEES_PLAYER) it rushes at the player at double pace (ACT_FAST=1: steps
+; every ROB_HALF frames, glides 2 px/frame). Losing sight drops it back to
+; normal pace and it goes back to idling. Speed only changes when a glide
 ; has finished: a normal-pace robot is only asked on even half periods
 ; (TICK_ROBOT), and one that loses sight on an odd one waits for the next.
-; ---------------------------------------------------------------------------
-; AI_SHOOTER: see SHOOTER_THINK. AI_FORCEFIELD: see FIELD_THINK.
-ACTOR_THINK
-        lda ACT_AI,x : cmp #AI_HUNTER : beq ATHUNT
-        cmp #AI_FORCEFIELD : bne ATNFF
-        jmp FIELD_THINK
-ATNFF   cmp #AI_SHOOTER : bne ACTOR_PATROL_STEP
-        jmp SHOOTER_THINK
-ATHUNT  jsr SEES_PLAYER : bcc ATNOSEE
+RUSH_THINK
+        jsr SEES_PLAYER : bcc ATNOSEE
         jmp HUNT_RUSH
-ATNOSEE lda ACT_FAST,x : beq ACTOR_PATROL_STEP
+ATNOSEE lda ACT_FAST,x : beq ACTOR_IDLE
         lda #0 : sta ACT_FAST,x          ; lost sight: normal pace again,
-        lda ROB_PHASE : beq ACTOR_PATROL_STEP   ;  on the normal beat
+        lda ROB_PHASE : beq ACTOR_IDLE   ;  on the normal beat
         rts
 
 ; ---------------------------------------------------------------------------
@@ -1030,7 +1053,75 @@ APSFLIP lda ACT_TGT,x : eor #1 : sta ACT_TGT,x
         rts
 
 ; ---------------------------------------------------------------------------
-; SEES_PLAYER — X = actor (hunter, shooter). Carry set if it can see the human: human mode (a
+; ROAM_STEP — X = actor with IDLE_ROAM: one step of a random walk. ACT_TGT
+; holds the leg (steps left * 4 + direction DIR_*; RESET_ROUND's 1 = no
+; steps left). At the end of a leg it picks a random direction and length
+; (ROAM_MIN..ROAM_MIN+7 tiles); when the next tile is blocked — a wall, the
+; room's edge or an active laser — it picks a new leg, trying the four
+; directions from a random one, and stands still if all four are blocked.
+; ---------------------------------------------------------------------------
+ROAM_MIN = 2
+
+ROAM_STEP
+        lda ACT_TGT,x : cmp #4 : bcc RSPICK   ; no steps left: new leg
+        and #3 : jsr ROAM_TRY : bcs RSPICK    ; blocked: new leg
+        lda ACT_TGT,x : sec : sbc #4 : sta ACT_TGT,x
+        rts
+RSPICK  jsr RAND : lsr : lsr : lsr : and #3 : sta ACT_TGT,x   ; bits 3-4
+        lda #4 : sta TMP2                ; directions left to try
+RSTRY   lda ACT_TGT,x : and #3
+        jsr ROAM_TRY : bcc RSGO
+        lda ACT_TGT,x : clc : adc #1 : and #3 : sta ACT_TGT,x
+        dec TMP2 : bne RSTRY
+        lda #0 : sta ACT_ANIM,x          ; boxed in: wait, try again next time
+        rts
+RSGO    jsr RAND : lsr : lsr : lsr : lsr : lsr   ; bits 5-7: 0-7
+        clc : adc #ROAM_MIN-1            ; steps left after this one
+        asl : asl : ora ACT_TGT,x : sta ACT_TGT,x
+        rts
+
+; ROAM_TRY — X = actor, A = DIR_*: step one tile that way if it's free (in
+; the room's bounds, not a wall, not an active laser). Carry clear = stepped
+; (facing, position, walk frame updated), set = blocked (nothing changed).
+; Preserves X and TMP2.
+ROAM_TRY
+        pha
+        lda ACT_X,x : sta NEWX
+        lda ACT_Y,x : sta NEWY
+        pla : pha
+        cmp #DIR_DOWN : bne RTNDN
+        inc NEWY : jmp RTCHK
+RTNDN   cmp #DIR_UP : bne RTNUP
+        dec NEWY : jmp RTCHK
+RTNUP   cmp #DIR_LEFT : bne RTNLF
+        dec NEWX : jmp RTCHK
+RTNLF   inc NEWX
+RTCHK   ldy ACT_ROOM,x                   ; bounds (0-1 wraps to $FF: too big)
+        lda ROOM_MAXX,y : cmp NEWX : bcc RTBLK
+        lda ROOM_MAXY,y : cmp NEWY : bcc RTBLK
+        lda ACT_ROOM,x : jsr WALL_AT : bcs RTBLK
+        lda ACT_ROOM,x : jsr LASER_AT_A : bcs RTBLK
+        pla : jsr ACT_FACE
+        lda NEWX : sta ACT_X,x
+        lda NEWY : sta ACT_Y,x
+        jsr ACT_STEP_ANIM
+        clc : rts
+RTBLK   pla : sec : rts
+
+; RAND — A = a random byte: the next value of the 8-bit LFSR (LFSR_ST, also
+; used by the reactor flicker and the explosion) mixed with CIA1 timer A,
+; which free-runs at the KERNAL's ~60 Hz period and so drifts against the
+; 50 Hz frame (successive LFSR values alone are too alike: the drone kept
+; walking up and down). The LFSR's low 3 bits are poorly mixed (the
+; feedback $B8 never touches them): use bits 3-7.
+RAND
+        lda LFSR_ST : asl : bcc RANDNF : eor #$B8
+RANDNF  sta LFSR_ST
+        eor CIA1_TALO
+        rts
+
+; ---------------------------------------------------------------------------
+; SEES_PLAYER — X = actor (any attack:). Carry set if it can see the human: human mode (a
 ; robot link leaves the human standing at the terminal, not hunted), not
 ; already dying, same room, same tile row, and no wall tile between them on
 ; that row. Lasers don't block sight (but HUNT_RUSH won't step into one).
@@ -1056,7 +1147,7 @@ HSYES   sec : rts
 HUNT_RUSH
         lda #1 : sta ACT_FAST,x
 ; ADVANCE — X = actor: one step along its row toward the player (shared by
-; the hunter's rush and the forcefield robot, which advances at normal pace).
+; RUSH_THINK and the forcefield robot, which advances at normal pace).
 ADVANCE
         lda ACT_Y,x : sta NEWY
         lda ACT_X,x : sta NEWX
@@ -1072,12 +1163,12 @@ HRSTOP  lda #0 : sta ACT_ANIM,x
         rts
 
 ; ---------------------------------------------------------------------------
-; FIELD_THINK — X = actor with AI_FORCEFIELD, at normal pace. Patrols; while
+; FIELD_THINK — X = actor with ATK_FORCEFIELD, at normal pace. Idles; while
 ; it sees the player (SEES_PLAYER: same row, no wall between) it raises its
 ; force field (FIELD_ACT = X+1; FIELD_TICK draws it on hw sprite 4 in front
 ; of the robot, toward the player) and advances along the row at normal
 ; pace (ADVANCE). Touching the robot or the field is the ordinary sprite
-; collision. Losing sight drops the field and it walks back onto its patrol.
+; collision. Losing sight drops the field and it goes back to idling.
 ; There is one field: a second forcefield robot that sees the player takes
 ; it over.
 ; ---------------------------------------------------------------------------
@@ -1085,7 +1176,7 @@ FIELD_THINK
         jsr SEES_PLAYER : bcs FTSEE
         txa : clc : adc #1 : cmp FIELD_ACT : bne FTPAT
         lda #0 : sta FIELD_ACT           ; lost sight: field down
-FTPAT   jmp ACTOR_PATROL_STEP
+FTPAT   jmp ACTOR_IDLE
 FTSEE   txa : clc : adc #1 : sta FIELD_ACT
         jmp ADVANCE
 
@@ -1124,14 +1215,14 @@ FKOFF   lda VIC_SPEN : and #$EF : sta VIC_SPEN
         rts
 
 ; ---------------------------------------------------------------------------
-; SHOOTER_THINK — X = actor with AI_SHOOTER, at normal pace. Patrols; while it
+; SHOOTER_THINK — X = actor with ATK_SHOOT, at normal pace. Idles; while it
 ; sees the player (SEES_PLAYER: same row, no wall between) it stops, turns to
 ; face them and fires a bolt along the row, unless one is already in flight
 ; (there is only one bolt, BOLT_*; BOLT_TICK flies it).
 ; ---------------------------------------------------------------------------
 SHOOTER_THINK
         jsr SEES_PLAYER : bcs STSEE
-        jmp ACTOR_PATROL_STEP
+        jmp ACTOR_IDLE
 STSEE   lda #0 : sta ACT_ANIM,x          ; stand and aim
         lda ACT_X,x : cmp PLR_X : beq STOUT   ; same tile: no direction
         lda #0 : rol : sta TMP           ; C = player to the left -> 1

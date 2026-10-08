@@ -74,6 +74,7 @@ EXPL_TMR   = $46   ; explosion (state 7): frames left
 EXP_D011   = $47   ; explosion: $D011/$D016 saved before the shake
 EXP_D016   = $48
 FIELD_ACT  = $49   ; forcefield robot showing its field (hw sprite 4): actor+1, 0 = none
+LA_ROOM    = $4A   ; LASER_AT_A: room whose lasers are checked
 LINK_JIF   = $44   ; robot link: frames into the current second (0-49)
 POPUP_ST   = $33   ; popup: 0=waiting for opening space to be released, 1=armed
 F2_PREV    = $30   ; F2 held last game frame (edge detect for the where-am-I popup)
@@ -133,6 +134,7 @@ VIC_BGCOL  = $D021
 CIA1_PRA   = $DC00
 CIA1_PRB   = $DC01
 CIA1_DDRA  = $DC02
+CIA1_TALO  = $DC04
 CIA1_ICR   = $DC0D
 
 GETIN      = $FFE4
