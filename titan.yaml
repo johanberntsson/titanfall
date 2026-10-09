@@ -232,6 +232,13 @@ rooms:
     label: entrance
     player_start: {x: 7, y: 1}         # in the corridor by the exit sign
     goal: {text: enter complex, done: {visited: room2}}
+    robots:
+      - type: sentry
+        name: bot-2020  sentry
+        code: a
+        attack: shoot                  # fires bolts along row 7 at you
+        start: {x: 1, y: 7}
+        patrol: [{x: 1, y: 7}, {x: 4, y: 7}]   # the short corridor, left
     things:
       - item: code_a1                  # the cabinet, top right
         at: {x: 17, y: 2}
