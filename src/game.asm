@@ -76,16 +76,22 @@ SGSEEND ldx #0                           ; security codes back to the start coun
 SGCODE  cpx #NUM_CODES : bcs SGCODED
         lda CODE_START,x : sta CODE_CNT,x
         inx : bne SGCODE
-SGCODED jsr SAVE_CODES                   ; entering the start room
+SGCODED lda #START_ROOM : sta CUR_ROOM   ; entering the start room
+        lda ROOM_PSX+START_ROOM : sta PLR_X
+        lda ROOM_PSY+START_ROOM : sta PLR_Y
+        jsr SAVE_ENTRY
+        lda #1 : sta RS_ALL              ; every room's robots and lasers
         jmp RESET_ROUND
 
 ; -----------------------------------------------------------------------------
-; SAVE_CODES — remember the security code counts on entering a room
-; (SETUP_GAME, room change through a door); a death restores them
-; (APPLY_DEATH_PENALTY), so a code spent on a failed attempt in this room
-; comes back. Uses Y only (DOOR_ENTER's door index is in X).
+; SAVE_ENTRY — on entering a room (SETUP_GAME, room change through a door):
+; remember the player's position (ENT_X/Y, the respawn point — RESET_ROUND)
+; and the security code counts; a death restores them (APPLY_DEATH_PENALTY),
+; so a code spent on a failed attempt in this room comes back. Uses A/Y only.
 ; -----------------------------------------------------------------------------
-SAVE_CODES
+SAVE_ENTRY
+        lda PLR_X : sta ENT_X
+        lda PLR_Y : sta ENT_Y
         ldy #0
 SVCODE  cpy #NUM_CODES : bcs SVCODED
         lda CODE_CNT,y : sta CODE_ENT,y
@@ -93,11 +99,12 @@ SVCODE  cpy #NUM_CODES : bcs SVCODED
 SVCODED rts
 
 ; =============================================================================
-; RESET_ROUND — reset all per-round world state (player, reactor, robots,
-; room, sprites) to their starting values and redraw the playfield. Does
-; NOT touch the countdown clock (CLK_H/M/S/CLK_TICK) — shared by SETUP_GAME
-; (fresh game, clock set separately above) and APPLY_DEATH_PENALTY (respawn
-; after death, which keeps the already-penalized clock).
+; RESET_ROUND — reset the per-round state (player at ENT_X/Y in CUR_ROOM,
+; reactor, link, sprites; robots and lasers of CUR_ROOM, or of every room
+; with RS_ALL=1) and redraw the playfield. Does NOT touch the countdown
+; clock (CLK_H/M/S/CLK_TICK) — shared by SETUP_GAME (fresh game, clock set
+; separately above, RS_ALL=1) and APPLY_DEATH_PENALTY (respawn where the
+; room was entered, which keeps the already-penalized clock).
 ; =============================================================================
 RESET_ROUND
         lda #1   : sta GAME_STATE
@@ -105,9 +112,8 @@ RESET_ROUND
         lda #0   : sta VIC_SPEN            ; no sprites (or collisions) while redrawing
         lda #BLACK : sta VIC_BRDCOL : sta VIC_BGCOL
 
-        lda #START_ROOM : sta CUR_ROOM
-        lda ROOM_PSX+START_ROOM : sta PLR_X
-        lda ROOM_PSY+START_ROOM : sta PLR_Y
+        lda ENT_X : sta PLR_X            ; back where the room was entered
+        lda ENT_Y : sta PLR_Y            ;  (CUR_ROOM stays)
         lda #0   : sta REACT_TEMP          ; set from the clock each frame
         lda #0   : sta REACT_CNT
         lda #0   : sta REACT_JIT
@@ -123,12 +129,16 @@ RESET_ROUND
         lda #DIR_DOWN : sta PLR_DIR
         lda #0   : sta PLR_ANIM
 
-        ; all actors back at their start positions, alive, heading for
+        ; the actors back at their start positions, alive, heading for
         ; patrol waypoint 1, standing still facing their type's first
-        ; direction; all lasers back on
+        ; direction; the lasers back on — in this room only after a death
+        ; (other rooms keep their burnt-out lasers and destroyed robots),
+        ; in every room on a new game (RS_ALL)
         ldx #0
 RSRACT  cpx #NUM_ACTORS : bcs RSRACTD
-        lda ACT_SX,x : sta ACT_X,x
+        lda RS_ALL : bne RSRAGO
+        lda ACT_ROOM,x : cmp CUR_ROOM : bne RSRAN
+RSRAGO  lda ACT_SX,x : sta ACT_X,x
         lda ACT_SY,x : sta ACT_Y,x
         lda #1 : sta ACT_TGT,x
         lda #1 : sta ACT_ALIVE,x
@@ -136,13 +146,15 @@ RSRACT  cpx #NUM_ACTORS : bcs RSRACTD
         lda #0 : sta ACT_FAST,x
         ldy ACT_TYPE,x
         lda TYPE_DIR0,y : sta ACT_DIR,x
-        inx : bne RSRACT
+RSRAN   inx : bne RSRACT
 RSRACTD
         ldx #0
 RSRLSR  cpx #NUM_LASERS : bcs RSRLSRD
-        lda #0 : sta LASER_STATE,x
-        inx : bne RSRLSR
-RSRLSRD
+        lda RS_ALL : bne RSRLGO
+        lda LASER_ROOM,x : cmp CUR_ROOM : bne RSRLN
+RSRLGO  lda #0 : sta LASER_STATE,x
+RSRLN   inx : bne RSRLSR
+RSRLSRD lda #0 : sta RS_ALL              ; (the next RESET_ROUND is a respawn)
         lda #ROB_HALF-1 : sta ROB_TMR
         lda #0 : sta ROB_PHASE
 
@@ -225,8 +237,9 @@ ADPCHECK
 ADPRESPAWN
         ; security codes back to what they were on entering the room the
         ; player died in (codes spent there on a failed attempt come back;
-        ; codes spent in earlier rooms stay spent). The respawn in the start
-        ; room counts as entering it with these counts, so CODE_ENT stays.
+        ; codes spent in earlier rooms stay spent). The respawn is in the
+        ; same room, where the room was entered (RESET_ROUND), and counts as
+        ; entering it with these counts, so CODE_ENT stays.
         ldx #0
 ADPCODE cpx #NUM_CODES : bcs ADPCODED
         lda CODE_ENT,x : sta CODE_CNT,x
@@ -638,12 +651,12 @@ DENOPEN lda DOOR_DEST,x : cmp #$FF : bne DENGO
         jsr SETUP_WIN                ; $FF = mission exit
         sec : rts
 DENGO   sta CUR_ROOM
-        jsr SAVE_CODES               ; entering a room (preserves X)
         lda DOOR_AX,x : cmp #$FF : beq DENAY   ; $FF = keep current coord
         sta PLR_X
 DENAY   lda DOOR_AY,x : cmp #$FF : beq DENDRW
         sta PLR_Y
-DENDRW  jsr PLR_STEP_ANIM            ; walking through the doorway is a step
+DENDRW  jsr SAVE_ENTRY               ; entering a room: respawn point, codes
+        jsr PLR_STEP_ANIM            ; walking through the doorway is a step
         jsr DRAW_ROOM
         sec : rts
 
