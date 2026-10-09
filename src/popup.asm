@@ -61,11 +61,9 @@ SEARCH_TICK
         lda PLAYER_MODE : bne SRCHSTOP   ; a driven robot can't search
         lda FIRE_PREV : beq SRCHSTOP     ; fire not held: stop
         lda SRCH_TMR : bne SRCHHOLD
-        lda KEY_SPC : beq SRCHOUT        ; held over from before: no search
-        lda PLR_X : sta NEWX             ; only where something's drawn:
-        lda PLR_Y : sta NEWY             ;  plain floor can't be searched
-        lda CUR_ROOM : jsr WALL_AT       ;  (bit 2 of the tile, A bit 1 here)
-        and #2 : beq SRCHOUT
+        lda KEY_SPC : beq SRCHRTS        ; held over from before: no search
+        jsr SRCH_TILE                    ; only where something's drawn: plain
+        and #2 : beq SRCHRTS             ;  floor can't be searched (A bit 1)
         lda #0 : sta PLR_ANIM            ; stand at rest while searching
 SRCHHOLD
         lda SRCH_TMR : cmp #SRCH_DONE : bcs SRCHOUT   ; finished: just wait
@@ -74,10 +72,16 @@ SRCHHOLD
         cmp #SRCH_SHOW : bne SRCHRES
         jsr SPOP_PLACE                   ; show "searching"
         lda #SP_SAVE : ldx #0 : jsr SPOP
+        jsr SRCH_TILE : and #4 : bne SRCHAGAIN
         lda #SP_DRAW : ldx #SP_T_SEARCH-SP_TEXTS : jsr SPOP
         lda #1 : sta SRCH_ST
-        rts
+SRCHRTS rts
+SRCHAGAIN                                ; searched before: "nothing here" now
+        lda #SRCH_DONE : sta SRCH_TMR
+        jmp SRCHNONE
 SRCHRES cmp #SRCH_DONE : bne SRCHOUT
+        jsr SRCH_TILE                    ; mark the tile searched (bit 3)
+        lda (PTR),y : ora #8 : sta (PTR),y
         ldx #0                           ; a still-hidden item on this tile?
 SRCHL   cpx #NUM_ITEMS : bcs SRCHNONE
         lda ITEM_STATE,x : bne SRCHN     ; already found/used
@@ -96,6 +100,15 @@ SRCHNONE
 SRCHEND jsr SPOP_HIDE
         lda #0 : sta SRCH_TMR
 SRCHOUT rts
+
+; SRCH_TILE — WALL_AT for the player's tile: A bit 1 = searchable, bit 2 =
+; searched before
+; (wall byte bit 3, set at the end of a search, cleared by RESET_WALLS on a
+; new game); PTR/Y left pointing at the tile's wall byte.
+SRCH_TILE
+        lda PLR_X : sta NEWX
+        lda PLR_Y : sta NEWY
+        lda CUR_ROOM : jmp WALL_AT
 
 ; SPOP_HIDE — take the small search popup down (if shown), restoring the
 ; screen under it.

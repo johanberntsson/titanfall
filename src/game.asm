@@ -67,7 +67,8 @@ SGITEMD ldx #0                           ; keyed doors closed again (an opened
 SGDOOR  cpx #NUM_DOORS : bcs SGDOORD     ;  door stays open across respawns)
         lda #0 : sta DOOR_OPEN,x
         inx : bne SGDOOR
-SGDOORD ldx #0                           ; no room visited yet (goal visited:)
+SGDOORD jsr RESET_WALLS                  ; their tiles solid again, none searched
+        ldx #0                           ; no room visited yet (goal visited:)
 SGSEEN  cpx #NUM_ROOMS : bcs SGSEEND
         lda #0 : sta ROOM_SEEN,x
         inx : bne SGSEEN
@@ -574,7 +575,9 @@ TRY_MOVE
 TMXOK   lda NEWY : cmp ROOM_MAXY,x : bcc TMYOK : beq TMYOK
         jmp TRY_DOOR
 TMYOK   lda CUR_ROOM : jsr WALL_AT : bcc TMNOWALL
-        clc : rts                    ; wall: blocked (try the next direction)
+        lsr : lsr : lsr : beq TMWALL ; a closed keyed door's tile (door + 1)?
+        tax : dex : jmp DOOR_ENTER   ;  pushing it: locked popup or open it
+TMWALL  clc : rts                    ; wall: blocked (try the next direction)
 TMNOWALL
         jsr LASER_AT : bcc TMCOMMIT
         ; stepped into an active laser: take the step, but already dying —
@@ -610,11 +613,12 @@ TDN     inx : bne TDL
 TDNONE  clc : rts
 
 ; ---------------------------------------------------------------------------
-; DOOR_ENTER — X = door index. A keyed door that isn't open yet: without
+; DOOR_ENTER — X = door index. A keyed door that isn't open yet (reached by
+; pushing into its closed door tiles, which are solid — TRY_MOVE): without
 ; the key the locked popup; with it the door opens — its art turns to floor
-; (ERASE_DOOR), a green border flash, the key is used up (ITEM_STATE=2) —
-; and the player stays put, so the
-; opening is seen; the next push goes through. Then win exit or room change.
+; (ERASE_DOOR), its tiles become walkable (OPEN_DOOR_WALLS), a green border
+; flash, the key is used up (ITEM_STATE=2) — and the player stays put, so
+; the opening is seen. Otherwise (the door rect): win exit or room change.
 ; ---------------------------------------------------------------------------
 DOOR_ENTER
         lda DOOR_KEY,x : beq DENOPEN
@@ -626,6 +630,7 @@ DOOR_ENTER
 DENUNLK lda #2 : sta ITEM_STATE,y    ; the key is used up (leaves the card slot)
         lda #1 : sta DOOR_OPEN,x
         txa : tay : jsr ERASE_DOOR   ; (preserves X)
+        jsr OPEN_DOOR_WALLS
         lda #GREEN : sta VIC_BRDCOL
         lda #15 : sta BFLASH
         sec : rts
@@ -641,6 +646,39 @@ DENAY   lda DOOR_AY,x : cmp #$FF : beq DENDRW
 DENDRW  jsr PLR_STEP_ANIM            ; walking through the doorway is a step
         jsr DRAW_ROOM
         sec : rts
+
+; ---------------------------------------------------------------------------
+; OPEN_DOOR_WALLS — X = door: clear the solid bit of its tiles in its room's
+; wall grid (ROOM_WALLS_n, bits 4-7 = door index + 1; genworld.py marks a
+; keyed door's tiles solid). RESET_WALLS (SETUP_GAME) sets the solid
+; bit of every keyed door's tiles again and forgets which tiles have been
+; searched (bit 3, SEARCH_TICK). Preserve X; clobber A/Y/PTR/TMP.
+; ---------------------------------------------------------------------------
+OPEN_DOOR_WALLS
+        ldy DOOR_ROOM,x
+        lda ROOM_WALL_LO,y : sta PTR
+        lda ROOM_WALL_HI,y : sta PTR+1
+        txa : clc : adc #1
+        asl : asl : asl : asl : sta TMP
+        ldy #0
+ODWL    lda (PTR),y : and #$F0 : cmp TMP : bne ODWN
+        lda (PTR),y : and #$FE : sta (PTR),y
+ODWN    iny : cpy #20*11 : bcc ODWL
+        rts
+
+RESET_WALLS
+        ldx #0
+CDWR    cpx #NUM_ROOMS : bcs CDWD
+        lda ROOM_WALL_LO,x : sta PTR
+        lda ROOM_WALL_HI,x : sta PTR+1
+        ldy #0
+CDWL    lda (PTR),y : and #$F7               ; not searched
+        cmp #$10 : bcc CDWN                  ; a keyed door's tile:
+        ora #1                               ;  solid (closed)
+CDWN    sta (PTR),y
+        iny : cpy #20*11 : bcc CDWL
+        inx : bne CDWR
+CDWD    rts
 
 ; =============================================================================
 ; MOVE_ACTOR — proxy mode: WASD/joystick drive actor PLAYER_MODE-1 instead of

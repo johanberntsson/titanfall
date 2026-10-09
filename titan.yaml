@@ -121,6 +121,8 @@ items:
     found_text: red access card found!
   code_b1:
     code: b                            # a security code b: +1 to the B count
+  code_a1:
+    code: a                            # in the entrance's cabinet
 
 # Rooms. goal: is the room's line of orders, shown on row 1 as "orders:
 # <text>" while the player is in the room (max 25 chars). Optional done:
@@ -230,6 +232,9 @@ rooms:
     label: entrance
     player_start: {x: 7, y: 1}         # in the corridor by the exit sign
     goal: {text: enter complex, done: {visited: room2}}
+    things:
+      - item: code_a1                  # the cabinet, top right
+        at: {x: 17, y: 2}
     doors:
       - at: {x1: 20, y1: 4, x2: 20, y2: 5}   # right wall opening, to room 2
         leads_to: room2

@@ -717,6 +717,33 @@ def main():
         walls.append(wall_grid(read_vchar64_map(room["vchar64_map"]),
                                room["_maxx"], room["_maxy"], solid_tiles))
 
+    # closed doors: a tile with art.door_tiles chars is solid. A keyed
+    # door's tiles (from its art patches) also carry the door index + 1 in
+    # bits 4-7 of the wall byte: pushing into one opens the door (or shows
+    # the locked popup), and opening clears their solid bit at runtime. For
+    # the placement checks below they count as open (door arrivals land on
+    # them once the door is open). Door art of no keyed door is plain wall.
+    door_owner = []                     # per room: {(x, y): door index}
+    for ri, room in enumerate(rooms):
+        owner = {}
+        for di, patches in enumerate(door_art):
+            if door["room"][di] != ri:
+                continue
+            for off, _ in patches:
+                x, y = off % 40 // 2, off // 40 // 2
+                if y < len(walls[ri]) and x < len(walls[ri][y]) and not walls[ri][y][x]:
+                    if di + 1 > 15:
+                        die(f"room {room['name']}: keyed door #{di} - only the "
+                            f"first 15 doors in titan.yaml can have a key")
+                    owner[(x, y)] = di
+        door_owner.append(owner)
+        dgrid = wall_grid(read_vchar64_map(room["vchar64_map"]),
+                          room["_maxx"], room["_maxy"], door_tiles)
+        for y, row in enumerate(dgrid):
+            for x, d in enumerate(row):
+                if d and (x, y) not in owner:
+                    walls[ri][y][x] = True
+
     def check_open(ri, x, y, what):
         room = rooms[ri]
         if not (0 <= x <= room["_maxx"] and 0 <= y <= room["_maxy"]):
@@ -1030,7 +1057,8 @@ def main():
 
     o.append(f"; ---- walls: per room, {TILES_X} bytes per tile row (y*{TILES_X}+x) ----")
     o.append("; bit 0 = solid (#), bit 1 = win target (*, may be solid too: a bolt fired by a player-driven")
-    o.append("; robot entering it wins), bit 2 = searchable (+ when walkable: not all floor_tile)")
+    o.append("; robot entering it wins), bit 2 = searchable (+ when walkable: not all floor_tile),")
+    o.append("; bits 4-7 = keyed door index + 1 (=, solid while closed: OPEN_DOOR_WALLS clears bit 0)")
     o.append("; -- from the 2x2 chars of each tile, see wall_grid")
     o.append("ROOM_WALL_LO")
     o.append("        !byte " + ",".join(f"<ROOM_WALLS_{i}" for i in range(len(rooms))))
@@ -1040,11 +1068,14 @@ def main():
         o.append(f"ROOM_WALLS_{i}      ; {rooms[i]['name']}")
         for y, row in enumerate(grid):
             tgt, srch = targets[i][y], searchable[i][y]
+            own = [door_owner[i].get((x, y)) for x in range(len(row))]
             vals = [(1 if b else 0) | (2 if t else 0) | (4 if f else 0)
-                    for b, t, f in zip(row, tgt, srch)]
+                    | (0 if d is None else 1 | (d + 1) << 4)
+                    for b, t, f, d in zip(row, tgt, srch, own)]
             vals += [0] * (TILES_X - len(row))
-            pic = "".join("*" if t else "#" if b else "+" if f else "."
-                          for b, t, f in zip(row, tgt, srch))
+            pic = "".join("*" if t else "#" if b else "=" if d is not None
+                          else "+" if f else "."
+                          for b, t, f, d in zip(row, tgt, srch, own))
             o.append(f"        !byte {','.join(str(v) for v in vals)}   ; y={y} {pic}")
     o.append("")
 
