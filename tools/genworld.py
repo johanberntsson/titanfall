@@ -31,7 +31,7 @@ ROOM_MAP_BYTES = 22 * 40  # rows x cols of one room's screen-code data
 TILES_X = 40 // 2
 TILES_Y = 22 // 2
 
-MAX_ROBOTS_PER_ROOM = 2   # hardware sprites 1 and 2 (sprite 0 = player)
+MAX_ROBOTS_PER_ROOM = 4   # hardware sprites 1, 2, 5, 6 (0 = player, 3 = bolt, 4 = field)
 IDLE_NAMES = ["patrol", "roam"]                           # idle: values; index = IDLE_* in world.asm
 ATTACK_NAMES = ["none", "rush", "shoot", "forcefield"]     # attack: values; index = ATK_* in world.asm
 LABEL_WIDTH = 12          # status-line item label field width
@@ -1250,7 +1250,7 @@ def main():
     o.append("DOOR_OPEN   !fill NUM_DOORS+1   ; 1 = keyed door opened (art erased, passable)")
     o.append("ROOM_SEEN   !fill NUM_ROOMS     ; 1 = the player has been in this room (goal visited:)")
     o.append("LASER_STATE !fill NUM_LASERS+1  ; 0=active 1=destroyed")
-    o.append("SPR_SLOT_ACT !fill 2            ; actor shown by hw sprite 1/2, $ff = none")
+    o.append("SPR_SLOT_ACT !fill 4            ; actor in robot slot 0-3 (hw sprite 1/2/5/6), $ff = none")
     # (starting at the start tiles: CRATE_RESET first clears the wall bits
     # where the crates are)
     o.append("PIT_FILLED  !fill NUM_PITS+1    ; 1 = a crate filled it (floor now)")

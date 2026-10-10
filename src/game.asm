@@ -890,15 +890,22 @@ SPRALIVE
 SPROUT  rts
 
 ; =============================================================================
-; ASSIGN_SPRITES — map this room's actors onto hardware sprites 1-2. Called
-; from DRAW_ROOM, so every room change / room redraw refreshes the mapping.
-; Fills SPR_SLOT_ACT (2 bytes: actor index or $FF) and sets each used slot's
-; sprite pointer and colour from the actor's type (TYPE_SPRPTR/TYPE_COLOR).
-; Dead actors still claim a slot (UPDATE_ROBOT_SPRITES keeps them hidden);
-; genworld.py enforces max 2 robots per room, so nothing gets crowded out.
+; ASSIGN_SPRITES — map this room's actors onto the robot slots 0-3, which are
+; hardware sprites 1, 2, 5, 6 (SLOT_HW; 3 is the bolt, 4 the force field).
+; Called from DRAW_ROOM, so every room change / room redraw refreshes the
+; mapping. Fills SPR_SLOT_ACT (4 bytes: actor index or $FF) and sets each
+; used slot's sprite pointer and colour from the actor's type
+; (TYPE_SPRPTR/TYPE_COLOR). Dead actors still claim a slot
+; (UPDATE_ROBOT_SPRITES keeps them hidden); genworld.py enforces max 4
+; robots per room, so nothing gets crowded out.
 ; =============================================================================
+ROBOT_SLOTS = 4
+
 ASSIGN_SPRITES
-        lda #$FF : sta SPR_SLOT_ACT : sta SPR_SLOT_ACT+1
+        lda #$FF
+        ldy #ROBOT_SLOTS-1
+ASGCLR  sta SPR_SLOT_ACT,y
+        dey : bpl ASGCLR
         ldy #0                       ; next free slot
         ldx #0                       ; actor index
 ASGL    cpx #NUM_ACTORS : bcs ASGDONE
@@ -906,29 +913,37 @@ ASGL    cpx #NUM_ACTORS : bcs ASGDONE
         txa : sta SPR_SLOT_ACT,y
         stx TMP
         lda ACT_TYPE,x : tax
-        lda TYPE_SPRPTR,x : sta SPRPTR+1,y
-        lda TYPE_COLOR,x  : sta VIC_SPCOL1,y
+        lda TYPE_SPRPTR,x : pha
+        lda TYPE_COLOR,x : pha
+        ldx SLOT_HW,y
+        pla : sta VIC_SPCOL0,x
+        pla : sta SPRPTR,x
         ldx TMP
-        iny : cpy #2 : bcs ASGDONE
+        iny : cpy #ROBOT_SLOTS : bcs ASGDONE
 ASGN    inx : bne ASGL
 ASGDONE rts
 
 ; =============================================================================
-; UPDATE_ROBOT_SPRITES — position/enable hardware sprites 1-2 from their
-; assigned actors (SPR_SLOT_ACT). A slot with no actor, a dead actor, or an
-; actor outside the current room is disabled (VIC_SPEN bit cleared) — callers
+; UPDATE_ROBOT_SPRITES — position/enable the robot slots' hardware sprites
+; (1, 2, 5, 6) from their assigned actors (SPR_SLOT_ACT). A slot with no
+; actor, a dead actor, or an actor outside the current room is disabled
+; (VIC_SPEN bit cleared), and a used one is enabled every frame — callers
 ; that re-enter game state can just set VIC_SPEN=$07 and let this fix it up.
 ; =============================================================================
-SLOT_ORBIT  !byte $02,$04           ; VIC bit for hw sprite 1/2
-SLOT_ANDBIT !byte $FD,$FB
-SLOT_REGOFF !byte 0,2               ; VIC_SP1X/VIC_SP2X register offset
+SLOT_HW     !byte 1,2,5,6           ; hw sprite of robot slot 0-3
+SLOT_ORBIT  !byte $02,$04,$20,$40   ; its VIC bit
+SLOT_ANDBIT !byte $FD,$FB,$DF,$BF
+SLOT_REGOFF !byte 0,2,8,10          ; its X/Y register offset from VIC_SP1X/Y
 
 UPDATE_ROBOT_SPRITES
         ldy #0
+URSL    tya : pha
         jsr UPD_SLOT
-        ldy #1
-        ; fall through for slot 1
-; UPD_SLOT — Y = slot (0/1). Y survives; X/A/TMP/TMP2/NEWX/NEWY are scratch.
+        pla : tay
+        iny : cpy #ROBOT_SLOTS : bcc URSL
+        rts
+
+; UPD_SLOT — Y = slot (0-3). Y survives; X/A/TMP/TMP2/NEWX/NEWY are scratch.
 UPD_SLOT
         ldx SPR_SLOT_ACT,y
         cpx #$FF : beq UPDSOFF
@@ -956,7 +971,7 @@ UPDSPD  lda ACT_X,x : sta NEWX
         lda ACT_ANIM,x : sta TMP2
         lda ACT_TYPE,x : tax
         jsr FRAME_PTR                    ; (preserves Y)
-        sta SPRPTR+1,y
+        ldx SLOT_HW,y : sta SPRPTR,x
         lda VIC_SPEN : ora SLOT_ORBIT,y : sta VIC_SPEN
         ldx SLOT_REGOFF,y
         lda NEWX : sta VIC_SP1X,x

@@ -227,7 +227,7 @@ SIDCLR  lda #0
         lda #SPRP_DRONE  : sta SPRPTR+2
         lda TYPE_COLOR+ATYPE_HUMAN : sta VIC_SPCOL0  ; slots 1-2 set by ASSIGN_SPRITES
         lda #WHITE : sta VIC_SPCOL3     ; the bolt's hot core
-        lda #$1F   : sta $D01C          ; sprites 0-4 multicolour
+        lda #$7F   : sta $D01C          ; sprites 0-6 multicolour
         lda #DGRAY : sta $D025          ; MC0 (%01) — outlines
         lda #LTGRAY : sta $D026         ; MC1 (%11) — shared light grey
         lda #$00   : sta $D01D

@@ -2,14 +2,14 @@
 ; TERMINAL STATE (GAME_STATE = 3)
 ; =============================================================================
 ; The menu is built on entry: one row per robot in the current room (rows
-; 8-9, from the generated ACT_TROW_* strings — at most 2 robots per room),
-; then "view map" (row 11) and "logoff" (row 12). TM_ACT says what each
+; 8-11, from the generated ACT_TROW_* strings — at most 4 robots per room),
+; then "view map" (row 13) and "logoff" (row 14). TM_ACT says what each
 ; entry does: an actor index (link to it), TM_MAP or TM_LOGOFF.
-TERM_MAX    = 4
+TERM_MAX    = 6
 TM_MAP      = $FE
 TM_LOGOFF   = $FF
 TERM_RROW   = 8                         ; first robot row
-TERM_MSGROW = 16                        ; message row under the box
+TERM_MSGROW = 18                        ; message row under the box
 
 TERM_N  !byte 0                         ; menu entries
 TM_ACT  !fill TERM_MAX                  ; per entry: actor, TM_MAP, TM_LOGOFF
@@ -70,10 +70,10 @@ TSAN    inx : bne TSAL
 TSADONE
         ldy TERM_N                       ; then view map, logoff
         lda #TM_MAP : sta TM_ACT,y
-        lda #11 : sta TM_ROW,y
+        lda #13 : sta TM_ROW,y
         iny
         lda #TM_LOGOFF : sta TM_ACT,y
-        lda #12 : sta TM_ROW,y
+        lda #14 : sta TM_ROW,y
         iny : sty TERM_N
         jmp TERM_DRAW_SEL
 
@@ -182,7 +182,7 @@ TDSNS   lda #CH_SPC : sta (PTR2),y
 TDSGRN  lda #GREEN
 TDSPAINT jsr PAINT_ROW
         inx : bne TDSL
-TDSDONE lda #LTGREEN : ldx #4 : ldy #15 : jmp FRAME_EDGES  ; box rows 4-15
+TDSDONE lda #LTGREEN : ldx #4 : ldy #17 : jmp FRAME_EDGES  ; box rows 4-17
 
 ; Static rows of the terminal box: (screen row, colour, string), for DRAW_ROWS
 TERM_ROWS
@@ -193,11 +193,13 @@ TERM_ROWS
         !byte 8,  DGRAY,   <TBOX_NONE, >TBOX_NONE      ; robot rows draw over it
         !byte 9,  GREEN,   <SCR_BLANK, >SCR_BLANK
         !byte 10, GREEN,   <SCR_BLANK, >SCR_BLANK
-        !byte 11, GREEN,   <TBOX_MAP, >TBOX_MAP
-        !byte 12, GREEN,   <TBOX_OFF, >TBOX_OFF
-        !byte 13, GREEN,   <SCR_BLANK, >SCR_BLANK
-        !byte 14, LTRED,   <TBOX_HNT, >TBOX_HNT
-        !byte 15, LTGREEN, <SCR_BORDER_BOTTOM, >SCR_BORDER_BOTTOM
+        !byte 11, GREEN,   <SCR_BLANK, >SCR_BLANK
+        !byte 12, GREEN,   <SCR_BLANK, >SCR_BLANK
+        !byte 13, GREEN,   <TBOX_MAP, >TBOX_MAP
+        !byte 14, GREEN,   <TBOX_OFF, >TBOX_OFF
+        !byte 15, GREEN,   <SCR_BLANK, >SCR_BLANK
+        !byte 16, LTRED,   <TBOX_HNT, >TBOX_HNT
+        !byte 17, LTGREEN, <SCR_BORDER_BOTTOM, >SCR_BORDER_BOTTOM
         !byte $FF
 
 ; =============================================================================
