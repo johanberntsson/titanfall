@@ -123,6 +123,10 @@ items:
     code: b                            # a security code b: +1 to the B count
   code_a1:
     code: a                            # in the entrance's cabinet
+  blue_card:
+    name: blue access card
+    label: blue
+    found_text: blue access card found!
 
 # Rooms. goal: is the room's line of orders, shown on row 1 as "orders:
 # <text>" while the player is in the room (max 25 chars). Optional done:
@@ -209,10 +213,13 @@ rooms:
       - at: {x1: 6, y1: 11, x2: 10, y2: 11}  # bottom wall opening, back to room 2
         leads_to: room2
         arrive: {y: 0}
+      - at: {x1: 20, y1: 5, x2: 20, y2: 6}   # right wall opening, to room 6
+        leads_to: room6
+        arrive: {x: 0}
 
   - name: room4
     vchar64_map: graphics/titan-map04.s
-    label: missiles
+    label: silo                        # map labels: max 6 chars (8 rooms in a 4x4 grid)
     player_start: {x: 8, y: 5}
     goal: {text: disable missile}       # done = the game is won
     robots:
@@ -229,7 +236,7 @@ rooms:
 
   - name: room5
     vchar64_map: graphics/titan-map05.s
-    label: entrance
+    label: entry
     player_start: {x: 7, y: 1}         # in the corridor by the exit sign
     goal: {text: enter complex, done: {visited: room2}}
     robots:
@@ -246,3 +253,42 @@ rooms:
       - at: {x1: 20, y1: 4, x2: 20, y2: 5}   # right wall opening, to room 2
         leads_to: room2
         arrive: {x: 0, y: 5}           # y 4 at room 2's left edge is wall
+
+  - name: room6
+    vchar64_map: graphics/titan-map06.s
+    label: room 6
+    player_start: {x: 10, y: 5}
+    goal: {text: open the door, done: {opened: room8}}
+    doors:
+      - at: {x1: -1, y1: 5, x2: -1, y2: 6}   # left wall opening, back to room 3
+        leads_to: room3
+        arrive: {x: 19}
+      - at: {x1: 20, y1: 4, x2: 20, y2: 5}   # right wall opening, to room 7
+        leads_to: room7
+        arrive: {x: 0}
+      - at: {x1: 12, y1: -1, x2: 16, y2: -1} # top wall: the closed door (0xa3)
+        leads_to: room8
+        arrive: {y: 10}
+        key: blue_card
+
+  - name: room7
+    vchar64_map: graphics/titan-map07.s
+    label: room 7
+    player_start: {x: 18, y: 4}
+    goal: {text: find blue card, done: {found: blue_card}}
+    things:
+      - item: blue_card                # placeholder: the crate in the bottom left
+        at: {x: 1, y: 7}
+    doors:
+      - at: {x1: -1, y1: 4, x2: -1, y2: 5}   # left wall opening, back to room 6
+        leads_to: room6
+        arrive: {x: 19}
+
+  - name: room8
+    vchar64_map: graphics/titan-map08.s
+    label: room 8
+    player_start: {x: 10, y: 5}
+    doors:
+      - at: {x1: 12, y1: 11, x2: 16, y2: 11} # bottom wall opening, back to room 6
+        leads_to: room6
+        arrive: {y: 0}

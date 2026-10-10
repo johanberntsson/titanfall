@@ -211,6 +211,7 @@ DIRS = {"left": (-1, 0), "right": (1, 0), "up": (0, -1), "down": (0, 1)}
 MAP_BOX_H = 4                            # top border, label, blank, bottom
 MAP_GAP_X, MAP_GAP_Y = 6, 2              # corridor length between boxes
 MAP_MIN_GAP_X = 2                        # shortest horizontal corridor when space is tight
+                                         # (vertical corridors shrink to 1 row)
 GOAL_WIDTH = 32                          # orders line: 40 cols - "orders: "
 GOAL_DONE = " - done"                    # appended once the goal is achieved
 GOAL_FOUND, GOAL_OPENED, GOAL_VISITED = 1, 2, 3
@@ -288,8 +289,16 @@ def build_map(rooms, start, doors):
     while gap_x > MAP_MIN_GAP_X and width() > MAP_COLS - 2:
         gap_x -= 1
     total_w = width()
-    grid_h = tm + bm + gh * MAP_BOX_H + (gh - 1) * MAP_GAP_Y
-    block_h = 2 + grid_h + 2                 # title, blank, grid, blank, prompt
+    # Vertically: shorten the vertical corridors, then drop the blank rows
+    # around the grid, until it fits.
+    gap_y, pad = MAP_GAP_Y, 2
+    def height():                            # title, blank(s), grid, blank(s), prompt
+        return 2 + pad + tm + bm + gh * MAP_BOX_H + (gh - 1) * gap_y
+    while gap_y > 1 and height() > MAP_ROWS:
+        gap_y -= 1
+    while pad > 0 and height() > MAP_ROWS:
+        pad -= 1
+    block_h = height()
     if total_w > MAP_COLS - 2 or block_h > MAP_ROWS:
         die(f"map: {gw}x{gh} rooms don't fit on the map screen "
             f"({total_w} cols, {block_h} rows)")
@@ -309,11 +318,11 @@ def build_map(rooms, start, doors):
     text(top, (MAP_COLS - 14) // 2, "* sector map *", "yellow")
     text(top + block_h - 1, (MAP_COLS - 20) // 2, "press fire to return", "mgray")
     gx0 = (MAP_COLS - total_w) // 2 + lm
-    gy0 = top + 2 + tm
+    gy0 = top + 1 + (pad + 1) // 2 + tm      # the blank row under the title goes last
 
     def box_at(ri):
         x, y = pos[ri]
-        return gy0 + y * (MAP_BOX_H + MAP_GAP_Y), gx0 + x * (box_w + gap_x)
+        return gy0 + y * (MAP_BOX_H + gap_y), gx0 + x * (box_w + gap_x)
 
     boxes = []
     for ri in range(len(rooms)):
