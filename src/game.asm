@@ -613,6 +613,7 @@ TMNOWALL
 TMCOMMIT
         lda NEWX : sta PLR_X
         lda NEWY : sta PLR_Y
+        jsr TRAP_CHECK               ; under a laser trap? (may set PLR_DYING)
         jsr PLR_STEP_ANIM
         sec : rts
 
@@ -1536,6 +1537,8 @@ DRMDOOR cpy #NUM_DOORS : bcs DRMDOORD
 DRMDOORN iny : bne DRMDOOR
 DRMDOORD
         jsr CRATE_DRAW_ALL           ; the movable crates where they are now
+        lda #0 : sta TRAP_ON         ; (the redraw wiped any trap beam)
+        jsr TRAP_SHOW                ; player under a laser trap: beam on
         jsr WIN_FLICKER              ; power cell in its current colour
         jsr SNAP_ALL                 ; no gliding across a room change
         jmp ASSIGN_SPRITES           ; room changed: remap actors -> sprites

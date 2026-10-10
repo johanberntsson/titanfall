@@ -34,7 +34,8 @@ art:
   # patrols, items or door arrivals inside a wall.
   solid_tiles: [0x84, 0x85, 0x86, 0x87, 0x88, 0x89, 0x8a, 0x8b,
                 0xa4,                  # 0xa4: the missile bay's "keep out" border
-                0xa6]                  # 0xa6: the power cell (also a win target)
+                0xa6,                  # 0xa6: the power cell (also a win target)
+                0xae]                  # 0xae: laser trap (sits in a wall)
   # Crate chars (left/right half). A crate drawn on a whole tile (2x2 chars
   # at cols 2x..2x+1, rows 2y..2y+1) is movable: solid, but a player-driven
   # robot whose type has push: true pushes it one tile ahead (onto plain
@@ -48,6 +49,12 @@ art:
   # Terminal chars. Every group of these in a room's art is a terminal,
   # used with fire from its own tiles or any tile next to them.
   terminal_tiles: [0x8c, 0x8d, 0x8e, 0x8f]
+  # Laser trap chars. A trap fires down its char column (with the first
+  # laser_tiles char, the beam) when the player steps onto a tile below it,
+  # up to the first solid tile -- a wall or a crate blocks it (push the
+  # crate away and the beam reaches further), a pit doesn't. Above the
+  # blocker the player is fried; below it it's safe. Robots aren't hit.
+  trap_tiles: [0xae]
   # Closed-door chars. A door with a key: is drawn with these in the room's
   # edge row(s) at the door; walking into it with the key turns them into
   # floor_tile (the door opens), and the next push goes through.

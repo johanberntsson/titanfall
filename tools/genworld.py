@@ -535,6 +535,8 @@ def main():
     floor_tile = int(art["floor_tile"])
     solid_tiles = {int(t) for t in art.get("solid_tiles") or []}
     laser_tiles = {int(t) for t in art.get("laser_tiles") or []}
+    beam_tile = int((art.get("laser_tiles") or [0])[0])   # the beam glyph (traps draw it)
+    trap_tiles = {int(t) for t in art.get("trap_tiles") or []}
     terminal_tiles = {int(t) for t in art.get("terminal_tiles") or []}
     door_tiles = {int(t) for t in art.get("door_tiles") or []}
     win_tiles = {int(t) for t in art.get("win_tiles") or []}
@@ -1162,6 +1164,34 @@ def main():
                           else "O" if p else "+" if f else "."
                           for b, t, f, d, p in zip(row, tgt, srch, own, pit))
             o.append(f"        !byte {','.join(str(v) for v in vals)}   ; y={y} {pic}")
+    o.append("")
+
+    # laser traps: every art.trap_tiles char; it fires down its char column
+    # at the human stepping onto a tile below it, up to the first solid tile
+    trap = {"room": [], "x": [], "y0": [], "row1": [], "col": []}
+    for i, room in enumerate(rooms):
+        mapdata = read_vchar64_map(room["vchar64_map"])
+        for off in range(ROOM_MAP_BYTES):
+            if mapdata[off] not in trap_tiles:
+                continue
+            col, row = off % 40, off // 40
+            x, y0 = col // 2, row // 2 + 1
+            if y0 > room["_maxy"] or walls[i][y0][x]:
+                print(f"genworld: warning: room {room['name']}: laser trap at map col "
+                      f"{col} row {row} has a wall right below it (it can never fire)")
+            trap["room"].append(i)
+            trap["x"].append(x)
+            trap["y0"].append(y0)
+            trap["row1"].append(row + 1)
+            trap["col"].append(col)
+    o.append("; ---- laser traps (art.trap_tiles): fire down their char column ----")
+    o.append(f"NUM_TRAPS = {len(trap['room'])}")
+    o.append(f"CFG_BEAM  = ${beam_tile:02x}   ; the beam glyph (art.laser_tiles[0])")
+    o.append(tbl("TRAP_ROOM", trap["room"]))
+    o.append(tbl("TRAP_X", trap["x"], "tile column it covers"))
+    o.append(tbl("TRAP_Y0", trap["y0"], "first tile row below it"))
+    o.append(tbl("TRAP_ROW1", trap["row1"], "map row of the first beam char"))
+    o.append(tbl("TRAP_COL", trap["col"], "map column of the beam"))
     o.append("")
 
     o.append("; ---- pits: every pit tile, so a room reset can undo a crate filling it ----")

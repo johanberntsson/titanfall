@@ -87,6 +87,12 @@ CR_NY      = $52
 PS_WX      = $53   ; ACTOR_PATROL_STEP: the waypoint it heads for
 PS_WY      = $54
 CR_PIT     = $55   ; CRATE_PUSH: 1 = the crate goes into a pit (fills it)
+TR_END     = $56   ; laser trap: first tile row its beam doesn't reach
+TR_ROW     = $57   ; laser trap: map row being drawn
+TRAP_ON    = $58   ; laser trap whose beam is on screen: index+1, 0 = none
+TRAP_LEN   = $59   ; its reach (TR_END when it was drawn)
+TR_MODE    = $5A   ; TRAP_ROWS: 0 = draw the beam, 1 = map chars back
+TR_TRAP    = $5B   ; TRAP_ROWS: the trap (X)
 LINK_JIF   = $44   ; robot link: frames into the current second (0-49)
 POPUP_ST   = $33   ; popup: 0=waiting for opening space to be released, 1=armed
 F2_PREV    = $30   ; F2 held last game frame (edge detect for the where-am-I popup)
@@ -520,6 +526,7 @@ SPRITES_END
         !source "src/cutscene.asm"
         !source "src/orders.asm"
         !source "src/crates.asm"
+        !source "src/traps.asm"
 HIGH_END
 !if HIGH_END > $C000 {
         !error "code/data above $4000 runs into the music at $C000"
