@@ -42,8 +42,10 @@ GOAL_DONE
         lda ITEM_STATE,y : rts
 GDN1    cmp #GOAL_OPENED : bne GDN2
         lda DOOR_OPEN,y : rts
-GDN2    cmp #GOAL_VISITED : bne GDNO
+GDN2    cmp #GOAL_VISITED : bne GDN3
         lda ROOM_SEEN,y : rts
+GDN3    cmp #GOAL_GATE : bne GDNO
+        lda GATE_STATE,y : and #2 : rts  ; latched open
 GDNO    lda #0 : rts
 
 ; =============================================================================

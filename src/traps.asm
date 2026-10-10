@@ -52,7 +52,7 @@ TRAP_OFF
         dex
         lda #1 : jsr TRAP_ROWS           ; map chars back
         lda #0 : sta TRAP_ON
-        jmp CRATE_DRAW_ALL               ; crates / filled pits on top again
+        jmp ROOM_OVERLAYS                ; crates, filled pits, gates on top again
 TOOUT   rts
 
 ; TRAP_REACH — X = trap: TR_END = the first tile row below it (from TRAP_Y0)

@@ -55,7 +55,7 @@ CRSL2   cpx #NUM_CRATES : bcs CRSD2
         lda CRATE_ROOM,x : jsr WALL_AT
         lda (PTR),y : ora #$05 : sta (PTR),y   ; solid + searchable
 CRSN2   inx : bne CRSL2
-CRSD2   rts
+CRSD2   jmp GATE_ROOMRESET               ; a gate held open by the plates closes
 
 ; RS_MINE — A = room: Z set if RESET_ROOM resets it (RS_ALL, or CUR_ROOM).
 ; Clobbers Y.
@@ -74,7 +74,8 @@ CRDL    cpx #NUM_CRATES : bcs CRDD
         lda CRATE_X,x : bmi CRDN         ; $ff: it filled a pit
         sta NEWX
         lda CRATE_Y,x : sta NEWY
-        lda #4 : jsr CRATE_PAINT
+        lda CRATE_KIND,x : asl : asl : clc : adc #4   ; its chars (CRATE_CH)
+        jsr CRATE_PAINT
 CRDN    inx : bne CRDL
 CRDD    ldx #0
 CRDPL   cpx #NUM_PITS : bcs CRDPD
@@ -82,13 +83,15 @@ CRDPL   cpx #NUM_PITS : bcs CRDPD
         lda PIT_FILLED,x : beq CRDPN
         lda PIT_X,x : sta NEWX
         lda PIT_Y,x : sta NEWY
-        lda #0 : jsr CRATE_PAINT
+        lda #1 : jsr CRATE_PAINT         ; floor
 CRDPN   inx : bne CRDPL
 CRDPD   rts
 
-; CRATE_PAINT — paint tile NEWX/NEWY of the screen: A = 4 a crate (CRATE_CH),
-; A = 0 plain floor (CFG_FLOOR), with their TILE_COLORS colours.
-; Preserves X; clobbers A/Y/PTR2/TMP/TMP2.
+; CRATE_PAINT — paint tile NEWX/NEWY of the screen (CUR_ROOM), with the
+; TILE_COLORS colours: A = 0 the room map's own chars (ROOM_MAP_n: what's
+; under a crate that moved away -- floor, or a plate), A = 1 plain floor
+; (CFG_FLOOR, a filled pit), A = 4 + kind*4 a crate/mirror (CRATE_CH).
+; Preserves X; clobbers A/Y/PTR/PTR2/TMP/TMP2.
 CRATE_PAINT
         sta TMP2
         txa : pha
@@ -96,10 +99,19 @@ CRATE_PAINT
         jsr ROW_PTR
         lda NEWX : asl : clc : adc PTR2 : sta PTR2
         bcc CRPNC : inc PTR2+1
-CRPNC   ldx #0
+CRPNC   lda PTR2 : sec : sbc #<(SCRN+80) : sta PTR       ; the same cell in
+        lda PTR2+1 : sbc #>(SCRN+80) : sta PTR+1         ;  the room's map
+        ldy CUR_ROOM
+        lda PTR : clc : adc ROOM_MAP_LO,y : sta PTR
+        lda PTR+1 : adc ROOM_MAP_HI,y : sta PTR+1
+        ldx #0
 CRPL    ldy CR_CELL,x                    ; 0, 1, 40, 41
-        lda TMP2 : beq CRPFL
-        lda CRATE_CH,x : jmp CRPPUT
+        lda TMP2 : beq CRPMAP
+        cmp #1 : beq CRPFL
+        stx TMP : clc : adc TMP : tax    ; CRATE_CH + kind*4 + cell
+        lda CRATE_CH-4,x : ldx TMP
+        jmp CRPPUT
+CRPMAP  lda (PTR),y : jmp CRPPUT
 CRPFL   lda #CFG_FLOOR
 CRPPUT  sta (PTR2),y
         stx TMP : tax
@@ -146,15 +158,21 @@ CPGO    lda CR_PIT : bne CPFILL
         lda CR_NX : sta CRATE_X,y
         lda CR_NY : sta CRATE_Y,y
         lda ACT_ROOM,x : cmp CUR_ROOM : bne CPOLD
-        lda #4 : jsr CRATE_PAINT
+        lda CRATE_KIND,y : asl : asl : clc : adc #4
+        jsr CRATE_PAINT
         jmp CPOLD
 CPFILL  jsr CR_FILL                      ; into a pit: both are gone, floor
-CPOLD   lda CR_OX : sta NEWX             ; the old one is floor again
+CPOLD   lda CR_OX : sta NEWX             ; the old one shows the map again
         lda CR_OY : sta NEWY
         lda ACT_ROOM,x : jsr WALL_AT
         lda (PTR),y : and #$FA : sta (PTR),y
         lda ACT_ROOM,x : cmp CUR_ROOM : bne CPDONE
         lda #0 : jsr CRATE_PAINT
+        txa : pha
+        jsr BEAM_UPDATE                  ; a mirror/crate moved: retrace (and
+        pla : tax                        ;  repaint filled pits, gates)
+        lda CR_OX : sta NEWX             ; (TRY_ACT steps onto it)
+        lda CR_OY : sta NEWY
 CPDONE  sec : rts
 
 ; CR_FREE — X = the pushing actor: carry clear if the crate can go to
@@ -198,5 +216,5 @@ CFLP    cpy #NUM_PITS : bcs CFLPD
         lda #1 : sta PIT_FILLED,y
 CFLPN   iny : bne CFLP
 CFLPD   lda ACT_ROOM,x : cmp CUR_ROOM : bne CFLOUT
-        lda #0 : jsr CRATE_PAINT         ; floor where the pit was
+        lda #1 : jsr CRATE_PAINT         ; floor where the pit was
 CFLOUT  rts

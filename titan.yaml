@@ -35,7 +35,8 @@ art:
   solid_tiles: [0x84, 0x85, 0x86, 0x87, 0x88, 0x89, 0x8a, 0x8b,
                 0xa4,                  # 0xa4: the missile bay's "keep out" border
                 0xa6,                  # 0xa6: the power cell (also a win target)
-                0xae]                  # 0xae: laser trap (sits in a wall)
+                0xae,                  # 0xae: laser trap (sits in a wall)
+                0xb3]                  # 0xb3: laser emitter (sits in a wall)
   # Crate chars (left/right half). A crate drawn on a whole tile (2x2 chars
   # at cols 2x..2x+1, rows 2y..2y+1) is movable: solid, but a player-driven
   # robot whose type has push: true pushes it one tile ahead (onto plain
@@ -55,6 +56,27 @@ art:
   # crate away and the beam reaches further), a pit doesn't. Above the
   # blocker the player is fried; below it it's safe. Robots aren't hit.
   trap_tiles: [0xae]
+  # Pressure plates and gates. A tile with a plate char is a pressure plate
+  # (walkable); the gate chars of a room are its gate (solid while closed).
+  # The gate is open while every plate in the room is loaded -- by the
+  # player, a robot or a crate -- and shuts again when one is emptied, unless
+  # something stands in it. Walking into the open gate latches it open for
+  # good (so the room behind it can't be shut off). goal done: {gate: room}.
+  plate_tiles: [0xb1]
+  gate_tiles: [0xb2]
+  # Laser emitters, mirrors and targets. An emitter (in an outer wall, at most
+  # one per room) fires a beam into the room all the time; it kills the player
+  # and robots. Mirrors are movable like crates (pushed by a push: robot) and
+  # are drawn as a whole tile with these chars (top left, top right, bottom
+  # left, bottom right); they turn the beam. A wall or crate stops it. When it
+  # hits the room's target, the target is destroyed and the room's gate
+  # latches open.
+  emitter_tiles: [0xb3]
+  target_tiles: [0xb8]
+  beam_h_tile: 0xb4                    # the horizontal beam (vertical: laser_tiles[0])
+  mirrors:
+    slash: [0xb5, 0xb6, 0xb6, 0xb5]    # /
+    backslash: [0xb7, 0xb5, 0xb5, 0xb7]  # \
   # Closed-door chars. A door with a key: is drawn with these in the room's
   # edge row(s) at the door; walking into it with the key turns them into
   # floor_tile (the door opens), and the next push goes through.
@@ -147,10 +169,8 @@ items:
     name: blue access card
     label: blue
     found_text: blue access card found!
-  green_card:                          # room 10's door (placeholder: in room 10's cabinet)
-    name: green access card
-    label: green
-    found_text: green access card found!
+  code_a2:
+    code: a                            # room 10's cabinet: pays for the room 10/11 dozers
   override:                            # placeholder goal of room 11
     name: launch override module
     label: override
@@ -395,27 +415,45 @@ rooms:
     vchar64_map: graphics/titan-map10.s
     label: room10
     player_start: {x: 18, y: 8}
-    goal: {text: open the door, done: {opened: room11}}
+    # Pressure plates: the gate in front of the doorway to room 11 opens
+    # while both plates -- (5,8) and (14,8) -- are loaded. You can't stand on
+    # one and walk through, so the dozer pushes the crate onto one plate and
+    # parks on the other. Don't push the crate along row 5: the pit at (8,5)
+    # swallows it (a death or leaving the room resets it).
+    goal: {text: open the gate, done: {gate: room10}}
+    robots:
+      - type: dozer
+        name: bot-1010  dozer
+        code: a
+        start: {x: 15, y: 4}           # no patrol: stays where you leave it
     things:
-      - item: green_card               # placeholder: the cabinet, top left
+      - item: code_a2                  # the cabinet, top left
         at: {x: 1, y: 3}
     doors:
       - at: {x1: 20, y1: 8, x2: 20, y2: 8}   # right wall opening, back to room 8
         leads_to: room8
         arrive: {x: 0}
-      - at: {x1: -1, y1: 7, x2: -1, y2: 8}   # left wall: the closed door (0xb0)
+      - at: {x1: -1, y1: 7, x2: -1, y2: 8}   # left wall opening (behind the gate)
         leads_to: room11
         arrive: {x: 19}
-        key: green_card
 
   - name: room11                       # left of room 10, the far end
     vchar64_map: graphics/titan-map11.s
     label: room11
     player_start: {x: 18, y: 7}
+    # Laser and mirrors: the emitter in the left wall fires along row 5. Push
+    # the / mirror up into (10,5) -- the beam turns up and row 5 frees on the
+    # right -- then the \ mirror left into (10,2): the beam runs along row 2
+    # into the target at (4,2), and the chamber's gate (top right) opens.
     goal: {text: find launch override, done: {found: override}}   # placeholder
+    robots:
+      - type: dozer
+        name: bot-1111  dozer
+        code: a
+        start: {x: 14, y: 8}
     things:
-      - item: override                 # placeholder: the cabinet, top left
-        at: {x: 1, y: 1}
+      - item: override                 # the cabinet in the chamber, top right
+        at: {x: 18, y: 1}
     doors:
       - at: {x1: 20, y1: 7, x2: 20, y2: 8}   # right wall opening, back to room 10
         leads_to: room10

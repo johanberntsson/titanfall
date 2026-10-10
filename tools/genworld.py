@@ -160,17 +160,25 @@ def wall_grid(mapdata, maxx, maxy, solid_tiles):
     return grid
 
 
-def find_crates(mapdata, crate_tiles):
-    """Crates in a room map. A tile whose 2x2 chars are all crate chars is a
-    movable crate; returns ([(x, y), ...], [map offsets of the crate chars
-    that belong to no such tile -- fixed, they stay plain walls])."""
+def find_crates(mapdata, crate_tiles, mirrors=()):
+    """Movable objects in a room map. A tile whose 2x2 chars are all crate
+    chars is a crate (kind 0); a tile drawn exactly like one of the mirror
+    patterns (4 chars, TL TR BL BR) is mirror kind 1, 2, ... Returns
+    ([(x, y, kind), ...], [map offsets of crate chars that belong to no such
+    tile -- fixed, they stay plain walls])."""
     movable, covered = [], set()
     for y in range(ROOM_MAP_BYTES // 80):
         for x in range(20):
             offs = [r * 40 + c for r in (2 * y, 2 * y + 1) for c in (2 * x, 2 * x + 1)]
-            if all(mapdata[o] in crate_tiles for o in offs):
-                movable.append((x, y))
-                covered.update(offs)
+            chars = [mapdata[o] for o in offs]
+            if all(ch in crate_tiles for ch in chars):
+                kind = 0
+            elif chars in [list(m) for m in mirrors]:
+                kind = 1 + [list(m) for m in mirrors].index(chars)
+            else:
+                continue
+            movable.append((x, y, kind))
+            covered.update(offs)
     fixed = [o for o in range(ROOM_MAP_BYTES)
              if mapdata[o] in crate_tiles and o not in covered]
     return movable, fixed
@@ -224,13 +232,14 @@ MAP_ROWS, MAP_COLS = 22, 40
 SC_HBAR, SC_VBAR = 0x43, 0x5D            # screen codes of the ROM box glyphs
 SC_UL, SC_UR, SC_LL, SC_LR = 0x55, 0x49, 0x4A, 0x4B   # rounded corners
 DIRS = {"left": (-1, 0), "right": (1, 0), "up": (0, -1), "down": (0, 1)}
+DIR_CODES = {"down": 0, "up": 1, "left": 2, "right": 3}   # DIR_* in titanfall.asm
 MAP_BOX_H = 4                            # top border, label, blank, bottom
 MAP_GAP_X, MAP_GAP_Y = 6, 2              # corridor length between boxes
 MAP_MIN_GAP_X = 2                        # shortest horizontal corridor when space is tight
                                          # (vertical corridors shrink to 1 row)
 GOAL_WIDTH = 32                          # orders line: 40 cols - "orders: "
 GOAL_DONE = " - done"                    # appended once the goal is achieved
-GOAL_FOUND, GOAL_OPENED, GOAL_VISITED = 1, 2, 3
+GOAL_FOUND, GOAL_OPENED, GOAL_VISITED, GOAL_GATE = 1, 2, 3, 4
 MAP_EXIT_X, MAP_EXIT_Y = 7, 2            # room an exit marker needs outside
 
 
@@ -542,12 +551,34 @@ def main():
     win_tiles = {int(t) for t in art.get("win_tiles") or []}
     pit_tiles = {int(t) for t in art.get("pit_tiles") or []}
     crate_tiles = {int(t) for t in art.get("crate_tiles") or []}
+    mirror_cfg = art.get("mirrors") or {}
+    mirrors = []                        # kind 1 = slash, 2 = backslash
+    for name in ("slash", "backslash"):
+        pat = [int(t) for t in (mirror_cfg.get(name) or [])]
+        if pat and len(pat) != 4:
+            die(f"art.mirrors.{name}: 4 chars (top left, top right, bottom left, bottom right)")
+        mirrors.append(pat)
+    if bool(mirrors[0]) != bool(mirrors[1]):
+        die("art.mirrors: give both slash and backslash")
+    mirrors = [m for m in mirrors if m]
+    mirror_chars = {c for m in mirrors for c in m}
+    plate_tiles = {int(t) for t in art.get("plate_tiles") or []}
+    gate_tiles = {int(t) for t in art.get("gate_tiles") or []}
+    emitter_tiles = {int(t) for t in art.get("emitter_tiles") or []}
+    target_tiles = {int(t) for t in art.get("target_tiles") or []}
+    beam_h_tile = int(art.get("beam_h_tile", 0))
+    if emitter_tiles and not beam_h_tile:
+        die("art.beam_h_tile is needed with emitter_tiles (the horizontal beam glyph)")
     missile_tiles = {int(t) for t in art.get("missile_tiles") or []}
     if not missile_tiles:
         die("art.missile_tiles is missing (the missile's chars, launched on game over)")
     targets = []                        # per room: grid[y][x] of win-target tiles
     pits = []                           # per room: grid[y][x] of pit tiles
-    crate = {"room": [], "x": [], "y": [], "ch": None}   # movable crates
+    crate = {"room": [], "x": [], "y": [], "kind": [], "ch": None}   # movable crates/mirrors
+    plate = {"room": [], "x": [], "y": []}                # pressure plate tiles
+    gate = {"room": [], "x": [], "y": []}                 # gate tiles (one gate per room)
+    tgt = {"room": [], "x": [], "y": []}                  # laser target tiles
+    emit = {"room": [], "x": [], "y": [], "dir": []}      # laser emitters (one per room)
     door_art = []                       # per door: [(map offset, new char), ...]
     if not laser_tiles:
         die("art.laser_tiles must list the laser beam/emitter screen codes")
@@ -727,8 +758,12 @@ def main():
             if done["visited"] not in room_index:
                 die(f"room {rname}: goal done: visited: unknown room {done['visited']!r}")
             kind, arg = GOAL_VISITED, room_index[done["visited"]]
+        elif "gate" in done:                # <room>'s gate latched open for good
+            if done["gate"] not in room_index:
+                die(f"room {rname}: goal done: gate: unknown room {done['gate']!r}")
+            kind, arg = GOAL_GATE, room_index[done["gate"]]
         elif done:
-            die(f"room {rname}: goal done: must be found:, opened: or visited:")
+            die(f"room {rname}: goal done: must be found:, opened:, visited: or gate:")
         if kind and not text:
             die(f"room {rname}: goal done: without a goal text")
         goal_kind.append(kind)
@@ -747,16 +782,57 @@ def main():
         targets.append(wall_grid(read_vchar64_map(room["vchar64_map"]),
                                  room["_maxx"], room["_maxy"], win_tiles))
         # crates are solid where they start (CRATE_MOVE moves the solid bit)
+        # gates and laser targets are solid too (opened/destroyed at runtime)
         walls.append(wall_grid(read_vchar64_map(room["vchar64_map"]),
-                               room["_maxx"], room["_maxy"], solid_tiles | crate_tiles))
-        movable, fixed = find_crates(read_vchar64_map(room["vchar64_map"]), crate_tiles)
-        for (x, y) in movable:
+                               room["_maxx"], room["_maxy"],
+                               solid_tiles | crate_tiles | mirror_chars | gate_tiles
+                               | target_tiles | emitter_tiles))
+        ri = len(walls) - 1
+        mapdata = read_vchar64_map(room["vchar64_map"])
+        mx, my = room["_maxx"], room["_maxy"]
+        for name, tiles, tbl_ in (("plate", plate_tiles, plate), ("gate", gate_tiles, gate),
+                                  ("target", target_tiles, tgt)):
+            grid = wall_grid(mapdata, mx, my, tiles)
+            for y, row in enumerate(grid):
+                for x, hit in enumerate(row):
+                    if hit:
+                        tbl_["room"].append(ri)
+                        tbl_["x"].append(x)
+                        tbl_["y"].append(y)
+                        searchable[ri][y][x] = False   # not search spots
+        for off in range(ROOM_MAP_BYTES):
+            if mapdata[off] in emitter_tiles:
+                x, y = off % 40 // 2, off // 40 // 2
+                d = ("right" if x == 0 else "left" if x == mx else
+                     "down" if y == 0 else "up" if y == my else None)
+                if d is None:
+                    die(f"room {room['name']}: laser emitter at map col {off % 40} row "
+                        f"{off // 40} isn't in an outer wall (it fires into the room)")
+                if ri in emit["room"]:
+                    die(f"room {room['name']}: more than one laser emitter char")
+                emit["room"].append(ri)
+                emit["x"].append(x)
+                emit["y"].append(y)
+                emit["dir"].append(DIR_CODES[d])
+        if ri in plate["room"] and ri not in gate["room"]:
+            die(f"room {room['name']}: pressure plates but no gate (art.gate_tiles)")
+        if ri in emit["room"] and ri not in tgt["room"]:
+            die(f"room {room['name']}: a laser emitter but no target (art.target_tiles)")
+        movable, fixed = find_crates(mapdata, crate_tiles, mirrors)
+        stray = [o for o in range(ROOM_MAP_BYTES) if mapdata[o] in mirror_chars
+                 and not any(o // 40 // 2 == y and o % 40 // 2 == x for (x, y, k) in movable if k)]
+        if stray:
+            die(f"room {room['name']}: mirror chars not forming a whole mirror tile at "
+                + ", ".join(f"col {o % 40} row {o // 40}" for o in stray))
+        for (x, y, kind) in movable:
             if x > room["_maxx"] or y > room["_maxy"]:
                 die(f"room {room['name']}: crate at ({x},{y}) is outside the room's bounds")
             crate["room"].append(len(walls) - 1)
             crate["x"].append(x)
             crate["y"].append(y)
-            mapdata = read_vchar64_map(room["vchar64_map"])
+            crate["kind"].append(kind)
+            if kind:
+                continue
             ch = [mapdata[r * 40 + c] for r in (2 * y, 2 * y + 1) for c in (2 * x, 2 * x + 1)]
             if crate["ch"] is None:
                 crate["ch"] = ch
@@ -914,8 +990,38 @@ def main():
     o.append(tbl("CRATE_ROOM", crate["room"]))
     o.append(tbl("CRATE_SX", crate["x"], "start tile (RESET_ROUND)"))
     o.append(tbl("CRATE_SY", crate["y"]))
-    o.append(tbl("CRATE_CH", crate["ch"] or [floor_tile] * 4,
-                 "the crate's 2x2 chars: top left, top right, bottom left, bottom right"))
+    o.append(tbl("CRATE_KIND", crate["kind"], "0 = crate, 1 = mirror /, 2 = mirror \\"))
+    o.append(tbl("CRATE_CH", (crate["ch"] or [floor_tile] * 4)
+                 + (mirrors[0] if mirrors else [floor_tile] * 4)
+                 + (mirrors[1] if mirrors else [floor_tile] * 4),
+                 "per kind (x4) the 2x2 chars: top left, top right, bottom left, bottom right"))
+    o.append("")
+    o.append("; ---- pressure plates, gates, laser targets (tiles) and emitters ----")
+    o.append(f"NUM_PLATES = {len(plate['room'])}")
+    o.append(f"NUM_GATES  = {len(gate['room'])}")
+    o.append(f"NUM_TGTS   = {len(tgt['room'])}")
+    o.append(f"NUM_EMITS  = {len(emit['room'])}")
+    o.append(f"CFG_BEAM_H = ${beam_h_tile:02x}   ; art.beam_h_tile")
+    for name, t in (("PLATE", plate), ("GATE", gate), ("TGT", tgt)):
+        o.append(tbl(f"{name}_ROOM", t["room"] or [0xFF]))
+        o.append(tbl(f"{name}_X", t["x"] or [0]))
+        o.append(tbl(f"{name}_Y", t["y"] or [0]))
+    o.append(tbl("EMIT_ROOM", emit["room"] or [0xFF]))
+    o.append(tbl("EMIT_X", emit["x"] or [0], "the emitter's tile (in the wall)"))
+    o.append(tbl("EMIT_Y", emit["y"] or [0]))
+    o.append(tbl("EMIT_DIR", emit["dir"] or [0], "DIR_* it fires"))
+    for name, chars in (("GATEART", gate_tiles), ("TGTART", target_tiles)):
+        o.append(f"ROOM_{name}_LO        ; per room: map offsets (lo, hi; $ff hi ends)")
+        o.append("        !byte " + ",".join(f"<ROOM_{name}_{i}" for i in range(len(rooms))))
+        o.append(f"ROOM_{name}_HI")
+        o.append("        !byte " + ",".join(f">ROOM_{name}_{i}" for i in range(len(rooms))))
+        for i, room in enumerate(rooms):
+            md = read_vchar64_map(room["vchar64_map"])
+            offs = [o_ for o_ in range(ROOM_MAP_BYTES) if md[o_] in chars]
+            o.append(f"ROOM_{name}_{i}")
+            for k in range(0, len(offs), 8):
+                o.append("        !byte " + ",".join(f"${x & 0xff:02x},${x >> 8:02x}" for x in offs[k:k + 8]))
+            o.append("        !byte $00,$ff")
     o.append("")
 
     o.append("; ---- rooms ----")
@@ -938,6 +1044,7 @@ def main():
     o.append(f"GOAL_FOUND = {GOAL_FOUND}     ; GOAL_KIND: done when ITEM_STATE,arg <> 0")
     o.append(f"GOAL_OPENED = {GOAL_OPENED}    ;  ... DOOR_OPEN,arg <> 0")
     o.append(f"GOAL_VISITED = {GOAL_VISITED}   ;  ... ROOM_SEEN,arg <> 0 (0 = never done)")
+    o.append(f"GOAL_GATE = {GOAL_GATE}      ;  ... GATE_STATE,arg = 2 (latched open)")
     o.append(tbl("GOAL_KIND", goal_kind))
     o.append(tbl("GOAL_ARG", goal_arg))
     o.append(f"GOAL_LO         ; {GOAL_WIDTH}-char goal (after \"orders: \"), and the same + \"{GOAL_DONE}\"")
@@ -1218,7 +1325,7 @@ def main():
                 x, y = crate["x"][ci], crate["y"][ci]
                 for r in (2 * y, 2 * y + 1):
                     for c in (2 * x, 2 * x + 1):
-                        data[r * 40 + c] = floor_tile
+                        data[r * 40 + c] = floor_tile   # crates and mirrors
         o.append(f"ROOM_MAP_{i}      ; {room['name']} -- {path}")
         for off in range(0, len(data), 16):
             row = ",".join(f"${b:02x}" for b in data[off:off + 16])
@@ -1260,6 +1367,7 @@ def main():
     # (starting at the start tiles: CRATE_RESET first clears the wall bits
     # where the crates are)
     o.append("PIT_FILLED  !fill NUM_PITS+1    ; 1 = a crate filled it (floor now)")
+    o.append("GATE_STATE  !fill NUM_ROOMS     ; per room: 0 closed, 1 held open (plates), 2 latched open")
     o.append("CRATE_X     ; current tile of each movable crate ($ff = it filled a pit)")
     o.append("        !byte " + ",".join(f"${v:02x}" for v in crate["x"] + [0]))
     o.append("CRATE_Y")

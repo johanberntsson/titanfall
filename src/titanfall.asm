@@ -198,6 +198,11 @@ CH_SOLID = $E0   ; solid block (ROM glyph; $A0 is a room tile in our charset)
 
         sei
 
+        ; BASIC ROM out ($A000-$BFFF becomes RAM; KERNAL and I/O stay in).
+        ; The game never calls BASIC, and the code/data above $4000 runs past
+        ; $A000 (HIGH_END) -- with BASIC in, the CPU would read the ROM there.
+        lda #$36   : sta $01
+
         ; Disable CIA1's Timer A IRQ (KERNAL jiffy clock). Left running, it
         ; keeps firing (~60Hz) through the same $0314 vector as our raster
         ; IRQ, so RASTER_IRQ runs on both sources combined (~110Hz) instead
@@ -528,8 +533,10 @@ SPRITES_END
         !source "src/orders.asm"
         !source "src/crates.asm"
         !source "src/traps.asm"
+        !source "src/plates.asm"
+        !source "src/beam.asm"
 HIGH_END
-!if HIGH_END > $C000 {
+!if HIGH_END > $C000 {                  ; ($A000-$BFFF is RAM: BASIC is banked out at init)
         !error "code/data above $4000 runs into the music at $C000"
 }
 

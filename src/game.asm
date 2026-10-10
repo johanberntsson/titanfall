@@ -36,6 +36,8 @@ GA_NOWIN
         jsr MOVE_PLAYER
         lda GAME_STATE : cmp #1 : bne GAME_TICK_DONE  ; terminal/win/map/popup entered this frame
         jsr TRAP_ZAP                     ; a robot in a laser trap's beam?
+        jsr PLATE_TICK                   ; pressure plates -> the room's gate
+        jsr BEAM_ZAP                     ; anyone in an emitter's beam?
         jsr GRACE_TICK                   ; (before UPDATE_SPRITE0: a pit hides it)
         jsr UPDATE_SPRITE0
         jsr UPDATE_ROBOT_SPRITES
@@ -70,6 +72,7 @@ SGDOOR  cpx #NUM_DOORS : bcs SGDOORD     ;  door stays open across respawns)
         lda #0 : sta DOOR_OPEN,x
         inx : bne SGDOOR
 SGDOORD jsr RESET_WALLS                  ; their tiles solid again, none searched
+        jsr GATE_RESET                   ; gates closed, laser targets intact
         ldx #0                           ; no room visited yet (goal visited:)
 SGSEEN  cpx #NUM_ROOMS : bcs SGSEEND
         lda #0 : sta ROOM_SEEN,x
@@ -196,6 +199,7 @@ LASER_DASH = $18                        ; the beam's lit pixels (00011000)
 CH_BEAM    = CHARSET+$81*8              ; beam, top emitter, bottom emitter
 CH_EMIT_T  = CHARSET+$82*8
 CH_EMIT_B  = CHARSET+$83*8
+CH_BEAM_H  = CHARSET+CFG_BEAM_H*8         ; the emitter's horizontal beam
 
 ANIM_LASER
         ldx #7
@@ -205,6 +209,8 @@ ALBEAM  lda CH_BEAM,x : eor #LASER_DASH : sta CH_BEAM,x
 ALEMIT  lda CH_EMIT_T+4,x : eor #LASER_DASH : sta CH_EMIT_T+4,x
         lda CH_EMIT_B,x : eor #LASER_DASH : sta CH_EMIT_B,x
         dex : bpl ALEMIT
+        lda CH_BEAM_H+3 : eor #$FF : sta CH_BEAM_H+3   ; the horizontal beam
+        lda CH_BEAM_H+4 : eor #$FF : sta CH_BEAM_H+4   ;  (dashes, rows 3-4)
         rts
 
 ; =============================================================================
@@ -631,7 +637,9 @@ TMWALL  clc : rts                    ; wall: blocked (try the next direction)
 TMPIT   lda #2 : sta PLR_DYING       ; like a laser, but the sprite vanishes
         bne TMCOMMIT                 ;  on arrival (UPDATE_SPRITE0)
 TMNOWALL
-        jsr LASER_AT : bcc TMCOMMIT
+        jsr LASER_AT : bcs TMLASER
+        jsr BEAM_AT : bcc TMCOMMIT       ; an emitter's beam kills like a laser
+TMLASER
         ; stepped into an active laser: take the step, but already dying —
         ; no more input, and UPDATE_SPRITE0 kills the player once the sprite has
         ; glided onto the laser tile (like a driven robot, UPD_DYING)
@@ -1578,8 +1586,7 @@ DRMDOOR cpy #NUM_DOORS : bcs DRMDOORD
 DRMDOORN iny : bne DRMDOOR
 DRMDOORD
         jsr CRATE_DRAW_ALL           ; the movable crates where they are now
-        lda #0 : sta TRAP_ON         ; (the redraw wiped any trap beam)
-        jsr TRAP_SHOW                ; player under a laser trap: beam on
+        jsr ROOM_DYNAMIC             ; gate, emitter beam, trap beam (beam.asm)
         jsr WIN_FLICKER              ; power cell in its current colour
         jsr SNAP_ALL                 ; no gliding across a room change
         jmp ASSIGN_SPRITES           ; room changed: remap actors -> sprites
