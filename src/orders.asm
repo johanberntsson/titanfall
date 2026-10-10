@@ -21,8 +21,12 @@ ORDSET  sta TMP2
 ORDGL   lda (PTR),y : jsr PET2SCREEN : sta SCRN+48,y
         lda TMP2 : sta CRAM+48,y
         dey : bpl ORDGL
-        ldy #7
-ORDLL   lda ORD_LBL,y : jsr PET2SCREEN : sta SCRN+40,y
+        ldy #0 : lda (PTR),y : sta TMP   ; a room without a goal (blank text):
+        ldy #7                           ;  no "orders:" label either
+ORDLL   lda #' '
+        ldx TMP : cpx #' ' : beq ORDLBL
+        lda ORD_LBL,y
+ORDLBL  jsr PET2SCREEN : sta SCRN+40,y
         lda #YELLOW : sta CRAM+40,y
         dey : bpl ORDLL
         rts
