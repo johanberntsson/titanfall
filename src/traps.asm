@@ -96,3 +96,31 @@ TRWSET  sta (PTR2),y
 TRWD    rts
 
 !if <SCRN != 0 { !error "TRAP_ROWS assumes SCRN is page-aligned" }
+
+; TRAP_ZAP — every game frame (GAME_ALIVE, after the robots and the player
+; have moved): while a beam is on (TRAP_ON), any living robot whose tile it
+; reaches — its column, from TRAP_Y0 down to above the blocker TRAP_LEN —
+; is destroyed (ACT_ALIVE=0: hidden, no AI, no link, until a room reset),
+; with the laser-burnout effect (zap, yellow border flash). A driven robot
+; hands control back to the human. So a player safe behind the blocker can
+; fry a robot that crosses the beam. Clobbers A/X/Y.
+TRAP_ZAP
+        ldy TRAP_ON : beq TZOUT
+        dey                              ; Y = the trap
+        ldx #0
+TZL     cpx #NUM_ACTORS : bcs TZOUT
+        lda ACT_ALIVE,x : cmp #1 : bne TZN       ; dead, or dying in a laser
+        lda ACT_ROOM,x : cmp CUR_ROOM : bne TZN
+        lda ACT_X,x : cmp TRAP_X,y : bne TZN
+        lda ACT_Y,x : cmp TRAP_Y0,y : bcc TZN    ; above the trap's first tile
+        cmp TRAP_LEN : bcs TZN                   ; behind the blocker
+        lda #0 : sta ACT_ALIVE,x                 ; fried
+        txa : clc : adc #1 : cmp PLAYER_MODE : bne TZFX
+        lda #0 : sta PLAYER_MODE                 ; it was the driven one
+TZFX    tya : pha
+        jsr SOUND_ZAP_START
+        pla : tay
+        lda #YELLOW : sta VIC_BRDCOL
+        lda #15 : sta BFLASH
+TZN     inx : bne TZL
+TZOUT   rts

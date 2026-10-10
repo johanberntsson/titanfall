@@ -93,6 +93,7 @@ TRAP_ON    = $58   ; laser trap whose beam is on screen: index+1, 0 = none
 TRAP_LEN   = $59   ; its reach (TR_END when it was drawn)
 TR_MODE    = $5A   ; TRAP_ROWS: 0 = draw the beam, 1 = map chars back
 TR_TRAP    = $5B   ; TRAP_ROWS: the trap (X)
+GRACE_TMR  = $5C   ; frames of grace left after a respawn (robots can't see/touch you)
 LINK_JIF   = $44   ; robot link: frames into the current second (0-49)
 POPUP_ST   = $33   ; popup: 0=waiting for opening space to be released, 1=armed
 F2_PREV    = $30   ; F2 held last game frame (edge detect for the where-am-I popup)

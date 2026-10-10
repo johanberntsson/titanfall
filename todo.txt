@@ -2,6 +2,11 @@
 #           OPEN
 # ------------------------
 
+
+# ------------------------
+#           DONE
+# ------------------------
+
 Unless the order/goal is done, the room should be restored to the initial
 condition when entering it, similar to when respawning. This is to make
 sure that the room is in a winable state, so the problem can be solved.
@@ -13,11 +18,6 @@ Implement moveable crates (171, 173)
 Implement holes (172)
 
 Dozer can push moveable crates
-
-
-# ------------------------
-#           DONE
-# ------------------------
 
 The game over screen could show the missile room (without sprites), and then move/scroll
 the missile up and out of the screen (leaving empty characters where the missile had been before).

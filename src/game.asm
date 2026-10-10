@@ -35,6 +35,8 @@ GA_NOWIN
         lda GAME_STATE : cmp #1 : bne GAME_TICK_DONE  ; terminal/popup opened by a key
         jsr MOVE_PLAYER
         lda GAME_STATE : cmp #1 : bne GAME_TICK_DONE  ; terminal/win/map/popup entered this frame
+        jsr TRAP_ZAP                     ; a robot in a laser trap's beam?
+        jsr GRACE_TICK                   ; (before UPDATE_SPRITE0: a pit hides it)
         jsr UPDATE_SPRITE0
         jsr UPDATE_ROBOT_SPRITES
         jsr FIELD_TICK                   ; (both before the collision read)
@@ -123,6 +125,7 @@ RESET_ROUND
         lda #0   : sta KEY_U : sta KEY_D : sta KEY_L : sta KEY_R
         lda #0   : sta DEATH_TMR
         lda #0   : sta PLR_DYING
+        lda #0   : sta GRACE_TMR         ; (APPLY_DEATH_PENALTY sets it after)
         lda #0   : sta BFLASH
         lda #0   : sta SND_TMR
         lda #0   : sta PLAYER_MODE
@@ -215,6 +218,26 @@ PLAYER_DIE
         jmp SOUND_ZAP_START
 
 ; =============================================================================
+; GRACE_TICK — the grace period after a respawn (GRACE_TMR, set by
+; APPLY_DEATH_PENALTY): GRACE_LEN frames in which robots don't see the player
+; (SEES_PLAYER: no rush, shot or force field) and touching one doesn't kill
+; (CHECK_SPRITE_HIT); lasers, pits and traps still do. The player sprite
+; blinks meanwhile and is shown for good when it ends. Runs from GAME_ALIVE,
+; so it pauses with the clock (popups, terminal, map).
+; =============================================================================
+GRACE_LEN = 100                         ; 2 s at 50 Hz
+
+GRACE_TICK
+        lda GRACE_TMR : beq GTOUT
+        dec GRACE_TMR
+        lda GRACE_TMR : beq GTON         ; over: visible again
+        and #4 : beq GTON                ; blink: 4 frames on, 4 off
+        lda VIC_SPEN : and #$FE : sta VIC_SPEN
+        rts
+GTON    lda VIC_SPEN : ora #$01 : sta VIC_SPEN
+GTOUT   rts
+
+; =============================================================================
 ; APPLY_DEATH_PENALTY — Impossible Mission style: laser/robot death no longer
 ; ends the game outright. Subtract 30 minutes from the countdown clock
 ; (clamped at 0:00:00, never negative), then either respawn (RESET_ROUND,
@@ -245,7 +268,9 @@ ADPRESPAWN
         ; same room, where the room was entered (RESET_ROUND), and counts as
         ; entering it with these counts, so CODE_ENT stays.
         jsr RESTORE_CODES
-        jmp RESET_ROUND
+        jsr RESET_ROUND
+        lda #GRACE_LEN : sta GRACE_TMR   ; a moment before the robots notice
+        rts
 
 ; RESTORE_CODES — the security code counts back to what they were on
 ; entering the room (CODE_ENT; codes found there were added to it too).
@@ -1068,7 +1093,7 @@ TILE_TO_PIXEL_X
 ; =============================================================================
 CHECK_SPRITE_HIT
         lda VIC_SPCOLL : sta TMP
-        lda PLAYER_MODE : bne SPRHITOK
+        lda PLAYER_MODE : ora GRACE_TMR : bne SPRHITOK   ; (grace: no robot kills)
         lda DEATH_TMR : bne SPRHITOK
         lda TMP : and #$01 : beq SPRHITOK
         jmp PLAYER_DIE                  ; same death as a laser
@@ -1240,7 +1265,7 @@ RANDNF  sta LFSR_ST
 ; Preserves X; clobbers A/Y/NEWX/NEWY/PTR/TMP.
 ; ---------------------------------------------------------------------------
 SEES_PLAYER
-        lda PLAYER_MODE : ora PLR_DYING : bne HSNO
+        lda PLAYER_MODE : ora PLR_DYING : ora GRACE_TMR : bne HSNO
         lda ACT_ROOM,x : cmp CUR_ROOM : bne HSNO
         lda ACT_Y,x : cmp PLR_Y : bne HSNO
         sta NEWY

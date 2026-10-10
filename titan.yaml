@@ -279,6 +279,13 @@ rooms:
     label: room 6
     player_start: {x: 10, y: 5}
     goal: {text: open the door, done: {opened: room8}}
+    robots:
+      - type: tripod
+        name: bot-6161  tripod
+        code: a
+        idle: roam                     # wanders the whole room
+        attack: rush                   # rushes you when you're on its row
+        start: {x: 14, y: 8}
     doors:
       - at: {x1: -1, y1: 5, x2: -1, y2: 6}   # left wall opening, back to room 3
         leads_to: room3
