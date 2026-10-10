@@ -784,12 +784,17 @@ def main():
                         f"(add its chars to art.solid_tiles)")
 
     # closed doors: a tile with art.door_tiles chars is solid. A keyed
-    # door's tiles (from its art patches) also carry the door index + 1 in
+    # door's tiles (from its art patches) also carry its keyed-door number
+    # + 1 (its position among the keyed doors, KEYDOOR/DOOR_KNUM) in
     # bits 4-7 of the wall byte: pushing into one opens the door (or shows
     # the locked popup), and opening clears their solid bit at runtime. For
     # the placement checks below they count as open (door arrivals land on
     # them once the door is open). Door art of no keyed door is plain wall.
     door_owner = []                     # per room: {(x, y): door index}
+    keyed = [di for di in range(len(door["room"])) if door["key"][di]]
+    if len(keyed) > 15:
+        die(f"{len(keyed)} keyed doors - at most 15 (4 bits in the wall grid)")
+    knum = {di: k for k, di in enumerate(keyed)}
     for ri, room in enumerate(rooms):
         owner = {}
         for di, patches in enumerate(door_art):
@@ -798,9 +803,6 @@ def main():
             for off, _ in patches:
                 x, y = off % 40 // 2, off // 40 // 2
                 if y < len(walls[ri]) and x < len(walls[ri][y]) and not walls[ri][y][x]:
-                    if di + 1 > 15:
-                        die(f"room {room['name']}: keyed door #{di} - only the "
-                            f"first 15 doors in titan.yaml can have a key")
                     owner[(x, y)] = di
         door_owner.append(owner)
         dgrid = wall_grid(read_vchar64_map(room["vchar64_map"]),
@@ -1049,6 +1051,10 @@ def main():
             ("DOOR_AY", "ay", ""),
             ("DOOR_KEY", "key", "required item index + 1, 0 = none")):
         o.append(tbl(name, [byte(v, name) for v in door[key]], comment))
+    o.append(tbl("DOOR_KNUM", [knum[di] + 1 if di in knum else 0
+                               for di in range(len(door["room"]))],
+                 "keyed-door number + 1 (wall grid bits 4-7), 0 = no key"))
+    o.append(tbl("KEYDOOR", keyed or [0], "keyed-door number -> door index"))
     o.append("")
 
     o.append("; ---- lasers ----")
@@ -1151,7 +1157,7 @@ def main():
             tgt, srch, pit = targets[i][y], searchable[i][y], pits[i][y]
             own = [door_owner[i].get((x, y)) for x in range(len(row))]
             vals = [(1 if b else 0) | (2 if t or p else 0) | (4 if f else 0)
-                    | (0 if d is None else 1 | (d + 1) << 4)
+                    | (0 if d is None else 1 | (knum[d] + 1) << 4)
                     for b, t, f, d, p in zip(row, tgt, srch, own, pit)]
             for x, p in enumerate(pit):          # pits a crate can fill
                 if p:

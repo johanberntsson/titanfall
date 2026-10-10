@@ -58,7 +58,7 @@ art:
   # Closed-door chars. A door with a key: is drawn with these in the room's
   # edge row(s) at the door; walking into it with the key turns them into
   # floor_tile (the door opens), and the next push goes through.
-  door_tiles: [0xa3]
+  door_tiles: [0xa3, 0xb0]            # 0xa3 in a top/bottom wall, 0xb0 in a side wall
   # Win targets: a bolt fired by a player-driven shooter robot that enters a
   # tile containing any of these chars wins the game (the power cell).
   win_tiles: [0xa6]
@@ -147,6 +147,14 @@ items:
     name: blue access card
     label: blue
     found_text: blue access card found!
+  green_card:                          # room 10's door (placeholder: in room 10's cabinet)
+    name: green access card
+    label: green
+    found_text: green access card found!
+  override:                            # placeholder goal of room 11
+    name: launch override module
+    label: override
+    found_text: launch override module found!
 
 # Rooms. goal: is the room's line of orders, shown on row 1 as "orders:
 # <text>" while the player is in the room (max 25 chars). Optional done:
@@ -339,6 +347,9 @@ rooms:
       - at: {x1: 12, y1: 11, x2: 16, y2: 11} # bottom wall opening, back to room 6
         leads_to: room6
         arrive: {y: 0}
+      - at: {x1: -1, y1: 8, x2: -1, y2: 8}   # left wall opening (only tile row 8
+        leads_to: room10                     #  is open: the art's rows 15-18)
+        arrive: {x: 19}
 
   - name: room9                        # between room 2 and room 1; the arcade room (later)
     vchar64_map: graphics/titan-map09.s
@@ -378,4 +389,34 @@ rooms:
         arrive: {x: 19}
       - at: {x1: 20, y1: 5, x2: 20, y2: 6}   # right wall opening, to room 1
         leads_to: room1
+        arrive: {x: 0}
+
+  - name: room10                       # left of room 8 (top row of the map)
+    vchar64_map: graphics/titan-map10.s
+    label: room10
+    player_start: {x: 18, y: 8}
+    goal: {text: open the door, done: {opened: room11}}
+    things:
+      - item: green_card               # placeholder: the cabinet, top left
+        at: {x: 1, y: 3}
+    doors:
+      - at: {x1: 20, y1: 8, x2: 20, y2: 8}   # right wall opening, back to room 8
+        leads_to: room8
+        arrive: {x: 0}
+      - at: {x1: -1, y1: 7, x2: -1, y2: 8}   # left wall: the closed door (0xb0)
+        leads_to: room11
+        arrive: {x: 19}
+        key: green_card
+
+  - name: room11                       # left of room 10, the far end
+    vchar64_map: graphics/titan-map11.s
+    label: room11
+    player_start: {x: 18, y: 7}
+    goal: {text: find launch override, done: {found: override}}   # placeholder
+    things:
+      - item: override                 # placeholder: the cabinet, top left
+        at: {x: 1, y: 1}
+    doors:
+      - at: {x1: 20, y1: 7, x2: 20, y2: 8}   # right wall opening, back to room 10
+        leads_to: room10
         arrive: {x: 0}

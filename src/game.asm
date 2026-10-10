@@ -624,8 +624,9 @@ TMXOK   lda NEWY : cmp ROOM_MAXY,x : bcc TMYOK : beq TMYOK
         jmp TRY_DOOR
 TMYOK   lda CUR_ROOM : jsr WALL_AT : bcc TMNOWALL
         bmi TMPIT                    ; a pit (N): step in and fall
-        lsr : lsr : lsr : beq TMWALL ; a closed keyed door's tile (door + 1)?
-        tax : dex : jmp DOOR_ENTER   ;  pushing it: locked popup or open it
+        lsr : lsr : lsr : beq TMWALL ; a closed keyed door's tile (keyed no. + 1)?
+        tax : lda KEYDOOR-1,x : tax  ;  -> door index
+        jmp DOOR_ENTER               ;  pushing it: locked popup or open it
 TMWALL  clc : rts                    ; wall: blocked (try the next direction)
 TMPIT   lda #2 : sta PLR_DYING       ; like a laser, but the sprite vanishes
         bne TMCOMMIT                 ;  on arrival (UPDATE_SPRITE0)
@@ -704,7 +705,7 @@ DENDRW  jsr SAVE_ENTRY               ; entering a room: respawn point, codes
 
 ; ---------------------------------------------------------------------------
 ; OPEN_DOOR_WALLS — X = door: clear the solid bit of its tiles in its room's
-; wall grid (ROOM_WALLS_n, bits 4-7 = door index + 1; genworld.py marks a
+; wall grid (ROOM_WALLS_n, bits 4-7 = keyed-door number + 1, DOOR_KNUM; genworld.py marks a
 ; keyed door's tiles solid). RESET_WALLS (SETUP_GAME) sets the solid
 ; bit of every keyed door's tiles again and forgets which tiles have been
 ; searched (bit 3, SEARCH_TICK). Preserve X; clobber A/Y/PTR/TMP.
@@ -713,7 +714,7 @@ OPEN_DOOR_WALLS
         ldy DOOR_ROOM,x
         lda ROOM_WALL_LO,y : sta PTR
         lda ROOM_WALL_HI,y : sta PTR+1
-        txa : clc : adc #1
+        lda DOOR_KNUM,x              ; its keyed-door number + 1
         asl : asl : asl : asl : sta TMP
         ldy #0
 ODWL    lda (PTR),y : and #$F0 : cmp TMP : bne ODWN
