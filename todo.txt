@@ -2,10 +2,25 @@
 #           OPEN
 # ------------------------
 
+Set default in terminal to logoff to avoid miss-clicks
+
+Kill player if run over by robot or shot (as robot)
+
+Implement pause and restart 
+
+The final line (cards: ) is flickering
+
+Map view seem to stress connections rather than rooms
+
+All rooms need a label
+
+Dont show rooms that haven't been visited yet
 
 # ------------------------
 #           DONE
 # ------------------------
+
+Add 2026 on the intro screen
 
 Unless the order/goal is done, the room should be restored to the initial
 condition when entering it, similar to when respawning. This is to make

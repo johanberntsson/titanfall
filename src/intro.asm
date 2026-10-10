@@ -129,7 +129,7 @@ BLOFF   lda #CH_SPC
 ; =============================================================================
 ; Intro strings — all exactly 40 bytes
 ; =============================================================================
-ITR_AUTH    !pet "by johan berntsson"
+ITR_AUTH    !pet "2026 by johan berntsson (release 1)"
 ITR_AUTH_LEN = * - ITR_AUTH
 ITR_TAG     !pet G_VERT_BAR, "  infiltrate. subvert. stop launch.   ", G_VERT_BAR
 ITR_M1      !pet G_VERT_BAR, "  mission: abort launch sequence      ", G_VERT_BAR
