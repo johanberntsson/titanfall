@@ -2,6 +2,19 @@
 #           OPEN
 # ------------------------
 
+Unless the order/goal is done, the room should be restored to the initial
+condition when entering it, similar to when respawning. This is to make
+sure that the room is in a winable state, so the problem can be solved.
+
+Implement laser traps
+
+Implement moveable crates (171, 173)
+
+Implement holes (172)
+
+Dozer can push moveable crates
+
+
 # ------------------------
 #           DONE
 # ------------------------
