@@ -218,7 +218,7 @@ rooms:
     vchar64_map: graphics/titan-map03.s
     label: room 3
     player_start: {x: 8, y: 9}
-    goal: {text: find security code, done: {found: code_b1}}
+    goal: {text: find the east wing, done: {visited: room6}}
     robots:
       - type: tripod
         name: bot-4410  tripod
@@ -226,9 +226,6 @@ rooms:
         attack: forcefield             # advances behind a force field when it sees you
         start: {x: 14, y: 7}
         patrol: [{x: 14, y: 7}, {x: 4, y: 7}]
-    things:
-      - item: code_b1                  # by the crates, bottom left
-        at: {x: 2, y: 9}
     doors:
       - at: {x1: 6, y1: 11, x2: 10, y2: 11}  # bottom wall opening, back to room 2
         leads_to: room2
@@ -319,8 +316,25 @@ rooms:
 
   - name: room8
     vchar64_map: graphics/titan-map08.s
-    label: room 8
-    player_start: {x: 10, y: 5}
+    label: vault
+    player_start: {x: 14, y: 8}
+    # The upper half (through the gap on the right) is guarded by a sentry
+    # shooting along row 3, where the cabinet with the code is. It can't be
+    # taken over; the laser traps in the top wall can fry it: stand under
+    # the crate at (9,4) or (5,4) -- the beam comes on, you're safe behind
+    # the crate -- and wait for the sentry to walk through the beam.
+    goal: {text: find security code, done: {found: code_b1}}
+    robots:
+      - type: sentry
+        name: bot-9090  sentry
+        locked: true
+        code: b
+        attack: shoot                  # fires bolts along row 3
+        start: {x: 12, y: 3}
+        patrol: [{x: 12, y: 3}, {x: 2, y: 3}]   # (13,3) is a crate
+    things:
+      - item: code_b1                  # the cabinet, far left on row 3
+        at: {x: 1, y: 3}
     doors:
       - at: {x1: 12, y1: 11, x2: 16, y2: 11} # bottom wall opening, back to room 6
         leads_to: room6
