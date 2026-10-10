@@ -128,33 +128,8 @@ RESET_ROUND
         lda #0   : sta PLAYER_MODE
         lda #DIR_DOWN : sta PLR_DIR
         lda #0   : sta PLR_ANIM
-
-        ; the actors back at their start positions, alive, heading for
-        ; patrol waypoint 1, standing still facing their type's first
-        ; direction; the lasers back on — in this room only after a death
-        ; (other rooms keep their burnt-out lasers and destroyed robots),
-        ; in every room on a new game (RS_ALL)
-        ldx #0
-RSRACT  cpx #NUM_ACTORS : bcs RSRACTD
-        lda RS_ALL : bne RSRAGO
-        lda ACT_ROOM,x : cmp CUR_ROOM : bne RSRAN
-RSRAGO  lda ACT_SX,x : sta ACT_X,x
-        lda ACT_SY,x : sta ACT_Y,x
-        lda #1 : sta ACT_TGT,x
-        lda #1 : sta ACT_ALIVE,x
-        lda #0 : sta ACT_ANIM,x
-        lda #0 : sta ACT_FAST,x
-        ldy ACT_TYPE,x
-        lda TYPE_DIR0,y : sta ACT_DIR,x
-RSRAN   inx : bne RSRACT
-RSRACTD
-        ldx #0
-RSRLSR  cpx #NUM_LASERS : bcs RSRLSRD
-        lda RS_ALL : bne RSRLGO
-        lda LASER_ROOM,x : cmp CUR_ROOM : bne RSRLN
-RSRLGO  lda #0 : sta LASER_STATE,x
-RSRLN   inx : bne RSRLSR
-RSRLSRD lda #0 : sta RS_ALL              ; (the next RESET_ROUND is a respawn)
+        jsr RESET_ROOM
+        lda #0 : sta RS_ALL              ; (the next RESET_ROUND is a respawn)
         lda #ROB_HALF-1 : sta ROB_TMR
         lda #0 : sta ROB_PHASE
 
@@ -175,6 +150,35 @@ RSRLSRD lda #0 : sta RS_ALL              ; (the next RESET_ROUND is a respawn)
         lda VIC_SPCOLL
         lda VIC_SPEN : ora #$01 : sta VIC_SPEN
         rts
+
+; RESET_ROOM — the actors back at their start positions, alive, heading for
+; patrol waypoint 1, standing still facing their type's first direction;
+; the lasers back on; the crates back where they started — in CUR_ROOM
+; (other rooms keep their burnt-out lasers, destroyed robots and pushed
+; crates), in every room with RS_ALL (a new game). From RESET_ROUND (new
+; game, respawn) and LEAVE_ROOM (leaving a room whose goal isn't done).
+RESET_ROOM
+        ldx #0
+RSRACT  cpx #NUM_ACTORS : bcs RSRACTD
+        lda RS_ALL : bne RSRAGO
+        lda ACT_ROOM,x : cmp CUR_ROOM : bne RSRAN
+RSRAGO  lda ACT_SX,x : sta ACT_X,x
+        lda ACT_SY,x : sta ACT_Y,x
+        lda #1 : sta ACT_TGT,x
+        lda #1 : sta ACT_ALIVE,x
+        lda #0 : sta ACT_ANIM,x
+        lda #0 : sta ACT_FAST,x
+        ldy ACT_TYPE,x
+        lda TYPE_DIR0,y : sta ACT_DIR,x
+RSRAN   inx : bne RSRACT
+RSRACTD
+        ldx #0
+RSRLSR  cpx #NUM_LASERS : bcs RSRLSRD
+        lda RS_ALL : bne RSRLGO
+        lda LASER_ROOM,x : cmp CUR_ROOM : bne RSRLN
+RSRLGO  lda #0 : sta LASER_STATE,x
+RSRLN   inx : bne RSRLSR
+RSRLSRD jmp CRATE_RESET                ; the crates back where they started
 
 ; =============================================================================
 ; ANIM_LASER — make every laser beam crawl by flipping its dash pattern in
@@ -240,12 +244,18 @@ ADPRESPAWN
         ; codes spent in earlier rooms stay spent). The respawn is in the
         ; same room, where the room was entered (RESET_ROUND), and counts as
         ; entering it with these counts, so CODE_ENT stays.
-        ldx #0
-ADPCODE cpx #NUM_CODES : bcs ADPCODED
-        lda CODE_ENT,x : sta CODE_CNT,x
-        inx : bne ADPCODE
-ADPCODED
+        jsr RESTORE_CODES
         jmp RESET_ROUND
+
+; RESTORE_CODES — the security code counts back to what they were on
+; entering the room (CODE_ENT; codes found there were added to it too).
+; Preserves X.
+RESTORE_CODES
+        ldy #0
+RSCODE  cpy #NUM_CODES : bcs RSCODED
+        lda CODE_ENT,y : sta CODE_CNT,y
+        iny : bne RSCODE
+RSCODED rts
 
 ; =============================================================================
 ; DRAW_HUD_STATIC
@@ -588,9 +598,12 @@ TRY_MOVE
 TMXOK   lda NEWY : cmp ROOM_MAXY,x : bcc TMYOK : beq TMYOK
         jmp TRY_DOOR
 TMYOK   lda CUR_ROOM : jsr WALL_AT : bcc TMNOWALL
+        bmi TMPIT                    ; a pit (N): step in and fall
         lsr : lsr : lsr : beq TMWALL ; a closed keyed door's tile (door + 1)?
         tax : dex : jmp DOOR_ENTER   ;  pushing it: locked popup or open it
 TMWALL  clc : rts                    ; wall: blocked (try the next direction)
+TMPIT   lda #2 : sta PLR_DYING       ; like a laser, but the sprite vanishes
+        bne TMCOMMIT                 ;  on arrival (UPDATE_SPRITE0)
 TMNOWALL
         jsr LASER_AT : bcc TMCOMMIT
         ; stepped into an active laser: take the step, but already dying —
@@ -650,7 +663,10 @@ DENUNLK lda #2 : sta ITEM_STATE,y    ; the key is used up (leaves the card slot)
 DENOPEN lda DOOR_DEST,x : cmp #$FF : bne DENGO
         jsr SETUP_WIN                ; $FF = mission exit
         sec : rts
-DENGO   sta CUR_ROOM
+DENGO   pha
+        jsr LEAVE_ROOM               ; goal not done: roll the room back
+        pla
+        sta CUR_ROOM
         lda DOOR_AX,x : cmp #$FF : beq DENAY   ; $FF = keep current coord
         sta PLR_X
 DENAY   lda DOOR_AY,x : cmp #$FF : beq DENDRW
@@ -735,7 +751,8 @@ TRY_ACT
 TAXOK   lda NEWY : cmp ROOM_MAXY,y : bcc TAYOK : beq TAYOK
         clc : rts
 TAYOK   lda ACT_ROOM,x : jsr WALL_AT : bcc TANOWALL
-        clc : rts                    ; wall: blocked
+        jsr CRATE_PUSH : bcs TANOWALL ; a crate it pushed: step onto its old
+        rts                          ;  tile; else a wall: blocked (C clear)
 TANOWALL
         lda NEWX : sta ACT_X,x
         lda NEWY : sta ACT_Y,x
@@ -750,7 +767,11 @@ TAOK    sec : rts
 ; solid; A = the other bits shifted down: A bit 0 = win target (BOLT_TICK),
 ; A bit 1 = searchable (SEARCH_TICK). genworld.py derives ROOM_WALLS_n (20
 ; bytes per tile row; bit 0 = solid, bit 1 = target, bit 2 = not plain floor)
-; from each tile's 2x2 chars of room art. Preserves X; clobbers A/Y/PTR/TMP.
+; from each tile's 2x2 chars of room art. A pit is bit 1 without bit 0 (win
+; targets are always solid): it returns carry set too — a wall for robots and
+; sight — plus N set (A bit 7), which only the human's move (TRY_MOVE: fall
+; in) and the bolt (BOLT_TICK: flies over) look at. N is clear otherwise.
+; Preserves X; clobbers A/Y/PTR/TMP.
 ; =============================================================================
 WALL_AT
         tay
@@ -759,8 +780,11 @@ WALL_AT
         lda NEWY : asl : asl : sta TMP   ; y*4
         asl : asl : adc TMP              ; + y*16 = y*20 (C clear: y <= 10)
         adc NEWX : tay                   ; + x (max 10*20+19 = 219)
-        lda (PTR),y : lsr                ; C = solid, A = target
+        lda (PTR),y : and #3 : cmp #2 : beq WAPIT
+        lda (PTR),y : lsr                ; C = solid, A = target, N clear
         rts
+WAPIT   lda (PTR),y : lsr : ora #$80     ; a pit: N set
+        sec : rts
 
 ; =============================================================================
 ; LASER_AT — carry set if NEWX/NEWY is inside an active laser rectangle of
@@ -828,8 +852,10 @@ SPRDX
         lda GL_PXL+GL_PLAYER : cmp GLT_L : bne SPRALIVE   ;  sprite is on it
         lda GL_PXH+GL_PLAYER : cmp GLT_H : bne SPRALIVE   ;  (GLT_* = target
         lda GL_PY+GL_PLAYER  : cmp GLT_Y : bne SPRALIVE   ;  from GLIDE)
-        lda #0 : sta PLR_DYING
-        jsr PLAYER_DIE
+        ldx PLR_DYING : lda #0 : sta PLR_DYING
+        cpx #2 : bne SPRDIE              ; fell into a pit: the sprite vanishes
+        lda VIC_SPEN : and #$FE : sta VIC_SPEN   ;  (RESET_ROUND shows it again)
+SPRDIE  jsr PLAYER_DIE
 SPRALIVE
 
         lda BFLASH : beq SPROUT
@@ -1107,26 +1133,33 @@ ATNOSEE lda ACT_FAST,x : beq ACTOR_IDLE
 ; ACTOR_PATROL_STEP — X = actor. One step toward the current target waypoint
 ; (ACT_TGT selects ACT_WX0/WY0 or ACT_WX1/WY1), X axis first, then Y; on
 ; arrival the target flips, so the actor shuttles between the two waypoints.
-; No laser/collision checks — patrol paths are authored not to cross hazards.
+; Each step goes through ROAM_TRY (bounds, walls, active lasers): a robot
+; walking back after a terminal link, or one whose path a pushed crate now
+; blocks, goes round on the other axis where it can and otherwise waits.
+; A robot with no patrol: (both waypoints the same) just stands wherever it
+; is — after a link that's where the player left it (respawns reset it).
 ; ---------------------------------------------------------------------------
 ACTOR_PATROL_STEP
-        lda ACT_TGT,x : beq APSW0
-        lda ACT_WX1,x : sta NEWX
-        lda ACT_WY1,x : sta NEWY
+        lda ACT_WX0,x : cmp ACT_WX1,x : bne APSPAT
+        lda ACT_WY0,x : cmp ACT_WY1,x : beq APSWAIT
+APSPAT  lda ACT_TGT,x : beq APSW0
+        lda ACT_WX1,x : sta PS_WX
+        lda ACT_WY1,x : sta PS_WY
         jmp APSGO
-APSW0   lda ACT_WX0,x : sta NEWX
-        lda ACT_WY0,x : sta NEWY
-APSGO   lda ACT_X,x : cmp NEWX : beq APSY
-        bcs APSXL
-        inc ACT_X,x : lda #DIR_RIGHT : jmp APSSTEP
-APSXL   dec ACT_X,x : lda #DIR_LEFT : jmp APSSTEP
-APSY    lda ACT_Y,x : cmp NEWY : beq APSFLIP
-        bcs APSYU
-        inc ACT_Y,x : lda #DIR_DOWN : jmp APSSTEP
-APSYU   dec ACT_Y,x : lda #DIR_UP
-APSSTEP jsr ACT_FACE
-        jmp ACT_STEP_ANIM
-APSFLIP lda ACT_TGT,x : eor #1 : sta ACT_TGT,x
+APSW0   lda ACT_WX0,x : sta PS_WX
+        lda ACT_WY0,x : sta PS_WY
+APSGO   lda ACT_X,x : cmp PS_WX : beq APSY
+        lda #DIR_RIGHT : bcc APSXT       ; (C from the cmp)
+        lda #DIR_LEFT
+APSXT   jsr ROAM_TRY : bcc APSOK
+APSY    lda ACT_Y,x : cmp PS_WY : beq APSYEQ
+        lda #DIR_DOWN : bcc APSYT
+        lda #DIR_UP
+APSYT   jsr ROAM_TRY : bcc APSOK
+APSWAIT lda #0 : sta ACT_ANIM,x      ; blocked both ways: wait
+APSOK   rts
+APSYEQ  lda ACT_X,x : cmp PS_WX : bne APSWAIT   ; X blocked, Y there: wait
+        lda ACT_TGT,x : eor #1 : sta ACT_TGT,x  ; arrived: turn round
         lda #0 : sta ACT_ANIM,x      ; pause at the waypoint in the rest pose
         rts
 
@@ -1366,6 +1399,7 @@ BTMOVED lda BOLT_XH : lsr                ; tile = X/16 (C = bit 8)
         cmp #11 : bcs BTKILL             ; past the bottom edge (tile 11)
         sta NEWY
         lda CUR_ROOM : jsr WALL_AT       ; C = solid, A = win target
+        bmi BTSHOW                       ; a pit: the bolt flies over it
         and BOLT_PLR : bne BTWIN         ; a win target, hit by the player?
         bcc BTSHOW                       ;  (checked first: the cell is solid)
         jmp BTKILL
@@ -1501,6 +1535,7 @@ DRMDOOR cpy #NUM_DOORS : bcs DRMDOORD
         pla : tay
 DRMDOORN iny : bne DRMDOOR
 DRMDOORD
+        jsr CRATE_DRAW_ALL           ; the movable crates where they are now
         jsr WIN_FLICKER              ; power cell in its current colour
         jsr SNAP_ALL                 ; no gliding across a room change
         jmp ASSIGN_SPRITES           ; room changed: remap actors -> sprites

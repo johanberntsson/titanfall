@@ -9,15 +9,7 @@
 DRAW_ORDERS
         ldx CUR_ROOM
         lda #1 : sta ROOM_SEEN,x
-        ldy GOAL_ARG,x
-        lda GOAL_KIND,x
-        cmp #GOAL_FOUND : bne ORDN1
-        lda ITEM_STATE,y : jmp ORDCHK
-ORDN1   cmp #GOAL_OPENED : bne ORDN2
-        lda DOOR_OPEN,y : jmp ORDCHK
-ORDN2   cmp #GOAL_VISITED : bne ORDTODO
-        lda ROOM_SEEN,y
-ORDCHK  beq ORDTODO
+        jsr GOAL_DONE : beq ORDTODO
         lda GOALD_LO,x : sta PTR         ; done: " - done", green
         lda GOALD_HI,x : sta PTR+1
         lda #LTGREEN : bne ORDSET
@@ -36,3 +28,35 @@ ORDLL   lda ORD_LBL,y : jsr PET2SCREEN : sta SCRN+40,y
         rts
 
 ORD_LBL !pet "orders: "
+
+; GOAL_DONE — X = room: A <> 0 (Z clear) if its goal is achieved; a room
+; without a goal or without done: is never done. Preserves X; clobbers Y.
+GOAL_DONE
+        ldy GOAL_ARG,x
+        lda GOAL_KIND,x
+        cmp #GOAL_FOUND : bne GDN1
+        lda ITEM_STATE,y : rts
+GDN1    cmp #GOAL_OPENED : bne GDN2
+        lda DOOR_OPEN,y : rts
+GDN2    cmp #GOAL_VISITED : bne GDNO
+        lda ROOM_SEEN,y : rts
+GDNO    lda #0 : rts
+
+; =============================================================================
+; LEAVE_ROOM — DOOR_ENTER, just before a door takes the player out of
+; CUR_ROOM. Unless the room's goal is done, the room is rolled back to how
+; it started — its robots, lasers and crates (RESET_ROOM) — and the
+; security codes spent in it on this visit come back (RESTORE_CODES), just
+; like a death there: a room left in an unsolvable state (crates pushed into
+; a corner, the robot that was needed destroyed) can be tried again, and
+; the try didn't use up a code. Found items, opened doors and codes found
+; on the visit are kept. Preserves X (the door).
+; =============================================================================
+LEAVE_ROOM
+        txa : pha
+        ldx CUR_ROOM
+        jsr GOAL_DONE : bne LRKEEP
+        jsr RESET_ROOM
+        jsr RESTORE_CODES
+LRKEEP  pla : tax
+        rts

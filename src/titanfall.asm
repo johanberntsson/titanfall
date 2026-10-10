@@ -45,7 +45,7 @@ SND_TMR    = $1E   ; sound effect frame counter (0=silent, music plays)
 TERM_SEL   = $1F   ; terminal: selected menu entry (0..TERM_N-1)
 NEAR_TERM  = $21   ; non-zero when player is adjacent to terminal
 ROWS_PTR   = $23   ; $23/$24: DRAW_ROWS row-list pointer
-PLR_DYING  = $22   ; 1 = player is sliding into a laser (dies on arrival)
+PLR_DYING  = $22   ; 1 = player is sliding into a laser, 2 = into a pit (dies on arrival)
 FIRE_PREV  = $20   ; fire/space held (0/1), as of this frame's READ_KEYS
 SRCH_TMR   = $26   ; search: frames fire held (0 = not searching)
 SRCH_ST    = $2C   ; search popup: 0 none, 1 "searching", 2 "nothing here"
@@ -79,6 +79,14 @@ LA_ROOM    = $4A   ; LASER_AT_A: room whose lasers are checked
 ENT_X      = $4B   ; where the player entered the current room: the
 ENT_Y      = $4C   ;  respawn point after a death (SAVE_ENTRY)
 RS_ALL     = $4D   ; RESET_ROUND: 1 = reset every room (new game), 0 = only CUR_ROOM
+CR_IDX     = $4E   ; CRATE_PUSH: the crate being pushed
+CR_OX      = $4F   ; CRATE_PUSH: its tile
+CR_OY      = $50
+CR_NX      = $51   ; CRATE_PUSH: the tile it's pushed onto
+CR_NY      = $52
+PS_WX      = $53   ; ACTOR_PATROL_STEP: the waypoint it heads for
+PS_WY      = $54
+CR_PIT     = $55   ; CRATE_PUSH: 1 = the crate goes into a pit (fills it)
 LINK_JIF   = $44   ; robot link: frames into the current second (0-49)
 POPUP_ST   = $33   ; popup: 0=waiting for opening space to be released, 1=armed
 F2_PREV    = $30   ; F2 held last game frame (edge detect for the where-am-I popup)
@@ -511,6 +519,7 @@ SPRITES_END
         !source "src/popup.asm"
         !source "src/cutscene.asm"
         !source "src/orders.asm"
+        !source "src/crates.asm"
 HIGH_END
 !if HIGH_END > $C000 {
         !error "code/data above $4000 runs into the music at $C000"

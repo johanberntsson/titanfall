@@ -35,6 +35,16 @@ art:
   solid_tiles: [0x84, 0x85, 0x86, 0x87, 0x88, 0x89, 0x8a, 0x8b,
                 0xa4,                  # 0xa4: the missile bay's "keep out" border
                 0xa6]                  # 0xa6: the power cell (also a win target)
+  # Crate chars (left/right half). A crate drawn on a whole tile (2x2 chars
+  # at cols 2x..2x+1, rows 2y..2y+1) is movable: solid, but a player-driven
+  # robot whose type has push: true pushes it one tile ahead (onto plain
+  # floor only). Crate chars that don't fill a whole tile are fixed walls
+  # (the build warns). All movable crates must be drawn the same way.
+  crate_tiles: [0xab, 0xad]
+  # Pit chars. A tile with any of these is a pit: the player who steps in
+  # falls (the sprite vanishes) and dies; robots treat it as a wall, and it
+  # blocks their sight; bolts fly over it. Nothing may be placed on one.
+  pit_tiles: [0xac]
   # Terminal chars. Every group of these in a room's art is a terminal,
   # used with fire from its own tiles or any tile next to them.
   terminal_tiles: [0x8c, 0x8d, 0x8e, 0x8f]
@@ -63,7 +73,8 @@ actor_types:
   # set per type and overridable per robot entry:
   # idle:       what it does while it doesn't see the player (default patrol)
   #             patrol = shuttle between the robot's two patrol: waypoints
-  #                      (no patrol: = stand at its start)
+  #                      (no patrol: = stand still -- at its start, or
+  #                      wherever a terminal link left it)
   #             roam   = wander the whole room: a random direction for 2-9
   #                      tiles, then another; a wall, the room's edge or a
   #                      laser makes it pick a new direction. Takes no patrol:
@@ -80,6 +91,7 @@ actor_types:
   #             patrol through its start (it walks back along its row).
   # color:      the multicolour sprite's own colour (%10 pixels); black and
   #             light grey are shared by all sprites ($D025/$D026)
+  # push:       true = pushes crates (art.crate_tiles) while player-driven
   human:
     sprite: sprite_down_rest
     color: ltred
@@ -91,6 +103,7 @@ actor_types:
     color: green
   dozer:                               # tracked construction robot
     sprite: dozer_down_rest
+    push: true                         # driven, it pushes crates
     color: yellow
   tripod:
     sprite: tripod_down_rest
@@ -276,9 +289,15 @@ rooms:
     label: room 7
     player_start: {x: 18, y: 4}
     goal: {text: find blue card, done: {found: blue_card}}
+    robots:
+      - type: dozer                    # pushes the crates out of the way
+        name: bot-7070  dozer
+        code: a
+        start: {x: 2, y: 9}            # the pocket, bottom left; no patrol:
+                                       #  stays where the player leaves it
     things:
-      - item: blue_card                # placeholder: the crate in the bottom left
-        at: {x: 1, y: 7}
+      - item: blue_card                # top left, past the crates
+        at: {x: 1, y: 1}
     doors:
       - at: {x1: -1, y1: 4, x2: -1, y2: 5}   # left wall opening, back to room 6
         leads_to: room6

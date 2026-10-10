@@ -160,6 +160,22 @@ def wall_grid(mapdata, maxx, maxy, solid_tiles):
     return grid
 
 
+def find_crates(mapdata, crate_tiles):
+    """Crates in a room map. A tile whose 2x2 chars are all crate chars is a
+    movable crate; returns ([(x, y), ...], [map offsets of the crate chars
+    that belong to no such tile -- fixed, they stay plain walls])."""
+    movable, covered = [], set()
+    for y in range(ROOM_MAP_BYTES // 80):
+        for x in range(20):
+            offs = [r * 40 + c for r in (2 * y, 2 * y + 1) for c in (2 * x, 2 * x + 1)]
+            if all(mapdata[o] in crate_tiles for o in offs):
+                movable.append((x, y))
+                covered.update(offs)
+    fixed = [o for o in range(ROOM_MAP_BYTES)
+             if mapdata[o] in crate_tiles and o not in covered]
+    return movable, fixed
+
+
 def find_terminals(mapdata, terminal_tiles):
     """Terminals in a room map: each 4-connected group of terminal chars.
 
@@ -436,7 +452,7 @@ def main():
     type_index = {name: i for i, name in enumerate(types)}
     if "human" not in types:
         die("actor_types needs a human entry (the player sprite)")
-    type_sprite, type_color, type_dir0, type_anim = [], [], [], []
+    type_sprite, type_color, type_dir0, type_anim, type_push = [], [], [], [], []
     type_ai = {}                        # type name -> (idle, attack) (robots may override)
     for name, t in types.items():
         type_sprite.append(t["sprite"])  # label of first frame; ACME computes /64
@@ -454,6 +470,7 @@ def main():
         if color not in C64_COLORS:
             die(f"actor type {name}: unknown color {color!r}")
         type_color.append(C64_COLORS[color])
+        type_push.append(1 if t.get("push", False) else 0)   # can push crates
         if name != "human":
             type_ai[name] = behaviour(t, ("patrol", "none"), f"actor type {name}")
 
@@ -521,10 +538,14 @@ def main():
     terminal_tiles = {int(t) for t in art.get("terminal_tiles") or []}
     door_tiles = {int(t) for t in art.get("door_tiles") or []}
     win_tiles = {int(t) for t in art.get("win_tiles") or []}
+    pit_tiles = {int(t) for t in art.get("pit_tiles") or []}
+    crate_tiles = {int(t) for t in art.get("crate_tiles") or []}
     missile_tiles = {int(t) for t in art.get("missile_tiles") or []}
     if not missile_tiles:
         die("art.missile_tiles is missing (the missile's chars, launched on game over)")
     targets = []                        # per room: grid[y][x] of win-target tiles
+    pits = []                           # per room: grid[y][x] of pit tiles
+    crate = {"room": [], "x": [], "y": [], "ch": None}   # movable crates
     door_art = []                       # per door: [(map offset, new char), ...]
     if not laser_tiles:
         die("art.laser_tiles must list the laser beam/emitter screen codes")
@@ -723,8 +744,42 @@ def main():
         # win targets: tiles with any art.win_tiles char (same 2x2 test)
         targets.append(wall_grid(read_vchar64_map(room["vchar64_map"]),
                                  room["_maxx"], room["_maxy"], win_tiles))
+        # crates are solid where they start (CRATE_MOVE moves the solid bit)
         walls.append(wall_grid(read_vchar64_map(room["vchar64_map"]),
-                               room["_maxx"], room["_maxy"], solid_tiles))
+                               room["_maxx"], room["_maxy"], solid_tiles | crate_tiles))
+        movable, fixed = find_crates(read_vchar64_map(room["vchar64_map"]), crate_tiles)
+        for (x, y) in movable:
+            if x > room["_maxx"] or y > room["_maxy"]:
+                die(f"room {room['name']}: crate at ({x},{y}) is outside the room's bounds")
+            crate["room"].append(len(walls) - 1)
+            crate["x"].append(x)
+            crate["y"].append(y)
+            mapdata = read_vchar64_map(room["vchar64_map"])
+            ch = [mapdata[r * 40 + c] for r in (2 * y, 2 * y + 1) for c in (2 * x, 2 * x + 1)]
+            if crate["ch"] is None:
+                crate["ch"] = ch
+            elif ch != crate["ch"]:
+                die(f"room {room['name']}: crate at ({x},{y}) is drawn with chars "
+                    f"{', '.join(f'${c:02x}' for c in ch)}, unlike the first crate "
+                    f"({', '.join(f'${c:02x}' for c in crate['ch'])}): all crates must look the same")
+        if fixed:
+            cells = ", ".join(f"col {o % 40} row {o // 40}" for o in fixed)
+            print(f"genworld: warning: room {room['name']}: crate chars not on a whole "
+                  f"2x2 tile (cols 2x..2x+1, rows 2y..2y+1) stay fixed walls: {cells}")
+        # pits: tiles with any art.pit_tiles char (and no wall char); the
+        # human falls in and dies, robots treat them as walls
+        pits.append([[p and not w for p, w in zip(prow, wrow)]
+                     for prow, wrow in zip(
+                         wall_grid(read_vchar64_map(room["vchar64_map"]),
+                                   room["_maxx"], room["_maxy"], pit_tiles),
+                         walls[-1])])
+        # a pit is encoded as the win-target bit without the solid bit, so
+        # every win target must be solid
+        for y, trow in enumerate(targets[-1]):
+            for x, t in enumerate(trow):
+                if t and not walls[-1][y][x]:
+                    die(f"room {room['name']}: win target tile ({x},{y}) isn't solid "
+                        f"(add its chars to art.solid_tiles)")
 
     # closed doors: a tile with art.door_tiles chars is solid. A keyed
     # door's tiles (from its art patches) also carry the door index + 1 in
@@ -760,6 +815,9 @@ def main():
         if walls[ri][y][x]:
             die(f"{what}: ({x},{y}) is inside a wall in room {room['name']} "
                 f"(wall art in map cols {2*x}-{2*x+1}, rows {2*y}-{2*y+1})")
+        if pits[ri][y][x]:
+            die(f"{what}: ({x},{y}) is a pit in room {room['name']} "
+                f"(pit art in map cols {2*x}-{2*x+1}, rows {2*y}-{2*y+1})")
 
     for ri, room in enumerate(rooms):
         ps = room["player_start"]
@@ -818,6 +876,7 @@ def main():
     o.append(f"NUM_DOORS     = {len(door['room'])}")
     o.append(f"NUM_LASERS    = {len(laser['room'])}")
     o.append(f"NUM_TERMZONES = {len(termz['room'])}")
+    o.append(f"NUM_CRATES    = {len(crate['room'])}")
     o.append(f"START_ROOM    = {room_index[start_room]}")
     o.append(f"CFG_CLK_H     = {clk_h}")
     o.append(f"CFG_CLK_M     = {clk_m}")
@@ -843,6 +902,16 @@ def main():
     o.append(tbl("TYPE_COLOR", type_color, "sprite colour"))
     o.append(tbl("TYPE_DIR0", type_dir0, "first facing with frames (0=all 4, 2=left/right only)"))
     o.append(tbl("TYPE_ANIM", type_anim, "0=walk (steps animate) 1=hover (always animating)"))
+    o.append(tbl("TYPE_PUSH", type_push, "1 = pushes crates while player-driven"))
+    o.append("")
+
+    o.append("; ---- movable crates (art.crate_tiles on a whole tile; not in ROOM_MAP_n,")
+    o.append("; DRAW_ROOM draws them at CRATE_X/Y) ----")
+    o.append(tbl("CRATE_ROOM", crate["room"]))
+    o.append(tbl("CRATE_SX", crate["x"], "start tile (RESET_ROUND)"))
+    o.append(tbl("CRATE_SY", crate["y"]))
+    o.append(tbl("CRATE_CH", crate["ch"] or [floor_tile] * 4,
+                 "the crate's 2x2 chars: top left, top right, bottom left, bottom right"))
     o.append("")
 
     o.append("; ---- rooms ----")
@@ -1064,9 +1133,10 @@ def main():
         o.append("        !byte " + ",".join(f"${v:02x}" for v in row))
     o.append("")
 
+    pit_tbl = {"room": [], "x": [], "y": [], "wb": []}
     o.append(f"; ---- walls: per room, {TILES_X} bytes per tile row (y*{TILES_X}+x) ----")
-    o.append("; bit 0 = solid (#), bit 1 = win target (*, may be solid too: a bolt fired by a player-driven")
-    o.append("; robot entering it wins), bit 2 = searchable (+ when walkable: not all floor_tile),")
+    o.append("; bit 0 = solid (#), bit 1 = win target (*, always solid too: a bolt fired by a player-driven")
+    o.append("; robot entering it wins; bit 1 without bit 0 = a pit, O), bit 2 = searchable (+ when walkable: not all floor_tile),")
     o.append("; bits 4-7 = keyed door index + 1 (=, solid while closed: OPEN_DOOR_WALLS clears bit 0)")
     o.append("; -- from the 2x2 chars of each tile, see wall_grid")
     o.append("ROOM_WALL_LO")
@@ -1076,23 +1146,43 @@ def main():
     for i, grid in enumerate(walls):
         o.append(f"ROOM_WALLS_{i}      ; {rooms[i]['name']}")
         for y, row in enumerate(grid):
-            tgt, srch = targets[i][y], searchable[i][y]
+            tgt, srch, pit = targets[i][y], searchable[i][y], pits[i][y]
             own = [door_owner[i].get((x, y)) for x in range(len(row))]
-            vals = [(1 if b else 0) | (2 if t else 0) | (4 if f else 0)
+            vals = [(1 if b else 0) | (2 if t or p else 0) | (4 if f else 0)
                     | (0 if d is None else 1 | (d + 1) << 4)
-                    for b, t, f, d in zip(row, tgt, srch, own)]
+                    for b, t, f, d, p in zip(row, tgt, srch, own, pit)]
+            for x, p in enumerate(pit):          # pits a crate can fill
+                if p:
+                    pit_tbl["room"].append(i)
+                    pit_tbl["x"].append(x)
+                    pit_tbl["y"].append(y)
+                    pit_tbl["wb"].append(vals[x])
             vals += [0] * (TILES_X - len(row))
             pic = "".join("*" if t else "#" if b else "=" if d is not None
-                          else "+" if f else "."
-                          for b, t, f, d in zip(row, tgt, srch, own))
+                          else "O" if p else "+" if f else "."
+                          for b, t, f, d, p in zip(row, tgt, srch, own, pit))
             o.append(f"        !byte {','.join(str(v) for v in vals)}   ; y={y} {pic}")
+    o.append("")
+
+    o.append("; ---- pits: every pit tile, so a room reset can undo a crate filling it ----")
+    o.append(f"NUM_PITS = {len(pit_tbl['room'])}")
+    o.append(tbl("PIT_ROOM", pit_tbl["room"]))
+    o.append(tbl("PIT_X", pit_tbl["x"]))
+    o.append(tbl("PIT_Y", pit_tbl["y"]))
+    o.append(tbl("PIT_WB", pit_tbl["wb"], "its ROOM_WALLS_n byte (restored by CRATE_RESET)"))
     o.append("")
 
     o.append("; ---- room map data: 22 rows x 40 chars of raw screen codes ----")
     o.append("; (from the vchar64 exports -- blitted directly, no PET2SCREEN)")
     for i, room in enumerate(rooms):
         path = room.get("vchar64_map") or die(f"room {room['name']}: needs vchar64_map")
-        data = read_vchar64_map(path)
+        data = list(read_vchar64_map(path))
+        for ci in range(len(crate["room"])):  # movable crates: DRAW_ROOM draws them
+            if crate["room"][ci] == i:
+                x, y = crate["x"][ci], crate["y"][ci]
+                for r in (2 * y, 2 * y + 1):
+                    for c in (2 * x, 2 * x + 1):
+                        data[r * 40 + c] = floor_tile
         o.append(f"ROOM_MAP_{i}      ; {room['name']} -- {path}")
         for off in range(0, len(data), 16):
             row = ",".join(f"${b:02x}" for b in data[off:off + 16])
@@ -1131,6 +1221,13 @@ def main():
     o.append("ROOM_SEEN   !fill NUM_ROOMS     ; 1 = the player has been in this room (goal visited:)")
     o.append("LASER_STATE !fill NUM_LASERS+1  ; 0=active 1=destroyed")
     o.append("SPR_SLOT_ACT !fill 2            ; actor shown by hw sprite 1/2, $ff = none")
+    # (starting at the start tiles: CRATE_RESET first clears the wall bits
+    # where the crates are)
+    o.append("PIT_FILLED  !fill NUM_PITS+1    ; 1 = a crate filled it (floor now)")
+    o.append("CRATE_X     ; current tile of each movable crate ($ff = it filled a pit)")
+    o.append("        !byte " + ",".join(f"${v:02x}" for v in crate["x"] + [0]))
+    o.append("CRATE_Y")
+    o.append("        !byte " + ",".join(f"${v:02x}" for v in crate["y"] + [0]))
     o.append("")
 
     with open(out_path, "w", encoding="ascii") as f:
