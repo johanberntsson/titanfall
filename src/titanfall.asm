@@ -94,6 +94,7 @@ TRAP_LEN   = $59   ; its reach (TR_END when it was drawn)
 TR_MODE    = $5A   ; TRAP_ROWS: 0 = draw the beam, 1 = map chars back
 TR_TRAP    = $5B   ; TRAP_ROWS: the trap (X)
 GRACE_TMR  = $5C   ; frames of grace left after a respawn (robots can't see/touch you)
+MUSIC_OFF  = $5D   ; non-zero: RASTER_IRQ doesn't play the music (game over)
 LINK_JIF   = $44   ; robot link: frames into the current second (0-49)
 POPUP_ST   = $33   ; popup: 0=waiting for opening space to be released, 1=armed
 F2_PREV    = $30   ; F2 held last game frame (edge detect for the where-am-I popup)
@@ -247,6 +248,7 @@ SIDCLR  lda #0
         lda #$FF    : sta VIC_IRQ
 
         lda #0      : sta SND_TMR       ; ensure music plays from first IRQ
+        sta MUSIC_OFF
         lda #$1F    : sta JOY_PREV      ; treat a stick held at boot as old
         lda #0      : sta JOY_NEW
 
@@ -450,7 +452,9 @@ RASTER_IRQ
         jsr SOUND_TICK                 ;  the SID, music waits (game.asm)
         jmp $EA31
 RIRQ_MUSIC
+        lda MUSIC_OFF : bne RIRQ_DONE  ; (game over: silence)
         jsr MUSIC_PLAY                 ; music play
+RIRQ_DONE
         jmp $EA31
 
 ; =============================================================================
