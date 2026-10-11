@@ -365,6 +365,8 @@ def build_map(rooms, start, doors):
     # room's box, the corridor ends in its walls included)
     mid = box_w // 2 - 1                     # vertical corridor/exit columns: mid, mid+1
     drawn = set()
+    corridors = []                           # (screen row, col, w, h, room a, room b):
+                                             #  the part between the two boxes
     for (a, d, b) in doors:
         if b is None or frozenset((a, b)) in drawn:
             continue
@@ -378,12 +380,14 @@ def build_map(rooms, start, doors):
             put(ra + 2, l, SC_UL, "dgray"); put(ra + 2, rr, SC_UR, "dgray")
             for c in range(l + 1, rr):
                 put(ra + 1, c, SC_HBAR, "dgray"); put(ra + 2, c, SC_HBAR, "dgray")
+            corridors.append((ra + 1 + 2, l + 1, rr - l - 1, 2, a, b))
         else:
             bot, tp = ra + 3, rb
             put(bot, ca + mid, SC_UR, "dgray"); put(bot, ca + mid + 1, SC_UL, "dgray")
             put(tp, ca + mid, SC_LR, "dgray"); put(tp, ca + mid + 1, SC_LL, "dgray")
             for r in range(bot + 1, tp):
                 put(r, ca + mid, SC_VBAR, "dgray"); put(r, ca + mid + 1, SC_VBAR, "dgray")
+            corridors.append((bot + 1 + 2, ca + mid, 2, tp - bot - 1, a, b))
     for (ri, d) in exits:                    # opening in the wall + "exit"
         r, c = boxes[ri]
         if d == "down":
@@ -402,7 +406,7 @@ def build_map(rooms, start, doors):
                 put(r + i, w + s, SC_HBAR, "white"); put(r + i, w + 2 * s, SC_HBAR, "white")
             text(r + 1, w - 7 if d == "left" else w + 4, "exit", "white")
     highlight = [(r + 2, c, box_w, MAP_BOX_H) for (r, c) in boxes]   # screen rows
-    return scr, col, highlight
+    return scr, col, highlight, corridors
 
 
 def main():
@@ -942,7 +946,7 @@ def main():
                     f"so it could never be searched for")
 
 
-    map_scr, map_col, map_hl = build_map(rooms, room_index[start_room], map_doors)
+    map_scr, map_col, map_hl, map_cor = build_map(rooms, room_index[start_room], map_doors)
 
     # ---- emit ----------------------------------------------------------
     o = []
@@ -1069,6 +1073,17 @@ def main():
     o.append("        !byte " + ",".join(f">($D800+{row}*40+{col})" for row, col, _, _ in map_hl))
     o.append(tbl("MAPHL_W", [byte(w, "MAPHL_W") for _, _, w, _ in map_hl]))
     o.append(tbl("MAPHL_H", [byte(h, "MAPHL_H") for _, _, _, h in map_hl]))
+    o.append("; ---- sector map: corridors (the cells between two boxes; SETUP_MAP")
+    o.append(";      blanks one when neither room has been visited) ----")
+    o.append(f"NUM_MAPCOR = {len(map_cor)}")
+    o.append("MAPCOR_LO       ; screen address of the corridor's top-left cell")
+    o.append("        !byte " + ",".join(f"<($0400+{r}*40+{c})" for r, c, _, _, _, _ in map_cor) if map_cor else "        ; (none)")
+    o.append("MAPCOR_HI")
+    o.append("        !byte " + ",".join(f">($0400+{r}*40+{c})" for r, c, _, _, _, _ in map_cor) if map_cor else "        ; (none)")
+    o.append(tbl("MAPCOR_W", [byte(w, "MAPCOR_W") for _, _, w, _, _, _ in map_cor]))
+    o.append(tbl("MAPCOR_H", [byte(h, "MAPCOR_H") for _, _, _, h, _, _ in map_cor]))
+    o.append(tbl("MAPCOR_A", [a for _, _, _, _, a, _ in map_cor], "the two rooms it joins"))
+    o.append(tbl("MAPCOR_B", [b for _, _, _, _, _, b in map_cor]))
     o.append("")
 
     o.append("; ---- actors (robots; the player is not in this table) ----")

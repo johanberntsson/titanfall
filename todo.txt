@@ -2,12 +2,11 @@
 #           OPEN
 # ------------------------
 
-
-Dont show rooms that haven't been visited yet
-
 # ------------------------
 #           DONE
 # ------------------------
+
+Dont show rooms in the map that haven't been visited yet
 
 Kill player if run over by robot or shot (in robot mode)
 
