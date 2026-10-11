@@ -524,15 +524,15 @@ SCR_BORDER_BOTTOM  !pet G_RD_LL, G_HORIZ_BAR, G_HORIZ_BAR, G_HORIZ_BAR, G_HORIZ_
 SPRITE_FRAMES = 12+12+12+12+12+2+2+4
         * = CHARSET - SPRITE_FRAMES*64
 SPRITES_START
-        !source "src/c64_walker_sprites.asm"    ; player:  12 frames
-        !source "src/c64_robot_sprites.asm"     ; robot:   12 frames
-        !source "src/c64_drone_sprites.asm"     ; drone:   12 frames
-        !source "src/c64_dozer_sprites.asm"     ; dozer:   12 frames
-        !source "src/c64_tripod_sprites.asm"    ; tripod:  12 frames
-        !source "src/c64_bolt_sprites.asm"      ; bolt:     2 frames (shooter)
-        !source "src/c64_forcefield_sprites.asm" ; field:   2 frames (forcefield)
-CS_FRAMES                                       ; cut scene:  4 frames, filled
-        !fill 4*64, 0                           ;  by SETUP_CUTSCENE (cutscene.asm)
+        !source "src/c64_walker_sprites.asm"       ; player:  12 frames
+        !source "src/c64_robot_sprites.asm"        ; robot:   12 frames
+        !source "src/c64_drone_sprites.asm"        ; drone:   12 frames
+        !source "src/c64_dozer_sprites.asm"        ; dozer:   12 frames
+        !source "src/c64_tripod_sprites.asm"       ; tripod:  12 frames
+        !source "src/c64_bolt_sprites.asm"         ; bolt:     2 frames (shooter)
+        !source "src/c64_forcefield_h_sprites.asm" ; field:   2 frames (forcefield horizontal)
+CS_FRAMES                                          ; cut scene:  4 frames, filled
+        !fill 4*64, 0                              ;  by SETUP_CUTSCENE (cutscene.asm)
 SPRITES_END
 !if SPRITES_END != CHARSET {
         !error "SPRITE_FRAMES doesn't match the sprite files - update it"
