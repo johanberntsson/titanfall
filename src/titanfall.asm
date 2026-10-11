@@ -37,7 +37,7 @@ PTR2       = $16
 TMP        = $18
 TMP2       = $19
 GAME_STATE = $1A   ; 0=intro  1=game  2=gameover  3=terminal  4=win  5=map  6=popup
-                   ; 7=explosion  8=cut scene
+                   ; 7=explosion  8=cut scene  9=help (pause)
 DEATH_TMR  = $1B   ; death pause countdown (= length of the death sound)
 BLINK_TMR  = $1C   ; blink counter
 BLINK_ST   = $1D   ; 0=text visible  1=hidden
@@ -94,7 +94,8 @@ TRAP_LEN   = $59   ; its reach (TR_END when it was drawn)
 TR_MODE    = $5A   ; TRAP_ROWS: 0 = draw the beam, 1 = map chars back
 TR_TRAP    = $5B   ; TRAP_ROWS: the trap (X)
 GRACE_TMR  = $5C   ; frames of grace left after a respawn (robots can't see/touch you)
-MUSIC_OFF  = $5D   ; non-zero: RASTER_IRQ doesn't play the music (game over)
+MUSIC_OFF  = $5D   ; non-zero: RASTER_IRQ doesn't play the music (game over, help)
+F1_PREV    = $5E   ; F1 held last frame (edge detect for the help screen)
 LINK_JIF   = $44   ; robot link: frames into the current second (0-49)
 POPUP_ST   = $33   ; popup: 0=waiting for opening space to be released, 1=armed
 F2_PREV    = $30   ; F2 held last game frame (edge detect for the where-am-I popup)
@@ -251,6 +252,12 @@ SIDCLR  lda #0
         sta MUSIC_OFF
         lda #$1F    : sta JOY_PREV      ; treat a stick held at boot as old
         lda #0      : sta JOY_NEW
+        sta F1_PREV
+
+        ; RESTORE ignored: the KERNAL's NMI handler warm-starts BASIC on
+        ; Run/Stop+Restore, and BASIC is banked out (and Run/Stop is a key)
+        lda #<NMI_RTI : sta $0318
+        lda #>NMI_RTI : sta $0319
 
         cli
 
@@ -301,6 +308,23 @@ MLNOSPC lda #$FF : sta CIA1_PRA
         txa : and JOY_NEW : sta JOY_NEW
         stx JOY_PREV
 
+        ; F1 (fresh press, no shift — shift+F1 is F2) opens the help /
+        ; pause screen from any state (help.asm). F1: col 0 (PA=$FE), row 4;
+        ; left shift: col 1 (PA=$FD), row 7; right shift: col 6 (PA=$BF), row 4.
+        lda #$FE : sta CIA1_PRA
+        lda CIA1_PRB : and #$10 : bne MLF1UP
+        lda #$FD : sta CIA1_PRA
+        lda CIA1_PRB : and #$80 : beq MLF1N
+        lda #$BF : sta CIA1_PRA
+        lda CIA1_PRB : and #$10 : beq MLF1N
+        lda F1_PREV : bne MLF1N
+        lda #1 : sta F1_PREV
+        lda #$FF : sta CIA1_PRA
+        lda GAME_STATE : cmp #9 : beq MLF1N
+        jmp SETUP_HELP
+MLF1UP  lda #0 : sta F1_PREV
+MLF1N   lda #$FF : sta CIA1_PRA
+
         lda GAME_STATE
         bne MLNOT0
         jmp DO_INTRO
@@ -318,7 +342,9 @@ MLNOT5  cmp #6 : bne MLNOT6
         jmp DO_POPUP
 MLNOT6  cmp #7 : bne MLNOT7
         jmp DO_EXPLODE
-MLNOT7  jmp DO_CUTSCENE
+MLNOT7  cmp #9 : bne MLNOT9
+        jmp DO_HELP
+MLNOT9  jmp DO_CUTSCENE
 
 ; =============================================================================
 ; CLS — clears all 1024 bytes of screen + colour RAM
@@ -457,6 +483,8 @@ RIRQ_MUSIC
 RIRQ_DONE
         jmp $EA31
 
+NMI_RTI rti                            ; NMI vector ($0318): RESTORE does nothing
+
 ; =============================================================================
 ; Shared box strings — used by intro, gameover, and win screens
 ; =============================================================================
@@ -539,6 +567,7 @@ SPRITES_END
         !source "src/traps.asm"
         !source "src/plates.asm"
         !source "src/beam.asm"
+        !source "src/help.asm"
 HIGH_END
 !if HIGH_END > $C000 {                  ; ($A000-$BFFF is RAM: BASIC is banked out at init)
         !error "code/data above $4000 runs into the music at $C000"

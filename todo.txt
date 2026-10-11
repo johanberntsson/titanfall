@@ -2,11 +2,12 @@
 #           OPEN
 # ------------------------
 
+Implement pause, reset room and restart game
+
 Set default in terminal to logoff to avoid miss-clicks
 
 Kill player if run over by robot or shot (as robot)
 
-Implement pause and restart 
 
 The final line (cards: ) is flickering
 

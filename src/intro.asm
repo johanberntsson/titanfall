@@ -34,8 +34,8 @@ INTRO_DONE
 
 ; =============================================================================
 ; DRAW_INTRO_SCREEN — title logo (rows 1-8, src/titanfall_title.asm), the
-; author line (row 10), the mission box (rows 12-21); the blinking prompt is
-; row 23 (BLINK_ON).
+; author line (row 10), the mission box (rows 12-20); the blinking prompt is
+; row 22 (BLINK_ON), the help hint row 24.
 ; CLS + sprite pointers must be done by caller.
 ; =============================================================================
 DRAW_INTRO_SCREEN
@@ -56,52 +56,52 @@ DIRS12  lda SCR_BORDER_TOP,x : jsr PET2SCREEN : sta SCRN+480,x
         lda #DGRAY : sta CRAM+480,x
         dex : bpl DIRS12
 
-        ldx #39    ; row 13: blank (DGRAY)
-DIRS13  lda SCR_BLANK,x : jsr PET2SCREEN : sta SCRN+520,x
-        lda #DGRAY : sta CRAM+520,x
+        ldx #39    ; row 13: tagline (CYAN)
+DIRS13  lda ITR_TAG,x : jsr PET2SCREEN : sta SCRN+520,x
+        lda #CYAN : sta CRAM+520,x
         dex : bpl DIRS13
 
-        ldx #39    ; row 14: tagline (CYAN)
-DIRS14  lda ITR_TAG,x : jsr PET2SCREEN : sta SCRN+560,x
-        lda #CYAN : sta CRAM+560,x
+        ldx #39    ; row 14: separator (BLUE)
+DIRS14  lda ITR_SEP,x : jsr PET2SCREEN : sta SCRN+560,x
+        lda #BLUE : sta CRAM+560,x
         dex : bpl DIRS14
 
-        ldx #39    ; row 15: separator (BLUE)
-DIRS15  lda ITR_SEP,x : jsr PET2SCREEN : sta SCRN+600,x
-        lda #BLUE : sta CRAM+600,x
+        ldx #39    ; row 15: blank (DGRAY)
+DIRS15  lda SCR_BLANK,x : jsr PET2SCREEN : sta SCRN+600,x
+        lda #DGRAY : sta CRAM+600,x
         dex : bpl DIRS15
 
-        ldx #39    ; row 16: blank (DGRAY)
-DIRS16  lda SCR_BLANK,x : jsr PET2SCREEN : sta SCRN+640,x
-        lda #DGRAY : sta CRAM+640,x
+        ldx #39    ; row 16: mission line 1 (MGRAY)
+DIRS16  lda ITR_M1,x : jsr PET2SCREEN : sta SCRN+640,x
+        lda #MGRAY : sta CRAM+640,x
         dex : bpl DIRS16
 
-        ldx #39    ; row 17: mission line 1 (MGRAY)
-DIRS17  lda ITR_M1,x : jsr PET2SCREEN : sta SCRN+680,x
+        ldx #39    ; row 17: mission line 2 (MGRAY)
+DIRS17  lda ITR_M2,x : jsr PET2SCREEN : sta SCRN+680,x
         lda #MGRAY : sta CRAM+680,x
         dex : bpl DIRS17
 
-        ldx #39    ; row 18: mission line 2 (MGRAY)
-DIRS18  lda ITR_M2,x : jsr PET2SCREEN : sta SCRN+720,x
-        lda #MGRAY : sta CRAM+720,x
+        ldx #39    ; row 18: warning (LTRED)
+DIRS18  lda ITR_M3,x : jsr PET2SCREEN : sta SCRN+720,x
+        lda #LTRED : sta CRAM+720,x
         dex : bpl DIRS18
 
-        ldx #39    ; row 19: warning (LTRED)
-DIRS19  lda ITR_M3,x : jsr PET2SCREEN : sta SCRN+760,x
-        lda #LTRED : sta CRAM+760,x
+        ldx #39    ; row 19: blank (DGRAY)
+DIRS19  lda SCR_BLANK,x : jsr PET2SCREEN : sta SCRN+760,x
+        lda #DGRAY : sta CRAM+760,x
         dex : bpl DIRS19
 
-        ldx #39    ; row 20: blank (DGRAY)
-DIRS20  lda SCR_BLANK,x : jsr PET2SCREEN : sta SCRN+800,x
+        ldx #39    ; row 20: bottom border (DGRAY)
+DIRS20  lda SCR_BORDER_BOTTOM,x : jsr PET2SCREEN : sta SCRN+800,x
         lda #DGRAY : sta CRAM+800,x
         dex : bpl DIRS20
 
-        ldx #39    ; row 21: bottom border (DGRAY)
-DIRS21  lda SCR_BORDER_BOTTOM,x : jsr PET2SCREEN : sta SCRN+840,x
-        lda #DGRAY : sta CRAM+840,x
-        dex : bpl DIRS21
+        lda #DGRAY : ldx #12 : ldy #20 : jsr FRAME_EDGES
 
-        lda #DGRAY : ldx #12 : ldy #21 : jsr FRAME_EDGES
+        ldx #39    ; row 24: the help hint
+DIF1    lda TXT_F1HELP,x : jsr PET2SCREEN : sta SCRN+960,x
+        lda #MGRAY : sta CRAM+960,x
+        dex : bpl DIF1
         jsr BLINK_ON
         rts
 
@@ -112,8 +112,8 @@ BLINK_ON
         ldx #39
 BLON    lda TXT_PRESS,x
         jsr PET2SCREEN
-        sta SCRN+920,x
-        lda #WHITE : sta CRAM+920,x
+        sta SCRN+880,x
+        lda #WHITE : sta CRAM+880,x
         dex
         bpl BLON
         rts
@@ -121,7 +121,7 @@ BLON    lda TXT_PRESS,x
 BLINK_OFF
         ldx #39
 BLOFF   lda #CH_SPC
-        sta SCRN+920,x
+        sta SCRN+880,x
         dex
         bpl BLOFF
         rts
@@ -129,7 +129,7 @@ BLOFF   lda #CH_SPC
 ; =============================================================================
 ; Intro strings — all exactly 40 bytes
 ; =============================================================================
-ITR_AUTH    !pet "2026 by johan berntsson (release 1)"
+ITR_AUTH    !pet "release 1, 2026 by johan berntsson"
 ITR_AUTH_LEN = * - ITR_AUTH
 ITR_TAG     !pet G_VERT_BAR, "  infiltrate. subvert. stop launch.   ", G_VERT_BAR
 ITR_M1      !pet G_VERT_BAR, "  mission: abort launch sequence      ", G_VERT_BAR
@@ -137,3 +137,4 @@ ITR_M2      !pet G_VERT_BAR, "  location: titan missile complex     ", G_VERT_BA
 ITR_M3      !pet G_VERT_BAR, "  warning: launch in t-minus 5 hours  ", G_VERT_BAR
 
 TXT_PRESS   !pet "         press fire to start            "
+TXT_F1HELP  !pet "              f1 for help               "
