@@ -88,7 +88,7 @@ CRDPN   inx : bne CRDPL
 CRDPD   rts
 
 ; CRATE_PAINT — paint tile NEWX/NEWY of the screen (CUR_ROOM), with the
-; TILE_COLORS colours: A = 0 the room map's own chars (ROOM_MAP_n: what's
+; TILE_COLORS colours: A = 0 the room map's own chars (ROOM_BUF: what's
 ; under a crate that moved away -- floor, or a plate), A = 1 plain floor
 ; (CFG_FLOOR, a filled pit), A = 4 + kind*4 a crate/mirror (CRATE_CH).
 ; Preserves X; clobbers A/Y/PTR/PTR2/TMP/TMP2.
@@ -101,9 +101,8 @@ CRATE_PAINT
         bcc CRPNC : inc PTR2+1
 CRPNC   lda PTR2 : sec : sbc #<(SCRN+80) : sta PTR       ; the same cell in
         lda PTR2+1 : sbc #>(SCRN+80) : sta PTR+1         ;  the room's map
-        ldy CUR_ROOM
-        lda PTR : clc : adc ROOM_MAP_LO,y : sta PTR
-        lda PTR+1 : adc ROOM_MAP_HI,y : sta PTR+1
+        lda PTR : clc : adc #<ROOM_BUF : sta PTR
+        lda PTR+1 : adc #>ROOM_BUF : sta PTR+1
         ldx #0
 CRPL    ldy CR_CELL,x                    ; 0, 1, 40, 41
         lda TMP2 : beq CRPMAP

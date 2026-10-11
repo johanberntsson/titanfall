@@ -7,7 +7,7 @@
 ; every step. Stepping onto a tile the beam reaches kills (PLR_DYING=1: like
 ; walking into a laser, UPDATE_SPRITE0 kills on arrival); behind the
 ; blocker the beam still shows but can't hurt. Stepping out of the column
-; switches it off: the cells get their map chars back (ROOM_MAP_n), and the
+; switches it off: the cells get their map chars back (ROOM_BUF), and the
 ; crates / filled pits are repainted over them (CRATE_DRAW_ALL). TRAP_ON
 ; remembers which beam is on screen; DRAW_ROOM clears it and calls
 ; TRAP_SHOW, so a redraw (popup, terminal, respawn) shows it again if the
@@ -79,9 +79,8 @@ TRAP_ROWS
         lda TRAP_ROW1,x : sta TR_ROW
 TRWL    lda TR_ROW : cmp TMP2 : bcs TRWD
         jsr ROW_PTR                      ; PTR2 = SCRN + row*40
-        ldy CUR_ROOM                     ; PTR = ROOM_MAP_n + row*40
-        lda PTR2 : clc : adc ROOM_MAP_LO,y : sta PTR       ; (<SCRN = 0)
-        lda PTR2+1 : sbc #>SCRN-1 : clc : adc ROOM_MAP_HI,y : sta PTR+1
+        lda PTR2 : clc : adc #<ROOM_BUF : sta PTR          ; PTR = ROOM_BUF + row*40
+        lda PTR2+1 : sbc #>SCRN-1 : clc : adc #>ROOM_BUF : sta PTR+1   ; (<SCRN = 0)
         lda TR_ROW : clc : adc #2 : jsr ROW_PTR   ; the screen row
         ldy TRAP_COL,x
         lda #CFG_BEAM

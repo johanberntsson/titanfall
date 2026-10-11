@@ -583,3 +583,9 @@ M_FH    !byte 0
 !if * > $D000 {
         !error "titan_theme runs past $CFFF"
 }
+
+; the game keeps the help screen's save buffers right after the tune
+; (HLP_SCR/HLP_COL in src/help.asm, $C600-$CDFF)
+!if * > $C600 {
+        !error "the music grew past $C600, into the help screen's save buffers (src/help.asm)"
+}

@@ -213,9 +213,8 @@ ALL     lda (PTR),y : sta AL_LO
         lda TMP2 : beq ALPUT
         cmp #1 : beq ALMAP
         sta AL_CH : bne ALPUT            ; A >= 2: that char
-ALMAP   ldx CUR_ROOM                     ; the map's char
-        lda AL_LO : clc : adc ROOM_MAP_LO,x : sta PTR2
-        lda AL_HI : adc ROOM_MAP_HI,x : sta PTR2+1
+ALMAP   lda AL_LO : clc : adc #<ROOM_BUF : sta PTR2   ; the map's char
+        lda AL_HI : adc #>ROOM_BUF : sta PTR2+1
         ldy #0 : lda (PTR2),y : sta AL_CH
 ALPUT   lda AL_LO : clc : adc #<(SCRN+80) : sta PTR2
         lda AL_HI : adc #>(SCRN+80) : sta PTR2+1

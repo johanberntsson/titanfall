@@ -1595,6 +1595,7 @@ DRAW_ROOM
         sta BOLT_ON                      ;  any bolt in flight, any force
         sta FIELD_ACT                    ;  field)
         lda #1 : sta FIRE_PREV           ;  its small popup); want a new press
+        jsr ROOM_UNPACK                  ; the room's map into ROOM_BUF (rle.asm)
         jsr DRMSETPTR
         lda #<(SCRN+80) : sta PTR2 : lda #>(SCRN+80) : sta PTR2+1
         ldx #3 : ldy #0
@@ -1673,9 +1674,8 @@ ELSDONE pla : tax
         rts
 
 DRMSETPTR
-        ldx CUR_ROOM
-        lda ROOM_MAP_LO,x : sta PTR
-        lda ROOM_MAP_HI,x : sta PTR+1
+        lda #<ROOM_BUF : sta PTR
+        lda #>ROOM_BUF : sta PTR+1
         rts
 
 ; COL_BYTE — colour RAM byte is looked up from TILE_COLORS, indexed by the

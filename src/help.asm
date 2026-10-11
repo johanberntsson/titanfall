@@ -24,8 +24,10 @@ HLP_BRD   !byte 0                       ;  $D011 (bit 7 clear) and $D016
 HLP_BG    !byte 0
 HLP_D011  !byte 0
 HLP_D016  !byte 0
-HLP_SCR   !fill $400, 0                 ; screen RAM (incl. the sprite pointers)
-HLP_COL   !fill $400, 0                 ; colour RAM
+HLP_SCR   = $C600                       ; screen RAM (incl. the sprite pointers)
+HLP_COL   = $CA00                       ; colour RAM -- both in the free RAM
+                                        ;  after the music ($C000-$C5xx; its
+                                        ;  file checks it ends below $C600)
 
 ; -----------------------------------------------------------------------------
 ; SETUP_HELP — jmp'd to from MAIN_LOOP on a fresh F1 press

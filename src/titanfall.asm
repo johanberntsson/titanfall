@@ -572,6 +572,7 @@ SPRITES_END
         !source "src/beam.asm"
         !source "src/help.asm"
         !source "src/interlock.asm"
+        !source "src/rle.asm"
 HIGH_END
 !if HIGH_END > $C000 {                  ; ($A000-$BFFF is RAM: BASIC is banked out at init)
         !error "code/data above $4000 runs into the music at $C000"

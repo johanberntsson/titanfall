@@ -149,9 +149,8 @@ BCD     rts
 ; map's char (BC_MODE = 1), with its TILE_COLORS colour.
 BEAM_CELL
         lda BC_ROW : jsr ROW_PTR         ; PTR2 = SCRN + row*40
-        ldy CUR_ROOM                     ; PTR = ROOM_MAP_n + row*40
-        lda PTR2 : clc : adc ROOM_MAP_LO,y : sta PTR       ; (<SCRN = 0)
-        lda PTR2+1 : sbc #>SCRN-1 : clc : adc ROOM_MAP_HI,y : sta PTR+1
+        lda PTR2 : clc : adc #<ROOM_BUF : sta PTR          ; PTR = ROOM_BUF + row*40
+        lda PTR2+1 : sbc #>SCRN-1 : clc : adc #>ROOM_BUF : sta PTR+1   ; (<SCRN = 0)
         lda BC_ROW : clc : adc #2 : jsr ROW_PTR   ; the screen row
         ldy BC_COL
         lda BC_CH

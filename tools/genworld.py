@@ -67,6 +67,27 @@ def tbl(name, values, comment=""):
     return "\n".join(out)
 
 
+RLE_ESC = 0xFF   # room map RLE: ESC, count, char = a run; ESC, 0 = end
+
+
+def rle_pack(data):
+    """Pack a room map: runs of 4+ equal chars (and any RLE_ESC char, which
+    can't be a literal) become RLE_ESC, count, char; RLE_ESC, 0 ends it.
+    ROOM_UNPACK (src/rle.asm) is the matching decoder."""
+    out, i = [], 0
+    while i < len(data):
+        j = i
+        while j < len(data) and data[j] == data[i] and j - i < 255:
+            j += 1
+        n = j - i
+        if n >= 4 or data[i] == RLE_ESC:
+            out += [RLE_ESC, n, data[i]]
+        else:
+            out += data[i:j]
+        i = j
+    return out + [RLE_ESC, 0]
+
+
 def read_vchar64_map(path):
     """Parse a vchar64 ASM export (.byte lines) into a list of byte values."""
     data = []
@@ -1465,8 +1486,13 @@ def main():
     o.append(tbl("PIT_WB", pit_tbl["wb"], "its ROOM_WALLS_n byte (restored by CRATE_RESET)"))
     o.append("")
 
-    o.append("; ---- room map data: 22 rows x 40 chars of raw screen codes ----")
-    o.append("; (from the vchar64 exports -- blitted directly, no PET2SCREEN)")
+    o.append("; ---- room map data: 22 rows x 40 chars of raw screen codes, RLE-packed ----")
+    o.append("; (from the vchar64 exports; ROOM_UNPACK unpacks the current room into")
+    o.append("; ROOM_BUF, which DRAW_ROOM blits -- no PET2SCREEN). Format: a byte is a")
+    o.append(f"; literal char, except RLE_ESC (${RLE_ESC:02x}): ESC, count (1-255), char = a run;")
+    o.append("; ESC, 0 ends the room.")
+    o.append(f"RLE_ESC = ${RLE_ESC:02x}")
+    packed_total = 0
     for i, room in enumerate(rooms):
         path = room.get("vchar64_map") or die(f"room {room['name']}: needs vchar64_map")
         data = list(read_vchar64_map(path))
@@ -1476,10 +1502,12 @@ def main():
                 for r in (2 * y, 2 * y + 1):
                     for c in (2 * x, 2 * x + 1):
                         data[r * 40 + c] = floor_tile   # crates and mirrors
-        o.append(f"ROOM_MAP_{i}      ; {room['name']} -- {path}")
-        for off in range(0, len(data), 16):
-            row = ",".join(f"${b:02x}" for b in data[off:off + 16])
-            o.append(f"!byte {row}\t; {off}")
+        packed = rle_pack(data)
+        packed_total += len(packed)
+        o.append(f"ROOM_MAP_{i}      ; {room['name']} -- {path}: {len(packed)} bytes packed")
+        for off in range(0, len(packed), 16):
+            o.append("!byte " + ",".join(f"${b:02x}" for b in packed[off:off + 16]))
+    o.append(f"; room maps: {len(rooms) * ROOM_MAP_BYTES} bytes, {packed_total} packed")
     o.append("")
 
     o.append("; ---- sector map: screen rows 2-23, generated from the doors ----")
