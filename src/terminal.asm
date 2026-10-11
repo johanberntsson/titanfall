@@ -39,8 +39,10 @@ CRMCTAIL lda #DGRAY : sta (PTR),y
 
 ; ---------------------------------------------------------------------------
 ; SETUP_TERMINAL — draw the terminal screen, switch to state 3. Called via
-; jsr from READ_KEYS (fire/space in a terminal zone; TERM_SEL=0 first) and
-; from DO_MAP on its way back (TERM_SEL still on "view map").
+; jsr from READ_KEYS (fire/space in a terminal zone; TERM_SEL=$FF first:
+; the cursor starts on logoff, so a double press of fire just logs off
+; instead of spending a security code on the first robot) and from DO_MAP
+; on its way back (TERM_SEL still on "view map").
 ; ---------------------------------------------------------------------------
 SETUP_TERMINAL
         lda #3 : sta GAME_STATE
@@ -75,7 +77,9 @@ TSADONE
         lda #TM_LOGOFF : sta TM_ACT,y
         lda #14 : sta TM_ROW,y
         iny : sty TERM_N
-        jmp TERM_DRAW_SEL
+        lda TERM_SEL : bpl TSSEL         ; fresh entry ($FF): on logoff
+        dey : sty TERM_SEL
+TSSEL   jmp TERM_DRAW_SEL
 
 ; ---------------------------------------------------------------------------
 ; DO_TERMINAL — called each frame in state 3

@@ -2,12 +2,7 @@
 #           OPEN
 # ------------------------
 
-Implement pause, reset room and restart game
-
-Set default in terminal to logoff to avoid miss-clicks
-
 Kill player if run over by robot or shot (as robot)
-
 
 The final line (cards: ) is flickering
 
@@ -20,6 +15,10 @@ Dont show rooms that haven't been visited yet
 # ------------------------
 #           DONE
 # ------------------------
+
+Set default in terminal to logoff to avoid miss-clicks
+
+Implement pause, reset room and restart game
 
 Add 2026 on the intro screen
 

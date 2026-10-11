@@ -550,7 +550,7 @@ RKTL    cpx #NUM_TERMZONES : bcs RKSEARCHCHK
         lda TERMZ_Y2,x : cmp PLR_Y : bcc RKTN
         lda #1 : sta NEAR_TERM
         lda KEY_SPC : beq RKSEARCHCHK
-        lda #0 : sta TERM_SEL
+        lda #$FF : sta TERM_SEL          ; (= logoff, SETUP_TERMINAL)
         jsr SETUP_TERMINAL
         rts
 RKTN    inx : bne RKTL
