@@ -1641,36 +1641,44 @@ COL_BYTE
         rts
 
 ; =============================================================================
-; DRAW_STATUS
+; DRAW_STATUS — row 24, every game frame. Built in STAT_SCR/STAT_COL first
+; and copied to the screen in one pass, so every cell is only ever written
+; with its final value: drawing the template straight onto the screen and
+; the counts/card over it made the card flicker whenever the raster beam
+; passed row 24 in between.
 ; =============================================================================
 DRAW_STATUS
         ldx #39                          ; template generated from titan.yaml
-DSTL    lda STAT_TMPL,x : jsr PET2SCREEN : sta SCRN+960,x
-        lda #DGRAY : sta CRAM+960,x
+DSTL    lda STAT_TMPL,x : jsr PET2SCREEN : sta STAT_SCR,x
+        lda #DGRAY : sta STAT_COL,x
         dex : bpl DSTL
 
         ; security code counts: one digit each, 4 columns apart
         ldx #0 : ldy #STAT_CNT_COL
 DSTCL   cpx #NUM_CODES : bcs DSTCD
-        lda CODE_CNT,x : clc : adc #CH_0 : sta SCRN+960,y
-        lda #YELLOW : sta CRAM+960,y
+        lda CODE_CNT,x : clc : adc #CH_0 : sta STAT_SCR,y
+        lda #YELLOW : sta STAT_COL,y
         iny : iny : iny : iny
         inx : bne DSTCL
 DSTCD
         ; card: label of the first carried item (not used up, ITEM_STATE=1)
         ; that isn't a security code
         ldx #0
-DSTIL   cpx #NUM_ITEMS : bcs DSTOUT
+DSTIL   cpx #NUM_ITEMS : bcs DSTCOPY
         lda ITEM_STATE,x : cmp #1 : bne DSTIN
         lda ITEM_CODE,x : beq DSTIF
 DSTIN   inx : bne DSTIL
 DSTIF   lda ITEM_LABEL_LO,x : sta PTR
         lda ITEM_LABEL_HI,x : sta PTR+1
         ldy #11
-DSTLL   lda (PTR),y : jsr PET2SCREEN : sta SCRN+960+STAT_LBL_COL,y
-        lda #LTRED : sta CRAM+960+STAT_LBL_COL,y
+DSTLL   lda (PTR),y : jsr PET2SCREEN : sta STAT_SCR+STAT_LBL_COL,y
+        lda #LTRED : sta STAT_COL+STAT_LBL_COL,y
         dey : bpl DSTLL
-DSTOUT  rts
+DSTCOPY ldx #39
+DSTCPL  lda STAT_SCR,x : sta SCRN+960,x
+        lda STAT_COL,x : sta CRAM+960,x
+        dex : bpl DSTCPL
+        rts
 
 ; =============================================================================
 ; SID SOUND EFFECTS — voice 1, one effect at a time. While SND_TMR > 0,

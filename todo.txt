@@ -4,8 +4,6 @@
 
 Kill player if run over by robot or shot (as robot)
 
-The final line (cards: ) is flickering
-
 Map view seem to stress connections rather than rooms
 
 All rooms need a label
@@ -15,6 +13,8 @@ Dont show rooms that haven't been visited yet
 # ------------------------
 #           DONE
 # ------------------------
+
+The final line (cards: ) is flickering
 
 Set default in terminal to logoff to avoid miss-clicks
 

@@ -33,6 +33,9 @@ ORDLBL  jsr PET2SCREEN : sta SCRN+40,y
 
 ORD_LBL !pet "orders: "
 
+STAT_SCR !fill 40, 0                    ; DRAW_STATUS (game.asm) builds row 24
+STAT_COL !fill 40, 0                    ;  here before copying it to the screen
+
 ; GOAL_DONE — X = room: A <> 0 (Z clear) if its goal is achieved; a room
 ; without a goal or without done: is never done. Preserves X; clobbers Y.
 GOAL_DONE
