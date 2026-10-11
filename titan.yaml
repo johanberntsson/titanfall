@@ -185,7 +185,7 @@ items:
 rooms:
   - name: room1
     vchar64_map: graphics/titan-map01.s
-    label: room 1                      # name on the sector map (default: name)
+    label: lasers                      # name on the sector map (default: name)
     # bounds: {max_x: 19, max_y: 10}   # optional; default is the whole room
     player_start: {x: 6, y: 4}
     goal: {text: find red card, done: {found: red_card}}
@@ -217,7 +217,7 @@ rooms:
 
   - name: room2
     vchar64_map: graphics/titan-map02.s
-    label: room 2
+    label: hub
     player_start: {x: 17, y: 5}
     goal: {text: open blast door, done: {opened: room4}}   # the keyed door to room 4
     robots:
@@ -244,7 +244,7 @@ rooms:
 
   - name: room3
     vchar64_map: graphics/titan-map03.s
-    label: room 3
+    label: hall
     player_start: {x: 8, y: 9}
     goal: {text: find the east wing, done: {visited: room6}}
     robots:
@@ -301,7 +301,7 @@ rooms:
 
   - name: room6
     vchar64_map: graphics/titan-map06.s
-    label: room 6
+    label: trap
     player_start: {x: 10, y: 5}
     goal: {text: open the door, done: {opened: room8}}
     robots:
@@ -325,7 +325,7 @@ rooms:
 
   - name: room7
     vchar64_map: graphics/titan-map07.s
-    label: room 7
+    label: maze
     player_start: {x: 18, y: 4}
     goal: {text: find blue card, done: {found: blue_card}}
     robots:
@@ -373,7 +373,7 @@ rooms:
 
   - name: room9                        # between room 2 and room 1; the arcade room (later)
     vchar64_map: graphics/titan-map09.s
-    label: room 9
+    label: arcade
     player_start: {x: 1, y: 5}
     # The arcade room: a serpentine (walls at x=5, 10, 15 with their gaps at
     # the bottom, top, bottom) with crates for cover, and four robots to
@@ -413,7 +413,7 @@ rooms:
 
   - name: room10                       # left of room 8 (top row of the map)
     vchar64_map: graphics/titan-map10.s
-    label: room10
+    label: plates
     player_start: {x: 18, y: 8}
     # Pressure plates: the gate in front of the doorway to room 11 opens
     # while both plates -- (5,8) and (14,8) -- are loaded. You can't stand on
@@ -439,7 +439,7 @@ rooms:
 
   - name: room11                       # left of room 10, the far end
     vchar64_map: graphics/titan-map11.s
-    label: room11
+    label: optics
     player_start: {x: 18, y: 7}
     # Laser and mirrors: the emitter in the left wall fires along row 5. Push
     # the / mirror up into (10,5) -- the beam turns up and row 5 frees on the

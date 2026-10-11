@@ -4,15 +4,15 @@
 
 Kill player if run over by robot or shot (as robot)
 
-Map view seem to stress connections rather than rooms
-
-All rooms need a label
-
 Dont show rooms that haven't been visited yet
 
 # ------------------------
 #           DONE
 # ------------------------
+
+Map view seem to stress connections rather than rooms
+
+All rooms need a label
 
 The final line (cards: ) is flickering
 

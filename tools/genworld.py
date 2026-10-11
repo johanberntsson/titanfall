@@ -361,6 +361,8 @@ def build_map(rooms, start, doors):
             put(r + i, c, SC_VBAR, "dgray"); put(r + i, c + box_w - 1, SC_VBAR, "dgray")
         text(r + 1, c + (box_w - len(labels[ri])) // 2, labels[ri], "dgray")
 
+    # corridors in dark grey like the boxes (SETUP_MAP lights the current
+    # room's box, the corridor ends in its walls included)
     mid = box_w // 2 - 1                     # vertical corridor/exit columns: mid, mid+1
     drawn = set()
     for (a, d, b) in doors:
@@ -372,16 +374,16 @@ def build_map(rooms, start, doors):
         (ra, ca), (rb, cb) = boxes[a], boxes[b]
         if d in ("left", "right"):           # walls turn into a corridor
             l, rr = ca + box_w - 1, cb
-            put(ra + 1, l, SC_LL, "cyan"); put(ra + 1, rr, SC_LR, "cyan")
-            put(ra + 2, l, SC_UL, "cyan"); put(ra + 2, rr, SC_UR, "cyan")
+            put(ra + 1, l, SC_LL, "dgray"); put(ra + 1, rr, SC_LR, "dgray")
+            put(ra + 2, l, SC_UL, "dgray"); put(ra + 2, rr, SC_UR, "dgray")
             for c in range(l + 1, rr):
-                put(ra + 1, c, SC_HBAR, "cyan"); put(ra + 2, c, SC_HBAR, "cyan")
+                put(ra + 1, c, SC_HBAR, "dgray"); put(ra + 2, c, SC_HBAR, "dgray")
         else:
             bot, tp = ra + 3, rb
-            put(bot, ca + mid, SC_UR, "cyan"); put(bot, ca + mid + 1, SC_UL, "cyan")
-            put(tp, ca + mid, SC_LR, "cyan"); put(tp, ca + mid + 1, SC_LL, "cyan")
+            put(bot, ca + mid, SC_UR, "dgray"); put(bot, ca + mid + 1, SC_UL, "dgray")
+            put(tp, ca + mid, SC_LR, "dgray"); put(tp, ca + mid + 1, SC_LL, "dgray")
             for r in range(bot + 1, tp):
-                put(r, ca + mid, SC_VBAR, "cyan"); put(r, ca + mid + 1, SC_VBAR, "cyan")
+                put(r, ca + mid, SC_VBAR, "dgray"); put(r, ca + mid + 1, SC_VBAR, "dgray")
     for (ri, d) in exits:                    # opening in the wall + "exit"
         r, c = boxes[ri]
         if d == "down":
