@@ -1111,13 +1111,14 @@ TILE_TO_PIXEL_X
 
 ; =============================================================================
 ; CHECK_SPRITE_HIT — read $D01E once (every frame, to keep the latch clear);
-; bit 0 = player (sprite 0) collided with any other enabled sprite. Ignored
-; while PLAYER_MODE=1: the human sprite is frozen at the terminal and cannot
-; be hurt by patrol robots while the player is instead piloting the splicer.
+; bit 0 = player (sprite 0) collided with any other enabled sprite: a robot
+; or a bolt. Also while a robot is driven (PLAYER_MODE<>0): the human left
+; standing at the terminal can be run over or shot — by the driven robot
+; too. Not during the respawn grace period.
 ; =============================================================================
 CHECK_SPRITE_HIT
         lda VIC_SPCOLL : sta TMP
-        lda PLAYER_MODE : ora GRACE_TMR : bne SPRHITOK   ; (grace: no robot kills)
+        lda GRACE_TMR : bne SPRHITOK     ; (grace: no robot kills)
         lda DEATH_TMR : bne SPRHITOK
         lda TMP : and #$01 : beq SPRHITOK
         jmp PLAYER_DIE                  ; same death as a laser

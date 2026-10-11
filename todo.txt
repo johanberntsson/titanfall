@@ -2,13 +2,14 @@
 #           OPEN
 # ------------------------
 
-Kill player if run over by robot or shot (as robot)
 
 Dont show rooms that haven't been visited yet
 
 # ------------------------
 #           DONE
 # ------------------------
+
+Kill player if run over by robot or shot (in robot mode)
 
 Map view seem to stress connections rather than rooms
 
