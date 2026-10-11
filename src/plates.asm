@@ -191,14 +191,16 @@ GPOUT   rts
 
 ; ROOM_OVERLAYS — after screen cells got the room map's chars back (a trap
 ; beam or the laser beam erased): repaint what lies on top of the map --
-; crates/mirrors and filled pits, an open gate, a destroyed target.
+; crates/mirrors and filled pits, an open gate, a destroyed target, the
+; interlock's lit slots and open layers.
 ROOM_OVERLAYS
         jsr CRATE_DRAW_ALL
-        jmp GATE_PAINT
+        jsr GATE_PAINT
+        jmp ILK_PAINT
 
 ; ART_LIST — PTR = a list of map offsets (lo, hi; a $ff hi byte ends it) in
 ; CUR_ROOM: A = 0 paint those cells floor (CFG_FLOOR), A = 1 put the room
-; map's chars back; with their TILE_COLORS colours. Preserves X.
+; map's chars back, A >= 2 paint them with char A; with their TILE_COLORS colours. Preserves X.
 ART_LIST
         sta TMP2
         txa : pha
@@ -209,7 +211,9 @@ ALL     lda (PTR),y : sta AL_LO
         iny : sty AL_Y
         lda #CFG_FLOOR : sta AL_CH
         lda TMP2 : beq ALPUT
-        ldx CUR_ROOM                     ; the map's char
+        cmp #1 : beq ALMAP
+        sta AL_CH : bne ALPUT            ; A >= 2: that char
+ALMAP   ldx CUR_ROOM                     ; the map's char
         lda AL_LO : clc : adc ROOM_MAP_LO,x : sta PTR2
         lda AL_HI : adc ROOM_MAP_HI,x : sta PTR2+1
         ldy #0 : lda (PTR2),y : sta AL_CH

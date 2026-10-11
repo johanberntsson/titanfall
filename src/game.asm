@@ -73,6 +73,7 @@ SGDOOR  cpx #NUM_DOORS : bcs SGDOORD     ;  door stays open across respawns)
         inx : bne SGDOOR
 SGDOORD jsr RESET_WALLS                  ; their tiles solid again, none searched
         jsr GATE_RESET                   ; gates closed, laser targets intact
+        jsr ILK_RESET                    ; the interlock: no keys, all layers closed
         ldx #0                           ; no room visited yet (goal visited:)
 SGSEEN  cpx #NUM_ROOMS : bcs SGSEEND
         lda #0 : sta ROOM_SEEN,x
@@ -633,7 +634,8 @@ TMYOK   lda CUR_ROOM : jsr WALL_AT : bcc TMNOWALL
         lsr : lsr : lsr : beq TMWALL ; a closed keyed door's tile (keyed no. + 1)?
         tax : lda KEYDOOR-1,x : tax  ;  -> door index
         jmp DOOR_ENTER               ;  pushing it: locked popup or open it
-TMWALL  clc : rts                    ; wall: blocked (try the next direction)
+TMWALL  jmp ILK_TOUCH                ; wall: blocked (carry clear: try the next
+                                     ;  direction) -- unless it's the interlock
 TMPIT   lda #2 : sta PLR_DYING       ; like a laser, but the sprite vanishes
         bne TMCOMMIT                 ;  on arrival (UPDATE_SPRITE0)
 TMNOWALL
@@ -684,11 +686,17 @@ TDNONE  clc : rts
 DOOR_ENTER
         lda DOOR_KEY,x : beq DENOPEN
         lda DOOR_OPEN,x : bne DENOPEN
-        ldy DOOR_KEY,x : dey         ; key is item index + 1
+        ldy DOOR_KEY,x : iny : beq DENSEAL   ; $ff: sealed (the interlock console)
+        dey : dey                    ; key is item index + 1
         lda ITEM_STATE,y : cmp #1 : beq DENUNLK   ; carried: open it
         jsr SETUP_DOOR_LOCKED
         sec : rts
+DENSEAL jsr SETUP_DOOR_SEALED
+        sec : rts
 DENUNLK lda #2 : sta ITEM_STATE,y    ; the key is used up (leaves the card slot)
+; DOOR_UNLOCK — X = keyed door: open it (art erased, tiles passable, green
+; flash). Also the interlock console's release (interlock.asm). Carry set.
+DOOR_UNLOCK
         lda #1 : sta DOOR_OPEN,x
         txa : tay : jsr ERASE_DOOR   ; (preserves X)
         jsr OPEN_DOOR_WALLS
@@ -1703,16 +1711,27 @@ DSTCL   cpx #NUM_CODES : bcs DSTCD
         iny : iny : iny : iny
         inx : bne DSTCL
 DSTCD
+        ; launch keys carried (ITEM_STATE=1), if the world has any
+        lda #STAT_KEY_COL : beq DSTKD2   ; (world.asm comes later: no !if)
+        ldx #0 : ldy #CH_0
+DSTKL   cpx #NUM_ITEMS : bcs DSTKD
+        lda ITEM_LKEY,x : beq DSTKN
+        lda ITEM_STATE,x : cmp #1 : bne DSTKN
+        iny
+DSTKN   inx : bne DSTKL
+DSTKD   sty STAT_SCR+STAT_KEY_COL
+        lda #YELLOW : sta STAT_COL+STAT_KEY_COL
+DSTKD2
         ; card: label of the first carried item (not used up, ITEM_STATE=1)
-        ; that isn't a security code
+        ; that isn't a security code or a launch key
         ldx #0
 DSTIL   cpx #NUM_ITEMS : bcs DSTCOPY
         lda ITEM_STATE,x : cmp #1 : bne DSTIN
-        lda ITEM_CODE,x : beq DSTIF
+        lda ITEM_CODE,x : ora ITEM_LKEY,x : beq DSTIF
 DSTIN   inx : bne DSTIL
 DSTIF   lda ITEM_LABEL_LO,x : sta PTR
         lda ITEM_LABEL_HI,x : sta PTR+1
-        ldy #11
+        ldy #STAT_LBL_W-1
 DSTLL   lda (PTR),y : jsr PET2SCREEN : sta STAT_SCR+STAT_LBL_COL,y
         lda #LTRED : sta STAT_COL+STAT_LBL_COL,y
         dey : bpl DSTLL

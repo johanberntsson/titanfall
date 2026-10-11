@@ -42,7 +42,11 @@ GOAL_DONE
         ldy GOAL_ARG,x
         lda GOAL_KIND,x
         cmp #GOAL_FOUND : bne GDN1
-        lda ITEM_STATE,y : rts
+        lda GOAL_ARG2,x : cmp #$FF : beq GDF1    ; a second item too?
+        tay : lda ITEM_STATE,y : beq GDF0
+        ldy GOAL_ARG,x
+GDF1    lda ITEM_STATE,y
+GDF0    rts
 GDN1    cmp #GOAL_OPENED : bne GDN2
         lda DOOR_OPEN,y : rts
 GDN2    cmp #GOAL_VISITED : bne GDN3

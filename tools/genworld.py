@@ -518,8 +518,13 @@ def main():
     # ---- items ---------------------------------------------------------
     items = cfg.get("items") or {}
     item_index = {name: i for i, name in enumerate(items)}
-    item_labels, item_msgs, item_code = [], [], []
+    item_labels, item_msgs, item_code, item_lkey = [], [], [], []
     for name, it in items.items():
+        # launch_key: true = one of the keys the interlock machine takes
+        # (art.interlock); counted on the status line instead of the card slot
+        item_lkey.append(1 if it.get("launch_key") else 0)
+        if item_lkey[-1] and "code" in it:
+            die(f"item {name}: a launch key can't be a security code too")
         # code: <letter> makes the item a security code: finding it adds one
         # to that code's count instead of going into the card slot
         item_code.append(code_ref(it["code"], f"item {name}") if "code" in it else 0)
@@ -575,6 +580,17 @@ def main():
     beam_h_tile = int(art.get("beam_h_tile", 0))
     if emitter_tiles and not beam_h_tile:
         die("art.beam_h_tile is needed with emitter_tiles (the horizontal beam glyph)")
+    ilk_cfg = art.get("interlock") or {}
+    if ilk_cfg:
+        try:
+            ilk_slot, ilk_lit, ilk_console = (int(ilk_cfg[k]) for k in ("slot", "slot_lit", "console"))
+            ilk_layers = [int(t) for t in ilk_cfg["layers"]]
+        except (KeyError, TypeError, ValueError):
+            die("art.interlock needs slot, slot_lit, console and layers (a list, outermost first)")
+        ilk_chars = {ilk_slot, ilk_console, *ilk_layers}
+    else:
+        ilk_slot = ilk_lit = ilk_console = 0
+        ilk_layers, ilk_chars = [], set()
     missile_tiles = {int(t) for t in art.get("missile_tiles") or []}
     if not missile_tiles:
         die("art.missile_tiles is missing (the missile's chars, launched on game over)")
@@ -703,25 +719,32 @@ def main():
                 die(f"room {rname}: door leads_to unknown room {dest!r}")
             arrive = d.get("arrive") or {}
             key = d.get("key")
+            sealed = bool(d.get("sealed"))
+            if sealed and key is not None:
+                die(f"room {rname}: a door is either sealed: (opened by the interlock "
+                    f"console) or has a key:, not both")
             if key is not None and key not in item_index:
                 die(f"room {rname}: door key references unknown item {key!r}")
             if key is not None and item_code[item_index[key]]:
                 die(f"room {rname}: door key {key!r} is a security code - "
                     f"codes are spent on robot links, not doors")
+            if key is not None and item_lkey[item_index[key]]:
+                die(f"room {rname}: door key {key!r} is a launch key - "
+                    f"those go into the interlock machine")
             door["room"].append(ri)
             for k in ("x1", "y1", "x2", "y2"):
                 door[k].append(int(at[k]))
             door["dest"].append(dest_i)
             door["ax"].append(0xFF if "x" not in arrive else int(arrive["x"]))
             door["ay"].append(0xFF if "y" not in arrive else int(arrive["y"]))
-            door["key"].append(0 if key is None else item_index[key] + 1)
+            door["key"].append(0xFF if sealed else 0 if key is None else item_index[key] + 1)
             drect = {k: int(at[k]) for k in ("x1", "y1", "x2", "y2")}
             side = door_dir(drect, room, f"room {rname} door to {dest}")
             map_doors.append((ri, side, None if dest_i == 0xFF else dest_i))
             # a keyed door opens (its art turns to floor) the first time the
             # player walks into it carrying the key
             patches = []
-            if key is not None:
+            if key is not None or sealed:
                 patches = door_art_patches(read_vchar64_map(room["vchar64_map"]),
                                            drect, side, door_tiles, floor_tile)
                 if not patches:
@@ -735,7 +758,7 @@ def main():
             die(f"item {iname!r} is never placed in a room")
 
     # ---- goals: the orders line (row 1) per room ----
-    goal_text, goal_kind, goal_arg = [], [], []
+    goal_text, goal_kind, goal_arg, goal_arg2 = [], [], [], []
     for ri, room in enumerate(rooms):
         rname = room["name"]
         g = room.get("goal") or {}
@@ -749,11 +772,17 @@ def main():
         done = g.get("done") or {}
         if len(done) > 1:
             die(f"room {rname}: goal done: takes one condition, got {sorted(done)}")
-        kind, arg = 0, 0
-        if "found" in done:
-            if done["found"] not in item_index:
-                die(f"room {rname}: goal done: found: unknown item {done['found']!r}")
-            kind, arg = GOAL_FOUND, item_index[done["found"]]
+        kind, arg, arg2 = 0, 0, 0xFF
+        if "found" in done:                 # an item, or a list of two
+            found = done["found"] if isinstance(done["found"], list) else [done["found"]]
+            if not 1 <= len(found) <= 2:
+                die(f"room {rname}: goal done: found: one item or a list of two")
+            for f_ in found:
+                if f_ not in item_index:
+                    die(f"room {rname}: goal done: found: unknown item {f_!r}")
+            kind, arg = GOAL_FOUND, item_index[found[0]]
+            if len(found) == 2:
+                arg2 = item_index[found[1]]
         elif "opened" in done:              # this room's keyed door to <room>
             dest = room_index.get(done["opened"])
             hits = [i for i in range(len(door["room"]))
@@ -776,6 +805,7 @@ def main():
             die(f"room {rname}: goal done: without a goal text")
         goal_kind.append(kind)
         goal_arg.append(arg)
+        goal_arg2.append(arg2)
 
     # ---- walls: solid tiles per room, from the art; validate placements --
     walls = []
@@ -794,7 +824,7 @@ def main():
         walls.append(wall_grid(read_vchar64_map(room["vchar64_map"]),
                                room["_maxx"], room["_maxy"],
                                solid_tiles | crate_tiles | mirror_chars | gate_tiles
-                               | target_tiles | emitter_tiles))
+                               | target_tiles | emitter_tiles | ilk_chars))
         ri = len(walls) - 1
         mapdata = read_vchar64_map(room["vchar64_map"])
         mx, my = room["_maxx"], room["_maxy"]
@@ -895,6 +925,69 @@ def main():
             for x, d in enumerate(row):
                 if d and (x, y) not in owner:
                     walls[ri][y][x] = True
+
+    # the launch interlock (art.interlock): in one room, key slots (a tile
+    # with a slot char each), nested barrier layers (every tile with a
+    # layers[n] char; opened outermost first, one per key inserted) and the
+    # release console, which opens that room's sealed: door. All solid.
+    ilk = {"room": 0xFF, "slots": [], "slot_art": [], "lt": [], "layer_art": [],
+           "console": (0, 0), "door": 0}
+    for ri, room in enumerate(rooms):
+        md = read_vchar64_map(room["vchar64_map"])
+        if not any(c in ilk_chars for c in md):
+            continue
+        rname = room["name"]
+        if ilk["room"] != 0xFF:
+            die(f"art.interlock chars in rooms {rooms[ilk['room']]['name']} and {rname} "
+                f"- there is one launch interlock")
+        ilk["room"] = ri
+        mx, my = room["_maxx"], room["_maxy"]
+        def cells(x, y):
+            return [r * 40 + c for r in (2 * y, 2 * y + 1) for c in (2 * x, 2 * x + 1)]
+        for y, row in enumerate(wall_grid(md, mx, my, {ilk_slot})):
+            for x, hit in enumerate(row):
+                if hit:
+                    ilk["slots"].append((x, y))
+                    ilk["slot_art"].append([o_ for o_ in cells(x, y) if md[o_] == ilk_slot])
+                    searchable[ri][y][x] = False
+        cons = [(x, y) for y, row in enumerate(wall_grid(md, mx, my, {ilk_console}))
+                for x, hit in enumerate(row) if hit]
+        if len(cons) != 1:
+            die(f"room {rname}: the interlock needs exactly one console tile "
+                f"(art.interlock.console), found {len(cons)}")
+        ilk["console"] = cons[0]
+        searchable[ri][cons[0][1]][cons[0][0]] = False
+        for n, ch in enumerate(ilk_layers):
+            tiles = [(x, y) for y, row in enumerate(wall_grid(md, mx, my, {ch}))
+                     for x, hit in enumerate(row) if hit]
+            if not tiles:
+                die(f"room {rname}: interlock layer {n + 1} (char ${ch:02x}) isn't drawn")
+            for x, y in tiles:
+                other = {md[o_] for o_ in cells(x, y)} - {ch, floor_tile}
+                if other:
+                    die(f"room {rname}: interlock layer {n + 1} tile ({x},{y}) also has "
+                        f"chars {', '.join(f'${c:02x}' for c in sorted(other))} - a layer "
+                        f"tile may only hold its own char (and floor), it turns to floor")
+                ilk["lt"].append((x, y, n))
+                searchable[ri][y][x] = False
+            ilk["layer_art"].append([o_ for o_ in range(ROOM_MAP_BYTES) if md[o_] == ch])
+        nkeys = sum(item_lkey)
+        if not (len(ilk["slots"]) == len(ilk_layers) == nkeys):
+            die(f"room {rname}: the interlock needs as many key slots as layers as "
+                f"launch_key items: {len(ilk['slots'])} slots, {len(ilk_layers)} layers, "
+                f"{nkeys} launch keys")
+        sealed = [di for di in range(len(door["room"]))
+                  if door["room"][di] == ri and door["key"][di] == 0xFF]
+        if len(sealed) != 1:
+            die(f"room {rname}: the interlock room needs exactly one sealed: door "
+                f"(the console opens it), found {len(sealed)}")
+        ilk["door"] = sealed[0]
+    for di in range(len(door["room"])):
+        if door["key"][di] == 0xFF and door["room"][di] != ilk["room"]:
+            die(f"room {rooms[door['room'][di]]['name']}: a sealed: door outside the "
+                f"interlock room (only its console opens one)")
+    if ilk["room"] == 0xFF and any(item_lkey):
+        die("launch_key items but no interlock in the art (art.interlock)")
 
     def check_open(ri, x, y, what):
         room = rooms[ri]
@@ -1032,6 +1125,31 @@ def main():
             o.append("        !byte $00,$ff")
     o.append("")
 
+    o.append("; ---- the launch interlock (art.interlock): key slots, barrier layers, console ----")
+    o.append(f"ILK_ROOM   = ${ilk['room']:02x}   ; $ff = none")
+    o.append(f"NUM_SLOTS  = {len(ilk['slots'])}")
+    o.append(f"NUM_LTILES = {len(ilk['lt'])}")
+    o.append(f"CONSOLE_X  = {ilk['console'][0]}")
+    o.append(f"CONSOLE_Y  = {ilk['console'][1]}")
+    o.append(f"ILK_DOOR   = {ilk['door']}   ; the sealed door the console opens")
+    o.append(f"CFG_SLOT_LIT = ${ilk_lit:02x}   ; art.interlock.slot_lit")
+    o.append(tbl("SLOT_X", [x for x, y in ilk["slots"]] or [0], "key slot tiles"))
+    o.append(tbl("SLOT_Y", [y for x, y in ilk["slots"]] or [0]))
+    o.append(tbl("LT_X", [x for x, y, n in ilk["lt"]] or [0], "barrier layer tiles"))
+    o.append(tbl("LT_Y", [y for x, y, n in ilk["lt"]] or [0]))
+    o.append(tbl("LT_N", [n for x, y, n in ilk["lt"]] or [0], "its layer (0 = outermost, opened first)"))
+    for name, lists in (("SLOT_ART", ilk["slot_art"]), ("LAYER_ART", ilk["layer_art"])):
+        o.append(f"{name}_LO      ; map offsets (lo, hi; $ff hi ends)")
+        o.append("        !byte " + (",".join(f"<{name}_{i}" for i in range(len(lists))) or "0"))
+        o.append(f"{name}_HI")
+        o.append("        !byte " + (",".join(f">{name}_{i}" for i in range(len(lists))) or "0"))
+        for i, offs in enumerate(lists):
+            o.append(f"{name}_{i}")
+            for k in range(0, len(offs), 8):
+                o.append("        !byte " + ",".join(f"${x & 0xff:02x},${x >> 8:02x}" for x in offs[k:k + 8]))
+            o.append("        !byte $00,$ff")
+    o.append("")
+
     o.append("; ---- rooms ----")
     o.append("ROOM_MAP_LO     ; pointer to 22x40 screen-code map data")
     o.append("        !byte " + ",".join(f"<ROOM_MAP_{i}" for i in range(len(rooms))))
@@ -1055,6 +1173,7 @@ def main():
     o.append(f"GOAL_GATE = {GOAL_GATE}      ;  ... GATE_STATE,arg = 2 (latched open)")
     o.append(tbl("GOAL_KIND", goal_kind))
     o.append(tbl("GOAL_ARG", goal_arg))
+    o.append(tbl("GOAL_ARG2", goal_arg2, "GOAL_FOUND: a second item that must be found too, $ff = none"))
     o.append(f"GOAL_LO         ; {GOAL_WIDTH}-char goal (after \"orders: \"), and the same + \"{GOAL_DONE}\"")
     o.append("        !byte " + ",".join(f"<GOAL_{i}" for i in range(len(rooms))))
     o.append("GOAL_HI")
@@ -1123,12 +1242,23 @@ def main():
     o.append("; ---- security codes and the status line (row 24) ----")
     o.append(f"NUM_CODES     = {len(code_names)}")
     o.append(tbl("CODE_START", code_start, "count at mission start (SETUP_GAME)"))
-    if code_names:
-        tmpl = " code:" + "".join(f" {c} 0" for c in code_names) + "    card: "
-    else:
-        tmpl = " card: "
+    tmpl = (" code:" + "".join(f" {c} 0" for c in code_names)) if code_names else ""
+    key_col = 0
+    if any(item_lkey):                  # launch keys carried
+        tmpl += "  keys "
+        key_col = len(tmpl)
+        tmpl += "0"
+    tmpl += "  card: "
+    lbl_w = 40 - len(tmpl)
+    for i, name in enumerate(items):
+        if not item_code[i] and not item_lkey[i] and len(item_labels[i].rstrip()) > lbl_w:
+            die(f"item {name}: label longer than {lbl_w} chars (the card field on the status line)")
+    if lbl_w < len("not found"):
+        die("status line: no room for the card label")
     o.append("STAT_CNT_COL  = 9      ; column of code 0's digit; codes are 4 columns apart")
-    o.append(f"STAT_LBL_COL  = {len(tmpl)}     ; column of the card label (LABEL_WIDTH chars)")
+    o.append(f"STAT_KEY_COL  = {key_col}     ; column of the launch key count (0 = no launch keys)")
+    o.append(f"STAT_LBL_COL  = {len(tmpl)}     ; column of the card label")
+    o.append(f"STAT_LBL_W    = {lbl_w}     ; its width")
     # "not found" sits in the label field: a carried card's label (always
     # LABEL_WIDTH chars, space-padded) is drawn right over it
     o.append(f'STAT_TMPL !pet "{(tmpl + "not found").ljust(40)}"')
@@ -1146,6 +1276,7 @@ def main():
     o.append(tbl("ITEM_X", [byte(p[1], "ITEM_X") for p in ipr]))
     o.append(tbl("ITEM_Y", [byte(p[2], "ITEM_Y") for p in ipr]))
     o.append(tbl("ITEM_CODE", item_code, "security code it adds when found: index + 1, 0 = a card/key item"))
+    o.append(tbl("ITEM_LKEY", item_lkey, "1 = a launch key (art.interlock), not shown as the card"))
     if items:
         o.append("ITEM_LABEL_LO   ; 12-char status-line label")
         o.append("        !byte " + ",".join(f"<ITEM_LBL_{i}" for i in range(len(items))))
@@ -1175,7 +1306,7 @@ def main():
             ("DOOR_DEST", "dest", "destination room, $ff = mission exit (win)"),
             ("DOOR_AX", "ax", "arrival position, $ff = keep current"),
             ("DOOR_AY", "ay", ""),
-            ("DOOR_KEY", "key", "required item index + 1, 0 = none")):
+            ("DOOR_KEY", "key", "required item index + 1, 0 = none, $ff = sealed (interlock console)")):
         o.append(tbl(name, [byte(v, name) for v in door[key]], comment))
     o.append(tbl("DOOR_KNUM", [knum[di] + 1 if di in knum else 0
                                for di in range(len(door["room"]))],
@@ -1387,6 +1518,8 @@ def main():
     # where the crates are)
     o.append("PIT_FILLED  !fill NUM_PITS+1    ; 1 = a crate filled it (floor now)")
     o.append("GATE_STATE  !fill NUM_ROOMS     ; per room: 0 closed, 1 held open (plates), 2 latched open")
+    o.append("ILK_N       !byte 0             ; launch keys inserted = interlock layers open")
+    o.append("ILK_SLOT    !fill NUM_SLOTS+1   ; 1 = a key turned in this slot")
     o.append("CRATE_X     ; current tile of each movable crate ($ff = it filled a pit)")
     o.append("        !byte " + ",".join(f"${v:02x}" for v in crate["x"] + [0]))
     o.append("CRATE_Y")

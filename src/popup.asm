@@ -196,6 +196,22 @@ SETUP_DOOR_LOCKED
         lda #>SBOX_MSG_LOCKED : sta PTR+1
         jmp SHOW_POPUP
 
+; The launch interlock (interlock.asm, DOOR_ENTER): the sealed door pushed
+; before the console released it, a key slot pushed without a launch key,
+; the console's release.
+SETUP_DOOR_SEALED
+        lda #<SBOX_MSG_SEALED : sta PTR
+        lda #>SBOX_MSG_SEALED : sta PTR+1
+        jmp SHOW_POPUP
+SETUP_NEED_KEY
+        lda #<SBOX_MSG_NEEDKEY : sta PTR
+        lda #>SBOX_MSG_NEEDKEY : sta PTR+1
+        jmp SHOW_POPUP
+SETUP_RELEASED
+        lda #<SBOX_MSG_RELEASED : sta PTR
+        lda #>SBOX_MSG_RELEASED : sta PTR+1
+        jmp SHOW_POPUP
+
 ; ---------------------------------------------------------------------------
 ; SETUP_LINKED — "now controlling <robot>" popup after a terminal link
 ; (TERM_ROBOT, X = actor): the generated name row (ACT_LNAME_n) as the
@@ -292,6 +308,9 @@ SBOX_BLK        !pet "    ", G_VERT_BAR, "                              ", G_VER
 SBOX_MSG_GAMEOVER !pet "    ", G_VERT_BAR, "          game over           ", G_VERT_BAR, "    "
 SBOX_MSG_WIN    !pet "    ", G_VERT_BAR, "  launch aborted. you win!    ", G_VERT_BAR, "    "
 SBOX_MSG_LOCKED !pet "    ", G_VERT_BAR, "         door locked!         ", G_VERT_BAR, "    "
+SBOX_MSG_SEALED !pet "    ", G_VERT_BAR, " door sealed. use the release ", G_VERT_BAR, "    "
+SBOX_MSG_NEEDKEY !pet "    ", G_VERT_BAR, "    a launch key is needed    ", G_VERT_BAR, "    "
+SBOX_MSG_RELEASED !pet "    ", G_VERT_BAR, "     silo door released!      ", G_VERT_BAR, "    "
 SBOX_MSG_WHERE  !pet "    ", G_VERT_BAR, "     room "      ; digits patched
 SBW_ROOM        !pet "1   x="                               ;  by SETUP_WHERE
 SBW_X           !pet "00   y="

@@ -87,6 +87,16 @@ art:
   # The missile: on game over its room is shown (no sprites) and these chars
   # fly up off the screen, leaving the art around them. All in one room.
   missile_tiles: [0xa5, 0xa7, 0xa8, 0xc3, 0xdf, 0xe9]
+  # The launch interlock (one room): a key slot per launch key (a 2x2 tile
+  # of slot chars, lit when a key is turned in it), nested barrier layers
+  # around the release console -- one layer opens per key, outermost first,
+  # any slot, any order -- and the console, which opens the room's sealed:
+  # door. All solid. Slots = layers = launch_key items.
+  interlock:
+    slot: 0xb9
+    slot_lit: 0xba
+    layers: [0xbb, 0xbc, 0xbd]         # outermost first
+    console: 0xbe
 
 # Actor types: name, sprite set (src/c64_*_sprites.asm, included by src/titanfall.asm),
 # colour, and AI routine used while computer-controlled. "human" is reserved
@@ -178,15 +188,25 @@ items:
     found_text: blue access card found!
   code_a2:
     code: a                            # room 10's cabinet: pays for the room 10/11 dozers
-  override:                            # placeholder goal of room 11
-    name: launch override module
-    label: override
-    found_text: launch override module found!
+  # launch_key: true = a key for the launch interlock (art.interlock); the
+  # status line counts the ones carried ("keys 2") instead of the card slot
+  launch_key_1:                        # optics
+    launch_key: true
+    label: key
+    found_text: launch key found!
+  launch_key_2:                        # maze
+    launch_key: true
+    label: key
+    found_text: launch key found!
+  launch_key_3:                        # vault
+    launch_key: true
+    label: key
+    found_text: launch key found!
 
 # Rooms. goal: is the room's line of orders, shown on row 1 as "orders:
 # <text>" while the player is in the room (max 25 chars). Optional done:
 # names when it's achieved — then " - done" is added and it turns green:
-#   found: <item>     the item has been found
+#   found: <item>     the item has been found (or a list of two: both)
 #   opened: <room>    this room's keyed door to <room> has been opened
 #   visited: <room>   the player has been in <room>
 rooms:
@@ -226,7 +246,7 @@ rooms:
     vchar64_map: graphics/titan-map02.s
     label: hub
     player_start: {x: 17, y: 5}
-    goal: {text: open blast door, done: {opened: room4}}   # the keyed door to room 4
+    goal: {text: open blast door, done: {opened: room12}}   # the keyed door to room 12
     robots:
       - type: drone
         name: bot-8808  drone
@@ -245,7 +265,7 @@ rooms:
         leads_to: room3
         arrive: {y: 10}                # x omitted = keep current x
       - at: {x1: 6, y1: 11, x2: 10, y2: 11}  # bottom wall: the closed door (0xa3)
-        leads_to: room4
+        leads_to: room12
         arrive: {y: 0}
         key: red_card                  # locked (popup) without it; opens with it
 
@@ -253,14 +273,17 @@ rooms:
     vchar64_map: graphics/titan-map03.s
     label: hall
     player_start: {x: 8, y: 9}
-    goal: {text: find the east wing, done: {visited: room6}}
+    goal: {text: find blue card, done: {found: blue_card}}
     robots:
       - type: tripod
         name: bot-4410  tripod
         code: a
         idle: roam                     # wanders the hall
-        attack: forcefield             # advances behind a force field when it sees you (row or column)
+        attack: forcefield             # advances behind a force field when it sees you
         start: {x: 14, y: 7}
+    things:
+      - item: blue_card                # the furniture, bottom left
+        at: {x: 1, y: 9}
     doors:
       - at: {x1: 6, y1: 11, x2: 10, y2: 11}  # bottom wall opening, back to room 2
         leads_to: room2
@@ -282,9 +305,9 @@ rooms:
         start: {x: 10, y: 5}
         patrol: [{x: 10, y: 5}, {x: 4, y: 5}]   # x 1-3 is the (solid) power cell
     doors:
-      - at: {x1: 6, y1: -1, x2: 10, y2: -1}  # top wall opening, back to room 2
-        leads_to: room2
-        arrive: {y: 10}
+      - at: {x1: -1, y1: 9, x2: -1, y2: 9}   # left wall opening, back to the interlock
+        leads_to: room12
+        arrive: {x: 19}
 
   - name: room5
     vchar64_map: graphics/titan-map05.s
@@ -334,7 +357,7 @@ rooms:
     vchar64_map: graphics/titan-map07.s
     label: maze
     player_start: {x: 18, y: 4}
-    goal: {text: find blue card, done: {found: blue_card}}
+    goal: {text: find launch key, done: {found: launch_key_2}}
     robots:
       - type: dozer                    # pushes the crates out of the way
         name: bot-7070  dozer
@@ -348,7 +371,7 @@ rooms:
         idle: roam                     # hops around the maze, harmless
         start: {x: 16, y: 9}           #  (but touching it still kills)
     things:
-      - item: blue_card                # top left, past the crates
+      - item: launch_key_2             # top left, past the crates
         at: {x: 1, y: 1}
     doors:
       - at: {x1: -1, y1: 4, x2: -1, y2: 5}   # left wall opening, back to room 6
@@ -364,7 +387,7 @@ rooms:
     # taken over; the laser traps in the top wall can fry it: stand under
     # the crate at (9,4) or (5,4) -- the beam comes on, you're safe behind
     # the crate -- and wait for the sentry to walk through the beam.
-    goal: {text: find security code, done: {found: code_b1}}
+    goal: {text: find code and key, done: {found: [code_b1, launch_key_3]}}
     robots:
       - type: sentry
         name: bot-9090  sentry
@@ -376,6 +399,8 @@ rooms:
     things:
       - item: code_b1                  # the cabinet, far left on row 3
         at: {x: 1, y: 3}
+      - item: launch_key_3             # the cabinet by the top wall
+        at: {x: 10, y: 1}
     doors:
       - at: {x1: 12, y1: 11, x2: 16, y2: 11} # bottom wall opening, back to room 6
         leads_to: room6
@@ -458,16 +483,42 @@ rooms:
     # the / mirror up into (10,5) -- the beam turns up and row 5 frees on the
     # right -- then the \ mirror left into (10,2): the beam runs along row 2
     # into the target at (4,2), and the chamber's gate (top right) opens.
-    goal: {text: find launch override, done: {found: override}}   # placeholder
+    goal: {text: find launch key, done: {found: launch_key_1}}
     robots:
       - type: dozer
         name: bot-1111  dozer
         code: a
         start: {x: 14, y: 8}
     things:
-      - item: override                 # the cabinet in the chamber, top right
+      - item: launch_key_1             # the cabinet in the chamber, top right
         at: {x: 18, y: 1}
     doors:
       - at: {x1: 20, y1: 7, x2: 20, y2: 8}   # right wall opening, back to room 10
         leads_to: room10
         arrive: {x: 0}
+
+  - name: room12                       # below the hub, left of the silo
+    vchar64_map: graphics/titan-map12.s
+    label: lock
+    player_start: {x: 8, y: 0}
+    # The launch interlock: turn a launch key in each of the three slots
+    # (any order) -- every key opens one ring of the cage, outermost first --
+    # then walk into the release console in the middle: it opens the sealed
+    # door to the silo.
+    goal: {text: release the silo door, done: {opened: room4}}
+    robots:
+      - type: tripod
+        name: bot-1212  tripod
+        code: a
+        locked: true                   # (no terminal here anyway)
+        idle: roam
+        attack: forcefield
+        start: {x: 16, y: 2}
+    doors:
+      - at: {x1: 6, y1: -1, x2: 10, y2: -1}  # top wall opening, back to the hub
+        leads_to: room2
+        arrive: {y: 10}
+      - at: {x1: 20, y1: 9, x2: 20, y2: 9}   # right wall: the sealed door to the silo
+        leads_to: room4
+        arrive: {x: 0}
+        sealed: true                   # only the release console opens it
