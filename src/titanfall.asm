@@ -119,6 +119,7 @@ SPRP_ROBOT  = robot_down_rest/64    ; (ASSIGN_SPRITES / FRAME_PTR set the
 SPRP_DRONE  = drone_down_hover/64   ;  real per-frame values in game state)
 SPRP_BOLT   = bolt_1/64             ; shooter's bolt (bolt_1/bolt_2), sprite 3
 SPRP_FIELD  = forcefield_1/64       ; forcefield robot's field (forcefield_1/2), sprite 4
+SPRP_FIELD_V = forcefield_v_1/64    ; ... facing up/down (forcefield_v_1/2)
 
 ; facings — also the frame-group order inside each sprite set
 DIR_DOWN   = 0
@@ -521,7 +522,7 @@ SCR_BORDER_BOTTOM  !pet G_RD_LL, G_HORIZ_BAR, G_HORIZ_BAR, G_HORIZ_BAR, G_HORIZ_
 ; FRAME_PTR in game.asm picks the frame. Every actor set has all 4 facings
 ; (12 frames).
 ; =============================================================================
-SPRITE_FRAMES = 12+12+12+12+12+2+2+4
+SPRITE_FRAMES = 12+12+12+12+12+12+2+2+2+4
         * = CHARSET - SPRITE_FRAMES*64
 SPRITES_START
         !source "src/c64_walker_sprites.asm"       ; player:  12 frames
@@ -529,8 +530,10 @@ SPRITES_START
         !source "src/c64_drone_sprites.asm"        ; drone:   12 frames
         !source "src/c64_dozer_sprites.asm"        ; dozer:   12 frames
         !source "src/c64_tripod_sprites.asm"       ; tripod:  12 frames
+        !source "src/c64_hopper_sprites.asm"       ; hopper:  12 frames
         !source "src/c64_bolt_sprites.asm"         ; bolt:     2 frames (shooter)
         !source "src/c64_forcefield_h_sprites.asm" ; field:   2 frames (forcefield horizontal)
+        !source "src/c64_forcefield_v_sprites.asm" ; field:   2 frames (forcefield vertical)
 CS_FRAMES                                          ; cut scene:  4 frames, filled
         !fill 4*64, 0                              ;  by SETUP_CUTSCENE (cutscene.asm)
 SPRITES_END

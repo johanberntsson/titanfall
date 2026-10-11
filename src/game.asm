@@ -1303,40 +1303,69 @@ HSW     lda CUR_ROOM : jsr WALL_AT : bcc HSL
 HSNO    clc : rts
 HSYES   sec : rts
 
+; SEES_COL — like SEES_PLAYER, but along the actor's tile column (same X,
+; no wall tile between them). Only the forcefield robot looks up and down
+; (FIELD_THINK, when it faces up or down).
+SEES_COL
+        lda PLAYER_MODE : ora PLR_DYING : ora GRACE_TMR : bne HSNO
+        lda ACT_ROOM,x : cmp CUR_ROOM : bne HSNO
+        lda ACT_X,x : cmp PLR_X : bne HSNO
+        sta NEWX
+        lda ACT_Y,x : sta NEWY
+HCL     lda NEWY : cmp PLR_Y : beq HSYES ; reached the player: clear view
+        bcc HCD
+        dec NEWY : jmp HCW
+HCD     inc NEWY
+HCW     lda CUR_ROOM : jsr WALL_AT : bcc HCL
+        clc : rts
+
 ; HUNT_RUSH — X = actor that sees the human (same row): one fast step along
 ; the row toward the player; the sprite collision does the rest. Stands still (on
 ; the player already, or the next tile is an active laser).
 HUNT_RUSH
         lda #1 : sta ACT_FAST,x
-; ADVANCE — X = actor: one step along its row toward the player (shared by
-; RUSH_THINK and the forcefield robot, which advances at normal pace).
+; ADVANCE — X = actor: one step toward the player along its row, or along
+; its column when it's in the player's column (shared by RUSH_THINK and the
+; forcefield robot, which advances at normal pace; only the forcefield robot
+; sees along columns, SEES_COL).
 ADVANCE
         lda ACT_Y,x : sta NEWY
         lda ACT_X,x : sta NEWX
-        cmp PLR_X : beq HRSTOP
+        cmp PLR_X : beq ADVV
         bcc HRR
         dec NEWX : lda #DIR_LEFT : bne HRGO
-HRR     inc NEWX : lda #DIR_RIGHT
+HRR     inc NEWX : lda #DIR_RIGHT : bne HRGO
+ADVV    lda NEWY : cmp PLR_Y : beq HRSTOP
+        bcc ADVD
+        dec NEWY : lda #DIR_UP : bne HRGO
+ADVD    inc NEWY : lda #DIR_DOWN
 HRGO    jsr ACT_FACE                     ; turn to face the player even if blocked
         jsr LASER_AT : bcs HRSTOP        ; never charge into a beam
         lda NEWX : sta ACT_X,x
+        lda NEWY : sta ACT_Y,x
         jmp ACT_STEP_ANIM
 HRSTOP  lda #0 : sta ACT_ANIM,x
         rts
 
 ; ---------------------------------------------------------------------------
 ; FIELD_THINK — X = actor with ATK_FORCEFIELD, at normal pace. Idles; while
-; it sees the player (SEES_PLAYER: same row, no wall between) it raises its
-; force field (FIELD_ACT = X+1; FIELD_TICK draws it on hw sprite 4 in front
-; of the robot, toward the player) and advances along the row at normal
-; pace (ADVANCE). Touching the robot or the field is the ordinary sprite
-; collision. Losing sight drops the field and it goes back to idling.
-; There is one field: a second forcefield robot that sees the player takes
-; it over.
+; it sees the player along the axis it moves on — its row when facing
+; left/right (SEES_PLAYER), its column when facing up/down (SEES_COL); either
+; side, no wall between — it raises its force field (FIELD_ACT = X+1;
+; FIELD_TICK draws it on hw sprite 4 in front of the robot) and advances
+; toward the player at normal pace (ADVANCE, which turns it round first).
+; So a robot walking left or right doesn't notice the player above or below
+; it, and a patrol along a row never looks up or down. Touching the robot or
+; the field is the ordinary sprite collision. Losing sight drops the field
+; and it goes back to idling. There is one field: a second forcefield robot
+; that sees the player takes it over.
 ; ---------------------------------------------------------------------------
 FIELD_THINK
-        jsr SEES_PLAYER : bcs FTSEE
-        txa : clc : adc #1 : cmp FIELD_ACT : bne FTPAT
+        lda ACT_DIR,x : cmp #DIR_LEFT : bcs FTROW
+        jsr SEES_COL : bcs FTSEE         ; facing down/up: its column
+        bcc FTNO
+FTROW   jsr SEES_PLAYER : bcs FTSEE      ; facing left/right: its row
+FTNO    txa : clc : adc #1 : cmp FIELD_ACT : bne FTPAT
         lda #0 : sta FIELD_ACT           ; lost sight: field down
 FTPAT   jmp ACTOR_IDLE
 FTSEE   txa : clc : adc #1 : sta FIELD_ACT
@@ -1344,12 +1373,16 @@ FTSEE   txa : clc : adc #1 : sta FIELD_ACT
 
 ; ---------------------------------------------------------------------------
 ; FIELD_TICK — every game frame: show the force field of actor FIELD_ACT-1
-; on hw sprite 4 (forcefield_1/2 alternating every 2 frames, in the robot's
-; own colour) FIELD_OFS px ahead of the robot's glided sprite, on the side it
-; faces — or hide it (no field, the robot is dead/driven/elsewhere, or it
-; faces up/down). Clobbers A/X/Y.
+; on hw sprite 4 (alternating every 2 frames, in the robot's own colour)
+; ahead of the robot's glided sprite, on the side it faces: forcefield_1/2
+; FIELD_OFS px left/right, forcefield_v_1/2 FIELD_OFS_V px up/down — or hide
+; it (no field, the robot is dead/driven/elsewhere). Clobbers A/X/Y/TMP/TMP2.
 ; ---------------------------------------------------------------------------
 FIELD_OFS = 20                          ; px from the robot's sprite X
+FIELD_OFS_V = 18                        ; px from the robot's sprite Y
+
+FKOFF   lda VIC_SPEN : and #$EF : sta VIC_SPEN
+        rts                              ; (FIELD_TICK's "hide it", here so its branches reach)
 
 FIELD_TICK
         ldx FIELD_ACT : beq FKOFF
@@ -1357,9 +1390,19 @@ FIELD_TICK
         lda ACT_ALIVE,x : cmp #1 : bne FKOFF
         lda ACT_ROOM,x : cmp CUR_ROOM : bne FKOFF
         txa : clc : adc #1 : cmp PLAYER_MODE : beq FKOFF
+        lda GL_PY,x : sta TMP            ; sprite Y (left/right: the robot's)
+        lda #SPRP_FIELD : sta TMP2       ; first frame
         lda ACT_DIR,x : cmp #DIR_LEFT : beq FKLEFT
-        cmp #DIR_RIGHT : bne FKOFF
-        lda GL_PXL,x : clc : adc #FIELD_OFS : sta VIC_SP4X
+        cmp #DIR_RIGHT : beq FKRIGHT
+        ldy #SPRP_FIELD_V : sty TMP2     ; up/down: the vertical field
+        cmp #DIR_UP : beq FKUP
+        lda TMP : clc : adc #FIELD_OFS_V : jmp FKVERT
+FKUP    lda TMP : sec : sbc #FIELD_OFS_V
+FKVERT  sta TMP
+        lda GL_PXL,x : sta VIC_SP4X
+        lda GL_PXH,x
+        jmp FKMSB
+FKRIGHT lda GL_PXL,x : clc : adc #FIELD_OFS : sta VIC_SP4X
         lda GL_PXH,x : adc #0
         jmp FKMSB
 FKLEFT  lda GL_PXL,x : sec : sbc #FIELD_OFS : sta VIC_SP4X
@@ -1368,12 +1411,10 @@ FKMSB   beq FKM0
         lda VIC_SP_MSB : ora #$10 : bne FKM1
 FKM0    lda VIC_SP_MSB : and #$EF
 FKM1    sta VIC_SP_MSB
-        lda GL_PY,x : sta VIC_SP4Y
+        lda TMP : sta VIC_SP4Y
         ldy ACT_TYPE,x : lda TYPE_COLOR,y : sta VIC_SPCOL4
-        lda ANIM_CNT : lsr : and #1 : clc : adc #SPRP_FIELD : sta SPRPTR+4
+        lda ANIM_CNT : lsr : and #1 : clc : adc TMP2 : sta SPRPTR+4
         lda VIC_SPEN : ora #$10 : sta VIC_SPEN
-        rts
-FKOFF   lda VIC_SPEN : and #$EF : sta VIC_SPEN
         rts
 
 ; ---------------------------------------------------------------------------

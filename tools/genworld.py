@@ -646,7 +646,9 @@ def main():
             act["wy0"].append(int(patrol[0]["y"]))
             act["wx1"].append(int(patrol[1]["x"]))
             act["wy1"].append(int(patrol[1]["y"]))
-            # A rushing / forcefield robot charges along its own tile row and
+            # A rushing / forcefield robot charges along its own tile row (a
+            # forcefield one facing up/down along its column — ROAM_TRY gets
+            # it back; a horizontal patrol never faces up/down anyway) and
             # a patrolling one then walks back to its patrol X-first, so the
             # patrol must be one horizontal line through its start: attack and
             # return then only cover tiles of that row that the line-of-sight
