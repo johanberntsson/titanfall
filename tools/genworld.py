@@ -489,6 +489,7 @@ def main():
     if "human" not in types:
         die("actor_types needs a human entry (the player sprite)")
     type_sprite, type_color, type_dir0, type_anim, type_push = [], [], [], [], []
+    type_fly = []
     type_ai = {}                        # type name -> (idle, attack) (robots may override)
     for name, t in types.items():
         type_sprite.append(t["sprite"])  # label of first frame; ACME computes /64
@@ -507,6 +508,7 @@ def main():
             die(f"actor type {name}: unknown color {color!r}")
         type_color.append(C64_COLORS[color])
         type_push.append(1 if t.get("push", False) else 0)   # can push crates
+        type_fly.append(1 if t.get("fly", False) else 0)     # crosses pits
         if name != "human":
             type_ai[name] = behaviour(t, ("patrol", "none"), f"actor type {name}")
 
@@ -1105,6 +1107,7 @@ def main():
     o.append(tbl("TYPE_DIR0", type_dir0, "first facing with frames (0=all 4, 2=left/right only)"))
     o.append(tbl("TYPE_ANIM", type_anim, "0=walk (steps animate) 1=hover (always animating)"))
     o.append(tbl("TYPE_PUSH", type_push, "1 = pushes crates while player-driven"))
+    o.append(tbl("TYPE_FLY", type_fly, "1 = flies over pits while player-driven"))
     o.append("")
 
     o.append("; ---- movable crates (art.crate_tiles on a whole tile; not in ROOM_MAP_n,")

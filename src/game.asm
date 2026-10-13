@@ -794,7 +794,10 @@ TRY_ACT
 TAXOK   lda NEWY : cmp ROOM_MAXY,y : bcc TAYOK : beq TAYOK
         clc : rts
 TAYOK   lda ACT_ROOM,x : jsr WALL_AT : bcc TANOWALL
-        jsr CRATE_PUSH : bcs TANOWALL ; a crate it pushed: step onto its old
+        bpl TAWALL                   ; a pit (N set): a flying type crosses it
+        ldy ACT_TYPE,x
+        lda TYPE_FLY,y : bne TANOWALL
+TAWALL  jsr CRATE_PUSH : bcs TANOWALL ; a crate it pushed: step onto its old
         rts                          ;  tile; else a wall: blocked (C clear)
 TANOWALL
         lda NEWX : sta ACT_X,x
