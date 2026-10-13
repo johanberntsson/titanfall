@@ -37,6 +37,7 @@ GA_NOWIN
         lda GAME_STATE : cmp #1 : bne GAME_TICK_DONE  ; terminal/win/map/popup entered this frame
         jsr TRAP_ZAP                     ; a robot in a laser trap's beam?
         jsr PLATE_TICK                   ; pressure plates -> the room's gate
+        jsr SHUT_TICK                    ; timed shutters (shutters.asm)
         jsr BEAM_ZAP                     ; anyone in an emitter's beam?
         jsr GRACE_TICK                   ; (before UPDATE_SPRITE0: a pit hides it)
         jsr UPDATE_SPRITE0
@@ -74,6 +75,7 @@ SGDOOR  cpx #NUM_DOORS : bcs SGDOORD     ;  door stays open across respawns)
 SGDOORD jsr RESET_WALLS                  ; their tiles solid again, none searched
         jsr GATE_RESET                   ; gates closed, laser targets intact
         jsr ILK_RESET                    ; the interlock: no keys, all layers closed
+        jsr SHUT_RESET                   ; every shutter closed, on its clock
         ldx #0                           ; no room visited yet (goal visited:)
 SGSEEN  cpx #NUM_ROOMS : bcs SGSEEND
         lda #0 : sta ROOM_SEEN,x
@@ -1513,7 +1515,7 @@ BTMOVED lda BOLT_XH : lsr                ; tile = X/16 (C = bit 8)
         bmi BTSHOW                       ; a pit: the bolt flies over it
         and BOLT_PLR : bne BTWIN         ; a win target, hit by the player?
         bcc BTSHOW                       ;  (checked first: the cell is solid)
-        jmp BTKILL
+        jmp BOLT_SOLID                   ; a laser target? (shutters.asm)
 BTWIN   lda #0 : sta BOLT_ON
         lda VIC_SPEN : and #$F7 : sta VIC_SPEN
         jmp SETUP_EXPLODE                ; the power cell is hit (win.asm)

@@ -608,6 +608,7 @@ def main():
     gate_tiles = {int(t) for t in art.get("gate_tiles") or []}
     emitter_tiles = {int(t) for t in art.get("emitter_tiles") or []}
     target_tiles = {int(t) for t in art.get("target_tiles") or []}
+    shutter_tiles = {int(t) for t in art.get("shutter_tiles") or []}
     beam_h_tile = int(art.get("beam_h_tile", 0))
     if emitter_tiles and not beam_h_tile:
         die("art.beam_h_tile is needed with emitter_tiles (the horizontal beam glyph)")
@@ -632,6 +633,7 @@ def main():
     gate = {"room": [], "x": [], "y": []}                 # gate tiles (one gate per room)
     tgt = {"room": [], "x": [], "y": []}                  # laser target tiles
     emit = {"room": [], "x": [], "y": [], "dir": []}      # laser emitters (one per room)
+    shut = {"room": [], "open": [], "closed": [], "first": [], "tiles": [], "art": []}  # timed shutters
     door_art = []                       # per door: [(map offset, new char), ...]
     if not laser_tiles:
         die("art.laser_tiles must list the laser beam/emitter screen codes")
@@ -855,7 +857,7 @@ def main():
         walls.append(wall_grid(read_vchar64_map(room["vchar64_map"]),
                                room["_maxx"], room["_maxy"],
                                solid_tiles | crate_tiles | mirror_chars | gate_tiles
-                               | target_tiles | emitter_tiles | ilk_chars))
+                               | target_tiles | emitter_tiles | ilk_chars | shutter_tiles))
         ri = len(walls) - 1
         mapdata = read_vchar64_map(room["vchar64_map"])
         mx, my = room["_maxx"], room["_maxy"]
@@ -883,6 +885,44 @@ def main():
                 emit["x"].append(x)
                 emit["y"].append(y)
                 emit["dir"].append(DIR_CODES[d])
+        # timed shutters: rooms list them (shutters:, tile rectangles with
+        # open/closed frame counts); every art.shutter_tiles tile must be in one
+        sgrid = wall_grid(mapdata, mx, my, shutter_tiles)
+        covered = set()
+        for si, sh in enumerate(room.get("shutters") or []):
+            what = f"room {room['name']}: shutter {si + 1}"
+            try:
+                if "at" in sh:
+                    x1 = x2 = int(sh["at"]["x"]); y1 = y2 = int(sh["at"]["y"])
+                else:
+                    x1, y1, x2, y2 = (int(sh[k]) for k in ("x1", "y1", "x2", "y2"))
+                s_open, s_closed = int(sh["open"]), int(sh["closed"])
+            except (KeyError, TypeError, ValueError):
+                die(f"{what}: needs at: {{x, y}} (or x1/y1/x2/y2), open: and closed: (frames)")
+            s_first = int(sh.get("first_open", s_closed))
+            for name_, v in (("open", s_open), ("closed", s_closed), ("first_open", s_first)):
+                if not 1 <= v <= 255:
+                    die(f"{what}: {name_} must be 1-255 frames")
+            tiles = []
+            for y in range(y1, y2 + 1):
+                for x in range(x1, x2 + 1):
+                    if not (0 <= x <= mx and 0 <= y <= my) or not sgrid[y][x]:
+                        die(f"{what}: tile ({x},{y}) has no shutter chars (art.shutter_tiles)")
+                    tiles.append((x, y))
+                    covered.add((x, y))
+                    searchable[ri][y][x] = False
+            shut["room"].append(ri)
+            shut["open"].append(s_open)
+            shut["closed"].append(s_closed)
+            shut["first"].append(s_first)
+            shut["tiles"].append(tiles)
+            shut["art"].append([o_ for o_ in range(ROOM_MAP_BYTES) if mapdata[o_] in shutter_tiles
+                                and (o_ % 40 // 2, o_ // 40 // 2) in tiles])
+        for y, row in enumerate(sgrid):
+            for x, hit in enumerate(row):
+                if hit and (x, y) not in covered:
+                    die(f"room {room['name']}: shutter chars at tile ({x},{y}) but no "
+                        f"shutters: entry covers it")
         if ri in plate["room"] and ri not in gate["room"]:
             die(f"room {room['name']}: pressure plates but no gate (art.gate_tiles)")
         if ri in emit["room"] and ri not in tgt["room"]:
@@ -1158,6 +1198,32 @@ def main():
             for k in range(0, len(offs), 8):
                 o.append("        !byte " + ",".join(f"${x & 0xff:02x},${x >> 8:02x}" for x in offs[k:k + 8]))
             o.append("        !byte $00,$ff")
+    o.append("")
+
+    o.append("; ---- timed shutters (art.shutter_tiles): closed (solid) and open in turn ----")
+    o.append(f"NUM_SHUT = {len(shut['room'])}")
+    o.append(tbl("SH_ROOM", shut["room"] or [0xFF]))
+    o.append(tbl("SH_OPEN", shut["open"] or [1], "frames open"))
+    o.append(tbl("SH_CLOSED", shut["closed"] or [1], "frames closed"))
+    o.append(tbl("SH_FIRST", shut["first"] or [1], "frames until it first opens (new game)"))
+    t0, tx, ty = [], [], []
+    for tiles in shut["tiles"]:
+        t0.append(len(tx))
+        tx += [x for x, y in tiles]
+        ty += [y for x, y in tiles]
+    o.append(tbl("SH_T0", t0 or [0], "its first tile in SHT_X/Y"))
+    o.append(tbl("SH_TN", [len(t) for t in shut["tiles"]] or [0], "its number of tiles"))
+    o.append(tbl("SHT_X", tx or [0]))
+    o.append(tbl("SHT_Y", ty or [0]))
+    o.append("SH_ART_LO       ; per shutter: map offsets of its chars (lo, hi; $ff hi ends)")
+    o.append("        !byte " + (",".join(f"<SH_ART_{i}" for i in range(len(shut["room"]))) or "0"))
+    o.append("SH_ART_HI")
+    o.append("        !byte " + (",".join(f">SH_ART_{i}" for i in range(len(shut["room"]))) or "0"))
+    for i, offs in enumerate(shut["art"]):
+        o.append(f"SH_ART_{i}")
+        for k in range(0, len(offs), 8):
+            o.append("        !byte " + ",".join(f"${x & 0xff:02x},${x >> 8:02x}" for x in offs[k:k + 8]))
+        o.append("        !byte $00,$ff")
     o.append("")
 
     o.append("; ---- the launch interlock (art.interlock): key slots, barrier layers, console ----")
@@ -1547,6 +1613,8 @@ def main():
     o.append("ACT_ANIM    !fill NUM_ACTORS    ; walk frame 0=rest 1=walk1 2=walk2")
     o.append("ACT_FAST    !fill NUM_ACTORS    ; 1 = rushing (hunter saw the player): double pace")
     o.append("ACT_HOP     !fill NUM_ACTORS+1  ; 1 = the current glide is a 2-tile hop/jump (double speed)")
+    o.append("SH_STATE    !fill NUM_SHUT+1    ; per shutter: 0 closed, 1 open")
+    o.append("SH_TMR      !fill NUM_SHUT+1    ; frames left in that state")
     o.append("GL_PXL      !fill NUM_ACTORS+1  ; sprite pixel X lo (smooth movement;")
     o.append("GL_PXH      !fill NUM_ACTORS+1  ;  last slot = the human), X hi bit")
     o.append("GL_PY       !fill NUM_ACTORS+1  ; sprite pixel Y")

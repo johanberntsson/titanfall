@@ -76,6 +76,7 @@ art:
   # latches open.
   emitter_tiles: [0xb3]
   target_tiles: [0xb8]
+  shutter_tiles: [0xbf]                # timed shutters (a room's shutters: list)
   beam_h_tile: 0xb4                    # the horizontal beam (vertical: laser_tiles[0])
   mirrors:
     slash: [0xb5, 0xb6, 0xb6, 0xb5]    # /
@@ -202,6 +203,8 @@ items:
     code: a                            # room 13's island: pays back the drone's link
   code_a4:
     code: a                            # room 14's vault: pays back the hopper's link
+  code_a5:
+    code: a                            # room 15's vault: pays back the sentry's link
   # launch_key: true = a key for the launch interlock (art.interlock); the
   # status line counts the ones carried ("keys 2") instead of the card slot
   launch_key_1:                        # optics
@@ -428,6 +431,9 @@ rooms:
       - at: {x1: -1, y1: 8, x2: -1, y2: 8}   # left wall opening (only tile row 8
         leads_to: room10                     #  is open: the art's rows 15-18)
         arrive: {x: 19}
+      - at: {x1: 20, y1: 8, x2: 20, y2: 8}   # right wall opening, to room 15
+        leads_to: room15
+        arrive: {x: 0}
 
   - name: room9                        # between room 2 and room 1; the arcade room (later)
     vchar64_map: graphics/titan-map09.s
@@ -601,3 +607,31 @@ rooms:
       - at: {x1: 20, y1: 5, x2: 20, y2: 6}   # right wall opening, back to room 3
         leads_to: room3
         arrive: {x: 0}
+
+  - name: room15                       # right of the vault (room 8)
+    vchar64_map: graphics/titan-map15.s
+    label: range
+    player_start: {x: 1, y: 8}
+    # A shooting range: link the sentry in its booth at the left end of the
+    # sealed channel on row 5 (a pit keeps it in) and shoot along the
+    # channel. Two shutters cross it, opening and closing out of step; a
+    # bolt that gets through both hits the target at (16,5), which latches
+    # the gate (18,6) open: up the passage into the vault.
+    goal: {text: open the vault, done: {gate: room15}}
+    robots:
+      - id: bot1515
+        type: sentry
+        name: bot-1515  sentry
+        code: a
+        attack: shoot                  # driven, fire shoots
+        start: {x: 2, y: 5}            # no patrol: it stays in its booth
+    shutters:                          # frames (50 a second); a bolt crosses
+      - {at: {x: 8, y: 5}, open: 24, closed: 40, first_open: 40}   # a tile in ~5
+      - {at: {x: 12, y: 5}, open: 20, closed: 50, first_open: 15}
+    things:
+      - item: code_a5
+        at: {x: 2, y: 1}
+    doors:
+      - at: {x1: -1, y1: 8, x2: -1, y2: 8}   # left wall opening, back to room 8
+        leads_to: room8
+        arrive: {x: 19}

@@ -75,14 +75,7 @@ BTL     dec BM_LEFT : beq BTSTOP
         lda TURN_SLASH,x : sta BM_DIR : jmp BTL
 BTBACK  lda TURN_BACK,x : sta BM_DIR : jmp BTL
 BTTGT   jsr TGT_AT : bcc BTEND           ; solid: stops here
-        lda #2 : jsr GATE_OPEN           ; the target is hit: gate latched open
-        lda CUR_ROOM : sta GS_ROOM
-        lda #0 : sta GS_SET
-        jsr TGT_SOLID                    ; the target's tiles walkable,
-        jsr GATE_PAINT                   ;  its art (and the gate's) floor
-        jsr SOUND_ZAP_START
-        lda #GREEN : sta VIC_BRDCOL
-        lda #15 : sta BFLASH
+        jsr TGT_DESTROY
         jmp BUTRACE                      ; the beam goes on through
 BTFREE  ldx BEAM_N : cpx #BEAM_MAX : bcs BTEND
         lda BM_X : sta BEAM_X,x
@@ -108,6 +101,20 @@ MRAL    cpy #NUM_CRATES : bcs MRANO
         lda CRATE_KIND,y : rts
 MRAN    iny : bne MRAL
 MRANO   lda #0 : rts
+
+; TGT_DESTROY — CUR_ROOM's laser target is hit (by the beam, or a bolt from a
+; player-driven shooter, BOLT_SOLID): the gate latches open, the target's
+; tiles become walkable, its art (and the gate's) floor; zap, green flash.
+TGT_DESTROY
+        lda #2 : jsr GATE_OPEN
+        lda CUR_ROOM : sta GS_ROOM
+        lda #0 : sta GS_SET
+        jsr TGT_SOLID
+        jsr GATE_PAINT
+        jsr SOUND_ZAP_START
+        lda #GREEN : sta VIC_BRDCOL
+        lda #15 : sta BFLASH
+        rts
 
 ; TGT_AT — NEWX/NEWY: carry set if it's a laser target tile of CUR_ROOM (and
 ; the target isn't destroyed yet). Clobbers A/Y.
