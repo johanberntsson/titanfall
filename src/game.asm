@@ -994,6 +994,7 @@ UPDSP2  lda ACT_X,x : sta NEWX
         lda GL_PXL,x : sta NEWX          ; NEWX/NEWY/GLT_H now hold the
         lda GL_PY,x  : sta NEWY          ;  sprite's pixel position
         lda GL_PXH,x : sta GLT_H
+        jsr HOP_ARC                      ; mid-jump: lift it along an arc
         lda ACT_DIR,x : sta TMP
         lda ACT_ANIM,x : sta TMP2
         lda ACT_TYPE,x : tax
@@ -1595,7 +1596,9 @@ ASA2    lda #2 : sta ACT_ANIM,x : rts
 ; ---------------------------------------------------------------------------
 FRAME_PTR
         lda TYPE_ANIM,x : beq FPWALK
-        lda ANIM_CNT
+        lda HOP_LEAP : beq FPHOVER       ; a hopper mid-jump (HOP_ARC): the
+        lda #2 : sta TMP2 : bne FPWALK   ;  leap pose (move2)
+FPHOVER lda ANIM_CNT
         lsr : lsr : lsr : lsr        ; C = bit 3 (odd pose), A = cnt>>4
         bcc FPHREST
         and #1 : adc #0              ; C=1: A = bit 4 + 1 -> move1 / move2

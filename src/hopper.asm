@@ -145,3 +145,46 @@ HCLSET  pla : tay : pha
         pla : tax
 HCLDONE pla : tay
         rts
+
+; -----------------------------------------------------------------------------
+; HOP_ARC — from UPD_SLOT after GLIDE, with NEWX/GLT_H/NEWY = the sprite's
+; position about to be written and GLT_L/GLT_Y = its tile's (the glide
+; target). X = actor; preserves X/Y. While a 2-tile hop/jump (ACT_HOP) is
+; still gliding, the sprite is drawn off its path by HOP_ARCTAB[distance
+; left] — up for a jump left/right, to the left for one up/down — so it
+; arcs through the air and lands on the tile; HOP_LEAP = 1 makes FRAME_PTR
+; show the leap pose. Display only: the glide and the tile don't change.
+; -----------------------------------------------------------------------------
+HOP_ARC
+        lda #0 : sta HOP_LEAP
+        lda ACT_HOP,x : beq HAROUT2
+        tya : pha
+        lda GL_PXL,x : sec : sbc GLT_L : bne HARH     ; (|distance| <= 32)
+        lda GL_PY,x : sec : sbc GLT_Y : beq HAROUT
+        jsr HOP_ARCH_OF : bcs HAROUT
+        sta HOP_ARCH                     ; up/down: swing out to the left
+        lda NEWX : sec : sbc HOP_ARCH : sta NEWX
+        bcs HARLEAP
+        dec GLT_H                        ; borrow from bit 8
+        jmp HARLEAP
+HARH    jsr HOP_ARCH_OF : bcs HAROUT
+        sta HOP_ARCH                     ; left/right: up through the air
+        lda NEWY : sec : sbc HOP_ARCH : sta NEWY
+HARLEAP lda #1 : sta HOP_LEAP
+HAROUT  pla : tay
+HAROUT2 rts
+
+; HOP_ARCH_OF — A = signed distance left (px): A = arc height, carry clear;
+; carry set if it's out of the table's range. Clobbers Y.
+HOP_ARCH_OF
+        bpl HAO1
+        eor #$FF : clc : adc #1
+HAO1    cmp #33 : bcs HAOX
+        tay : lda HOP_ARCTAB,y
+        clc
+HAOX    rts
+
+; height (px) by distance left: 10 * d * (32 - d) / 256, a parabola peaking
+; mid-jump (a 2-tile jump glides 32 px)
+HOP_ARCTAB
+        !byte 0,1,2,3,4,5,6,6,7,8,8,9,9,9,9,9,10,9,9,9,9,9,8,8,7,6,6,5,4,3,2,1,0

@@ -103,6 +103,8 @@ HOP_DIR    = $62   ; ROAM_TRY: the direction of its step (HOP_AI)
 HOP_MX     = $63   ; HOP_TRY: the middle tile of the jump
 HOP_MY     = $64
 HOP_C      = $65   ; HOP_COLOR: the colour being set
+HOP_LEAP   = $66   ; HOP_ARC: 1 = this sprite is mid-jump (FRAME_PTR: leap pose)
+HOP_ARCH   = $67   ; HOP_ARC: the arc's height this frame
 LINK_JIF   = $44   ; robot link: frames into the current second (0-49)
 POPUP_ST   = $33   ; popup: 0=waiting for opening space to be released, 1=armed
 F2_PREV    = $30   ; F2 held last game frame (edge detect for the where-am-I popup)
