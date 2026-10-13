@@ -354,7 +354,9 @@ MLNOT6  cmp #7 : bne MLNOT7
         jmp DO_EXPLODE
 MLNOT7  cmp #9 : bne MLNOT9
         jmp DO_HELP
-MLNOT9  jmp DO_CUTSCENE
+MLNOT9  cmp #10 : bne MLNOT10
+        jmp DO_CARRIER
+MLNOT10 jmp DO_CUTSCENE
 
 ; =============================================================================
 ; CLS — clears all 1024 bytes of screen + colour RAM
@@ -583,6 +585,7 @@ SPRITES_END
         !source "src/interlock.asm"
         !source "src/rle.asm"
         !source "src/hopper.asm"
+        !source "src/carrier.asm"
 HIGH_END
 !if HIGH_END > $C000 {                  ; ($A000-$BFFF is RAM: BASIC is banked out at init)
         !error "code/data above $4000 runs into the music at $C000"

@@ -37,6 +37,10 @@ Joystick in port 2. The keyboard works the same way: WASD moves and Space is fir
 | Shoot (while driving a robot that has a gun) | fire | Space |
 | End a robot link early | — | F7 |
 | Terminal menu: move / select / leave | up, down / fire | W, S / Space or Return / F7 |
+| Carrier lock: tune / give up | left, right / fire | A, D / Space |
+| Help and pause (from anywhere) | — | F1 |
+| On the help screen: reset the room / restart the game | — | R / Run/Stop (Esc in VICE) |
+| Where am I (room and position) | — | F2 (Shift+F1) |
 
 ## How to play
 
@@ -64,6 +68,18 @@ Joystick in port 2. The keyboard works the same way: WASD moves and Space is fir
   that in mind.
 - **Cards** open locked doors. A carried card is shown on the bottom line
   (`CARD:`), and it's used up when it opens its door.
+- **Stuck? Reset the room.** A puzzle can end up unsolvable (a crate pushed
+  into a corner, the robot you needed destroyed). Leaving a room before
+  you've solved it puts it back the way it was. You can also press F1 and
+  then R to reset it on the spot, but that costs 10 minutes of countdown,
+  unless you have a **reset key**.
+- **Reset keys** are won at the terminals: choose *decode reset key* to play
+  the carrier lock. The computer plays a tone, then yours joins in. Turn
+  yours with left and right until the two waves on the screen line up and
+  the beating between the tones stops (your wave turns green when you're
+  close enough), then hold it there until the lock bar is full. Each
+  terminal gives one key, and every key is harder to win than the last. The
+  countdown keeps running while you play.
 
 Hints, for when you're stuck:
 

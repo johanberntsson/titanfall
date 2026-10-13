@@ -82,7 +82,8 @@ SGSEEND ldx #0                           ; security codes back to the start coun
 SGCODE  cpx #NUM_CODES : bcs SGCODED
         lda CODE_START,x : sta CODE_CNT,x
         inx : bne SGCODE
-SGCODED lda #START_ROOM : sta CUR_ROOM   ; entering the start room
+SGCODED jsr CL_RESET                     ; reset keys, carrier lock (carrier.asm)
+        lda #START_ROOM : sta CUR_ROOM   ; entering the start room
         lda ROOM_PSX+START_ROOM : sta PLR_X
         lda ROOM_PSY+START_ROOM : sta PLR_Y
         jsr SAVE_ENTRY
@@ -254,18 +255,7 @@ GTOUT   rts
 ; simply runs out without a death in between).
 ; =============================================================================
 APPLY_DEATH_PENALTY
-        lda CLK_M : cmp #CFG_PENALTY_M : bcs ADPSUB30 ; M>=penalty: subtract from M
-        lda CLK_H : bne ADPBORROW             ; M<penalty, H>0: borrow an hour
-        lda #0 : sta CLK_H : sta CLK_M : sta CLK_S  ; not enough time left: clamp to 0
-        jmp ADPCHECK
-ADPBORROW
-        dec CLK_H
-        lda CLK_M : clc : adc #60-CFG_PENALTY_M : sta CLK_M ; M<penalty, so no overflow
-        jmp ADPCHECK
-ADPSUB30
-        lda CLK_M : sec : sbc #CFG_PENALTY_M : sta CLK_M
-ADPCHECK
-        lda CLK_H : ora CLK_M : ora CLK_S : bne ADPRESPAWN
+        lda #CFG_PENALTY_M : jsr SUB_MINUTES : bne ADPRESPAWN   ; (carrier.asm)
         jsr SETUP_GAMEOVER
         rts
 ADPRESPAWN
@@ -552,6 +542,7 @@ RKTL    cpx #NUM_TERMZONES : bcs RKSEARCHCHK
         lda TERMZ_Y2,x : cmp PLR_Y : bcc RKTN
         lda #1 : sta NEAR_TERM
         lda KEY_SPC : beq RKSEARCHCHK
+        stx TERM_ZONE                    ; (carrier lock: one key per terminal)
         lda #$FF : sta TERM_SEL          ; (= logoff, SETUP_TERMINAL)
         jsr SETUP_TERMINAL
         rts

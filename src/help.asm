@@ -11,7 +11,8 @@
 ;   space / fire     resume
 ;   f7               end a robot link, then resume
 ; and, listed under "from this screen you can also select:",
-;   r                reset the room (like a death, without the time penalty)
+;   r                reset the room (like a death): spends a reset key, or
+;                    without one costs CFG_RESET_M minutes
 ;   run/stop         restart the game (SETUP_GAME; in VICE, Esc is Run/Stop)
 ; R/F7 only work when a game is under way (R: not while the player is dying,
 ; or it would dodge the death penalty).
@@ -69,7 +70,20 @@ SHPSAVE lda SCRN,x       : sta HLP_SCR,x
         lda #BLACK : sta VIC_BRDCOL : sta VIC_BGCOL
         jsr CLS                         ; (the pointers come back on resume)
         lda #<HLP_ROWS : ldy #>HLP_ROWS : jsr DRAW_ROWS
-        lda #DGRAY : ldx #5 : ldy #17 : jsr FRAME_EDGES
+        ; the r line says what a reset costs: a key, or minutes
+        lda #<HLP_L4K : sta PTR : lda #>HLP_L4K : sta PTR+1
+        lda RESET_KEYS : bne SHPRK
+        lda #<HLP_L4T : sta PTR : lda #>HLP_L4T : sta PTR+1
+        lda #CFG_RESET_M
+SHPRK   pha
+        lda #WHITE : sta TMP2
+        lda #14 : jsr DRAW_ROW
+        pla : jsr DEC2                   ; keys: col 31 / minutes: cols 25-26
+        lda RESET_KEYS : bne SHPRK2
+        lda TMP : sta SCRN+14*40+25 : lda TMP2 : sta SCRN+14*40+26
+        jmp SHPRK3
+SHPRK2  lda TMP2 : sta SCRN+14*40+31
+SHPRK3  lda #DGRAY : ldx #5 : ldy #17 : jsr FRAME_EDGES
         jmp MAIN_LOOP
 
 ; -----------------------------------------------------------------------------
@@ -154,7 +168,13 @@ HELP_RESET
         lda HLP_MOFF : sta MUSIC_OFF
         lda #0 : sta $C6
         lda #$FF : sta CIA1_PRA
-        jsr RESTORE_CODES
+        lda RESET_KEYS : beq HRSPAY     ; a reset key, else the time penalty
+        dec RESET_KEYS
+        jmp HRSGO
+HRSPAY  lda #CFG_RESET_M : jsr SUB_MINUTES : bne HRSGO
+        jsr SETUP_GAMEOVER              ; that was the last of the time
+        jmp MAIN_LOOP
+HRSGO   jsr RESTORE_CODES
         jsr RESET_ROUND                 ; (state 1, redraws everything)
         lda #GRACE_LEN : sta GRACE_TMR
         jmp MAIN_LOOP
@@ -199,3 +219,5 @@ HLP_L3    !pet G_VERT_BAR, " from this screen you can also select ", G_VERT_BAR
 HLP_L4    !pet G_VERT_BAR, " r to reset room                      ", G_VERT_BAR
 HLP_L5    !pet G_VERT_BAR, " run/stop (or esc) to restart game    ", G_VERT_BAR
 !if * - HLP_TITLE != 6*40 { !error "help rows must be 40 bytes each" }
+HLP_L4K   !pet G_VERT_BAR, " r to reset room (reset keys: 0)      ", G_VERT_BAR
+HLP_L4T   !pet G_VERT_BAR, " r to reset room (costs 00 minutes)   ", G_VERT_BAR

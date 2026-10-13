@@ -469,6 +469,13 @@ def main():
     link_s = int(game.get("robot_link_seconds", 30))
     if not 0 < link_s < 100:
         die("game.robot_link_seconds must be 1-99 (shown as 2 digits in the HUD)")
+    reset_start = int(game.get("reset_keys", 0))
+    if not 0 <= reset_start <= 9:
+        die("game.reset_keys must be 0-9 (one digit on the help screen)")
+    reset_m = int(game.get("reset_penalty_minutes", 10))
+    if not 0 < reset_m < 60:
+        die("game.reset_penalty_minutes must be 1-59 (SUB_MINUTES borrows at "
+            "most one hour)")
 
     # ---- actor types ---------------------------------------------------
     def behaviour(d, default, what):
@@ -1088,6 +1095,8 @@ def main():
     o.append(f"CFG_CLK_S     = {clk_s}")
     o.append(f"CFG_PENALTY_M = {penalty}")
     o.append(f"CFG_LINK_S    = {link_s}")
+    o.append(f"CFG_RESET_START = {reset_start}   ; reset keys at mission start")
+    o.append(f"CFG_RESET_M   = {reset_m}   ; minutes an F1-R reset costs without a key")
     o.append(f"CFG_FLOOR     = ${floor_tile:02x}   ; art.floor_tile (cut scene floor)")
     for rid, ai in actor_ids.items():
         o.append(f"ACTOR_{rid.upper()} = {ai}   ; actor index")

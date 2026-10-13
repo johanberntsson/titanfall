@@ -5,7 +5,7 @@
 ; 8-11, from the generated ACT_TROW_* strings — at most 4 robots per room),
 ; then "view map" (row 13) and "logoff" (row 14). TM_ACT says what each
 ; entry does: an actor index (link to it), TM_MAP or TM_LOGOFF.
-TERM_MAX    = 6
+TERM_MAX    = 7
 TM_MAP      = $FE
 TM_LOGOFF   = $FF
 TERM_RROW   = 8                         ; first robot row
@@ -70,6 +70,17 @@ TSDL    lda TST_DEAD-28,y : jsr PET2SCREEN : sta (PTR2),y
         dey : cpy #28 : bcs TSDL
 TSAN    inx : bne TSAL
 TSADONE
+        ldx TERM_ZONE                    ; decode reset key, unless this
+        lda CL_DONE,x : bne TSANODEC     ;  terminal has paid out already
+        ldy TERM_N
+        lda #TM_CARRIER : sta TM_ACT,y
+        lda #CL_ROW : sta TM_ROW,y
+        inc TERM_N
+        lda #<TBOX_DEC : sta PTR : lda #>TBOX_DEC : sta PTR+1
+        lda #CL_ROW : jsr DRAW_ROW
+        lda RESET_KEYS : clc : adc #CH_0  ; "(keys: n)"
+        sta SCRN+CL_ROW*40+34
+TSANODEC
         ldy TERM_N                       ; then view map, logoff
         lda #TM_MAP : sta TM_ACT,y
         lda #13 : sta TM_ROW,y
@@ -95,8 +106,9 @@ DO_TERMINAL
         lda JOY_NEW : and #$01 : bne TERM_UP
         lda JOY_NEW : and #$02 : bne TERM_DOWN
         jsr GETIN
-        beq TERM_DONE
-        cmp #$88 : beq TERM_ABORT
+        bne TKEY
+        jmp TERM_DONE
+TKEY    cmp #$88 : beq TERM_ABORT
         cmp #$0D : beq TERM_FIRE
         cmp #$57 : beq TERM_UP           ; W
         cmp #$53 : beq TERM_DOWN         ; S
@@ -117,7 +129,9 @@ TERM_DOWN
 TERM_FIRE
         ldy TERM_SEL : ldx TM_ACT,y
         cpx #TM_LOGOFF : beq TERM_ABORT
-        cpx #TM_MAP : bne TERM_ROBOT
+        cpx #TM_CARRIER : bne TFNOTCL
+        jmp SETUP_CARRIER                ; the mini-game (carrier.asm)
+TFNOTCL cpx #TM_MAP : bne TERM_ROBOT
         jsr SETUP_MAP
         jmp TERM_DONE
 
@@ -214,6 +228,7 @@ TBOX_SUB  !pet G_VERT_BAR, "  access verified. select unit:       ", G_VERT_BAR
 TBOX_NONE !pet G_VERT_BAR, "    no units in this sector           ", G_VERT_BAR
 TBOX_MAP  !pet G_VERT_BAR, "    view map                          ", G_VERT_BAR
 TBOX_OFF  !pet G_VERT_BAR, "    logoff                            ", G_VERT_BAR
+TBOX_DEC  !pet G_VERT_BAR, "    decode reset key      (keys: 0)   ", G_VERT_BAR
 TBOX_HNT  !pet G_VERT_BAR, "    fire=select    up/down=move       ", G_VERT_BAR
 TST_DEAD  !pet "destroyed"
 TMSG_LCK  !pet "  access denied. unit locked by titan.  "

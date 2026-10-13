@@ -21,6 +21,9 @@ game:
   start_time: "05:47:33"        # countdown clock at mission start (h:mm:ss)
   death_penalty_minutes: 30     # time lost per death (Impossible Mission style)
   robot_link_seconds: 30        # a terminal link to a robot expires after this (1-99)
+  reset_keys: 0                 # reset keys at the start (0-9); more are won at
+                                # terminals in the carrier lock mini-game
+  reset_penalty_minutes: 10     # F1 -> R without a reset key costs this (1-59)
 
 # Room-art screen codes the game needs to know about (shared charset, see
 # graphics/). When a laser is destroyed its beam/emitter chars under the laser
