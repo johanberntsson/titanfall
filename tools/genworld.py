@@ -489,7 +489,7 @@ def main():
     if "human" not in types:
         die("actor_types needs a human entry (the player sprite)")
     type_sprite, type_color, type_dir0, type_anim, type_push = [], [], [], [], []
-    type_fly = []
+    type_fly, type_jump = [], []
     type_ai = {}                        # type name -> (idle, attack) (robots may override)
     for name, t in types.items():
         type_sprite.append(t["sprite"])  # label of first frame; ACME computes /64
@@ -509,6 +509,7 @@ def main():
         type_color.append(C64_COLORS[color])
         type_push.append(1 if t.get("push", False) else 0)   # can push crates
         type_fly.append(1 if t.get("fly", False) else 0)     # crosses pits
+        type_jump.append(1 if t.get("jump", False) else 0)   # charged 2-tile jumps
         if name != "human":
             type_ai[name] = behaviour(t, ("patrol", "none"), f"actor type {name}")
 
@@ -1108,6 +1109,7 @@ def main():
     o.append(tbl("TYPE_ANIM", type_anim, "0=walk (steps animate) 1=hover (always animating)"))
     o.append(tbl("TYPE_PUSH", type_push, "1 = pushes crates while player-driven"))
     o.append(tbl("TYPE_FLY", type_fly, "1 = flies over pits while player-driven"))
+    o.append(tbl("TYPE_JUMP", type_jump, "1 = charged 2-tile jumps while driven, random hops by itself"))
     o.append("")
 
     o.append("; ---- movable crates (art.crate_tiles on a whole tile; not in ROOM_MAP_n,")
@@ -1535,6 +1537,7 @@ def main():
     o.append("ACT_DIR     !fill NUM_ACTORS    ; facing (DIR_*)")
     o.append("ACT_ANIM    !fill NUM_ACTORS    ; walk frame 0=rest 1=walk1 2=walk2")
     o.append("ACT_FAST    !fill NUM_ACTORS    ; 1 = rushing (hunter saw the player): double pace")
+    o.append("ACT_HOP     !fill NUM_ACTORS+1  ; 1 = the current glide is a 2-tile hop/jump (double speed)")
     o.append("GL_PXL      !fill NUM_ACTORS+1  ; sprite pixel X lo (smooth movement;")
     o.append("GL_PXH      !fill NUM_ACTORS+1  ;  last slot = the human), X hi bit")
     o.append("GL_PY       !fill NUM_ACTORS+1  ; sprite pixel Y")

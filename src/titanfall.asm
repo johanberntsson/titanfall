@@ -96,6 +96,13 @@ TR_TRAP    = $5B   ; TRAP_ROWS: the trap (X)
 GRACE_TMR  = $5C   ; frames of grace left after a respawn (robots can't see/touch you)
 MUSIC_OFF  = $5D   ; non-zero: RASTER_IRQ doesn't play the music (game over, help)
 F1_PREV    = $5E   ; F1 held last frame (edge detect for the help screen)
+HOP_CHG    = $5F   ; hopper: frames fire held while charging (hopper.asm)
+HOP_JMP    = $60   ; hopper: charged jumps left (0 = walks)
+HOP_OK     = $61   ; ROAM_TRY: 1 = the caller allows a random hop this step
+HOP_DIR    = $62   ; ROAM_TRY: the direction of its step (HOP_AI)
+HOP_MX     = $63   ; HOP_TRY: the middle tile of the jump
+HOP_MY     = $64
+HOP_C      = $65   ; HOP_COLOR: the colour being set
 LINK_JIF   = $44   ; robot link: frames into the current second (0-49)
 POPUP_ST   = $33   ; popup: 0=waiting for opening space to be released, 1=armed
 F2_PREV    = $30   ; F2 held last game frame (edge detect for the where-am-I popup)
@@ -573,6 +580,7 @@ SPRITES_END
         !source "src/help.asm"
         !source "src/interlock.asm"
         !source "src/rle.asm"
+        !source "src/hopper.asm"
 HIGH_END
 !if HIGH_END > $C000 {                  ; ($A000-$BFFF is RAM: BASIC is banked out at init)
         !error "code/data above $4000 runs into the music at $C000"

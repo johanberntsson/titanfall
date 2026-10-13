@@ -135,6 +135,10 @@ actor_types:
   #             light grey are shared by all sprites ($D025/$D026)
   # push:       true = pushes crates (art.crate_tiles) while player-driven
   # fly:        true = flies over pits (art.pit_tiles) while player-driven
+  # jump:       true = driven, standing still with fire held for 2 s charges
+  #             it (it flashes, then turns white): the next two moves are
+  #             2-tile jumps over floor, a pit or a laser. By itself it now
+  #             and then hops two tiles over floor
   human:
     sprite: sprite_down_rest
     color: ltred
@@ -159,6 +163,7 @@ actor_types:
   hopper:                              # spring hopper robot
     sprite: hopper_down_rest
     anim: hover                        # rest/crouch/rest/leap, always bouncing
+    jump: true                         # charged double jumps, random hops
     color: purple
 
 # Security codes: one-letter code types and how many the player starts with
@@ -192,6 +197,8 @@ items:
     code: a                            # room 10's cabinet: pays for the room 10/11 dozers
   code_a3:
     code: a                            # room 13's island: pays back the drone's link
+  code_a4:
+    code: a                            # room 14's vault: pays back the hopper's link
   # launch_key: true = a key for the launch interlock (art.interlock); the
   # status line counts the ones carried ("keys 2") instead of the card slot
   launch_key_1:                        # optics
@@ -298,6 +305,9 @@ rooms:
       - at: {x1: 20, y1: 5, x2: 20, y2: 6}   # right wall opening, to room 6
         leads_to: room6
         arrive: {x: 0}
+      - at: {x1: -1, y1: 5, x2: -1, y2: 6}   # left wall opening, to room 14
+        leads_to: room14
+        arrive: {x: 19}
 
   - name: room4
     vchar64_map: graphics/titan-map04.s
@@ -560,3 +570,31 @@ rooms:
       - at: {x1: 12, y1: -1, x2: 15, y2: -1}  # top wall opening, back to room 1
         leads_to: room1
         arrive: {y: 10}
+
+  - name: room14                       # left of the hall
+    vchar64_map: graphics/titan-map14.s
+    label: hops
+    player_start: {x: 18, y: 5}
+    # The human and the hopper together: the vault's gate (15,2) opens while
+    # both plates are loaded. Plate B (16,2) is in the terminal's zone: stand
+    # on it and link the hopper. Plate A (2,8) is across the lower field:
+    # pit column x 13, the laser at x 9, pit column x 5. Charge (fire held
+    # 2 s, standing still), jump the pit and the laser, charge again, jump
+    # the last pit, walk onto plate A. Then step from plate B into the gate
+    # (that latches it open) and search the cabinet.
+    goal: {text: open the vault, done: {gate: room14}}
+    robots:
+      - id: bot1414
+        type: hopper
+        name: bot-1414  hopper
+        code: a
+        start: {x: 17, y: 8}           # no patrol: stays where a link leaves it
+    things:
+      - item: code_a4
+        at: {x: 3, y: 1}
+    lasers:
+      - {x1: 9, y1: 5, x2: 9, y2: 9}   # across the lower field
+    doors:
+      - at: {x1: 20, y1: 5, x2: 20, y2: 6}   # right wall opening, back to room 3
+        leads_to: room3
+        arrive: {x: 0}

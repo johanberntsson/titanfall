@@ -392,6 +392,7 @@ START_LINK
         inx : stx PLAYER_MODE
         lda #CFG_LINK_S : sta LINK_S
         lda #0 : sta LINK_JIF
+        sta HOP_CHG : sta HOP_JMP        ; a new link starts uncharged
         rts
 
 TICK_LINK
@@ -565,7 +566,8 @@ RKPROXY ; driving a robot: F7 (col 0, PA=$FE, row 3) ends the link early —
         ldx PLAYER_MODE : dex
         lda ACT_ALIVE,x : cmp #1 : bne RKPF7N
         jmp END_LINK
-RKPF7N  ; fire shoots, if it's a shooter (attack: shoot) — in the direction
+RKPF7N  jsr HOP_CHARGE_TICK            ; a jumper: fire held charges it
+        ; fire shoots, if it's a shooter (attack: shoot) — in the direction
         ; it faces
         lda KEY_SPC : beq RKPOUT
         ldx PLAYER_MODE : dex
@@ -788,7 +790,9 @@ MASET   jsr ACT_FACE
 ; hit marks the robot dying (ACT_ALIVE=2) and it glides onto the laser tile
 ; before ROBOT_LASER_DEATH runs (see UPD_DYING).
 TRY_ACT
-        ldy ACT_ROOM,x
+        jsr HOP_TRY : bcc TANORM         ; a charged jumper: two tiles
+        rts
+TANORM  ldy ACT_ROOM,x
         lda NEWX : cmp ROOM_MAXX,y : bcc TAXOK : beq TAXOK
         clc : rts
 TAXOK   lda NEWY : cmp ROOM_MAXY,y : bcc TAYOK : beq TAYOK
@@ -979,11 +983,14 @@ UPDON   ; glide toward its tile: patrol pace, or the player's pace while
         txa : clc : adc #1 : cmp PLAYER_MODE : bne UPDSPD
 UPDFAST lda #GL_FAST_X : sta GL_SX
         lda #GL_FAST_Y : sta GL_SY
-UPDSPD  lda ACT_X,x : sta NEWX
+UPDSPD  lda ACT_HOP,x : beq UPDSP2      ; a 2-tile hop/jump: twice as fast
+        asl GL_SX : asl GL_SY
+UPDSP2  lda ACT_X,x : sta NEWX
         lda ACT_Y,x : sta NEWY
         jsr GL_TARGET
         jsr UPD_DYING : bcs UPDSOFF      ; drawn on the laser tile: destroyed
         jsr GLIDE                        ; (preserves X/Y)
+        jsr HOP_COLOR                    ; a jumper's charge colour
         lda GL_PXL,x : sta NEWX          ; NEWX/NEWY/GLT_H now hold the
         lda GL_PY,x  : sta NEWY          ;  sprite's pixel position
         lda GL_PXH,x : sta GLT_H
@@ -1211,10 +1218,12 @@ APSPAT  lda ACT_TGT,x : beq APSW0
 APSW0   lda ACT_WX0,x : sta PS_WX
         lda ACT_WY0,x : sta PS_WY
 APSGO   lda ACT_X,x : cmp PS_WX : beq APSY
+        php : jsr HOP_PDX : plp          ; may hop if 2+ tiles to go
         lda #DIR_RIGHT : bcc APSXT       ; (C from the cmp)
         lda #DIR_LEFT
 APSXT   jsr ROAM_TRY : bcc APSOK
 APSY    lda ACT_Y,x : cmp PS_WY : beq APSYEQ
+        php : jsr HOP_PDY : plp
         lda #DIR_DOWN : bcc APSYT
         lda #DIR_UP
 APSYT   jsr ROAM_TRY : bcc APSOK
@@ -1237,10 +1246,15 @@ ROAM_MIN = 2
 
 ROAM_STEP
         lda ACT_TGT,x : cmp #4 : bcc RSPICK   ; no steps left: new leg
-        and #3 : jsr ROAM_TRY : bcs RSPICK    ; blocked: new leg
-        lda ACT_TGT,x : sec : sbc #4 : sta ACT_TGT,x
+        cmp #8 : lda #0 : rol : sta HOP_OK    ; 2+ steps left: may hop
+        lda ACT_TGT,x : and #3 : jsr ROAM_TRY : bcs RSPICK   ; blocked: new leg
+        lda ACT_TGT,x : sec : sbc #4
+        ldy ACT_HOP,x : beq RSNOHOP
+        sbc #4                           ; hopped: one more step of the leg
+RSNOHOP sta ACT_TGT,x
         rts
-RSPICK  jsr RAND : lsr : lsr : lsr : and #3 : sta ACT_TGT,x   ; bits 3-4
+RSPICK  lda #0 : sta HOP_OK              ; a new leg's first step: no hop
+        jsr RAND : lsr : lsr : lsr : and #3 : sta ACT_TGT,x   ; bits 3-4
         lda #4 : sta TMP2                ; directions left to try
 RSTRY   lda ACT_TGT,x : and #3
         jsr ROAM_TRY : bcc RSGO
@@ -1274,11 +1288,13 @@ RTCHK   ldy ACT_ROOM,x                   ; bounds (0-1 wraps to $FF: too big)
         lda ROOM_MAXY,y : cmp NEWY : bcc RTBLK
         lda ACT_ROOM,x : jsr WALL_AT : bcs RTBLK
         lda ACT_ROOM,x : jsr LASER_AT_A : bcs RTBLK
-        pla : jsr ACT_FACE
+        pla : sta HOP_DIR : jsr ACT_FACE
         lda NEWX : sta ACT_X,x
         lda NEWY : sta ACT_Y,x
         jsr ACT_STEP_ANIM
-        clc : rts
+        lda HOP_OK : beq RTDONE
+        jsr HOP_AI                       ; a jumper may hop one more tile
+RTDONE  clc : rts
 RTBLK   pla : sec : rts
 
 ; RAND — A = a random byte: the next value of the 8-bit LFSR (LFSR_ST, also
@@ -1564,6 +1580,7 @@ AFNO    rts
 
 ; ACT_STEP_ANIM — X = actor took a step: alternate walk1/walk2 (rest -> walk1)
 ACT_STEP_ANIM
+        lda #0 : sta ACT_HOP,x           ; an ordinary step (HOP_* set it again)
         lda ACT_ANIM,x : cmp #1 : beq ASA2
         lda #1 : sta ACT_ANIM,x : rts
 ASA2    lda #2 : sta ACT_ANIM,x : rts
