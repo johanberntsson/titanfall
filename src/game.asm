@@ -1745,19 +1745,17 @@ DSTKG   cpx #NUM_LKEYS : bcs DSTKD2
 DSTKC   sta STAT_COL+STAT_KEY_COL,x
         inx : bne DSTKG
 DSTKD2
-        ; card: label of the first carried item (not used up, ITEM_STATE=1)
-        ; that isn't a security code or a launch key
+        ; cards: one card glyph per card in the world, grey until found
+        ; (ITEM_STATE≠0: carried or used up), then in the card's colour
         ldx #0
-DSTIL   cpx #NUM_ITEMS : bcs DSTCOPY
-        lda ITEM_STATE,x : cmp #1 : bne DSTIN
-        lda ITEM_CODE,x : ora ITEM_LKEY,x : beq DSTIF
-DSTIN   inx : bne DSTIL
-DSTIF   lda ITEM_LABEL_LO,x : sta PTR
-        lda ITEM_LABEL_HI,x : sta PTR+1
-        ldy #STAT_LBL_W-1
-DSTLL   lda (PTR),y : jsr PET2SCREEN : sta STAT_SCR+STAT_LBL_COL,y
-        lda #LTRED : sta STAT_COL+STAT_LBL_COL,y
-        dey : bpl DSTLL
+DSTCG   cpx #NUM_CARDS : bcs DSTCOPY
+        lda #CH_CARD : sta STAT_SCR+STAT_CARD_COL,x
+        ldy CARD_ITEM,x
+        lda ITEM_STATE,y : cmp #1        ; C = found
+        lda #MGRAY : bcc DSTCGS
+        lda CARD_COLOR,x
+DSTCGS  sta STAT_COL+STAT_CARD_COL,x
+        inx : bne DSTCG
 DSTCOPY ldx #39
 DSTCPL  lda STAT_SCR,x : sta SCRN+960,x
         lda STAT_COL,x : sta CRAM+960,x

@@ -34,7 +34,6 @@ TILES_Y = 22 // 2
 MAX_ROBOTS_PER_ROOM = 4   # hardware sprites 1, 2, 5, 6 (0 = player, 3 = bolt, 4 = field)
 IDLE_NAMES = ["patrol", "roam"]                           # idle: values; index = IDLE_* in world.asm
 ATTACK_NAMES = ["none", "rush", "shoot", "forcefield"]     # attack: values; index = ATK_* in world.asm
-LABEL_WIDTH = 12          # status-line item label field width
 MAX_CODES = 3             # security code types (status line: " code: a 2 b 0 c 0    card: " + label)
 MSG_INTERIOR = 30         # popup box interior width (matches SBOX_* strings)
 TERM_NAME_WIDTH = 22      # robot name in the terminal menu (cols 5-26; the
@@ -549,7 +548,8 @@ def main():
     # ---- items ---------------------------------------------------------
     items = cfg.get("items") or {}
     item_index = {name: i for i, name in enumerate(items)}
-    item_labels, item_msgs, item_code, item_lkey = [], [], [], []
+    item_msgs, item_code, item_lkey = [], [], []
+    card_items, card_colors = [], []    # the cards: a glyph each on the status line
     for name, it in items.items():
         # launch_key: true = one of the keys the interlock machine takes
         # (art.interlock); counted on the status line instead of the card slot
@@ -562,11 +562,19 @@ def main():
         if item_code[-1]:
             cname = code_names[item_code[-1] - 1]
             it.setdefault("found_text", f"security code {cname} found!")
-            it.setdefault("label", f"code {cname}")   # never shown (no card slot)
-        label = check_pet(str(it.get("label", name)), f"item {name} label")
-        if len(label) > LABEL_WIDTH:
-            die(f"item {name}: label longer than {LABEL_WIDTH} chars")
-        item_labels.append(label.ljust(LABEL_WIDTH))
+        if "label" in it:
+            die(f"item {name}: label: is no longer used (cards are a glyph in "
+                f"their color: on the status line)")
+        # anything that's neither a code nor a launch key is a card: a card
+        # glyph on the status line, grey until found, then in its color:
+        if not item_code[-1] and not item_lkey[-1]:
+            color = str(it.get("color", "white")).lower()
+            if color not in C64_COLORS:
+                die(f"item {name}: unknown color {color!r}")
+            card_items.append(len(item_code) - 1)
+            card_colors.append(C64_COLORS[color])
+        elif "color" in it:
+            die(f"item {name}: color: is only for cards (not codes or launch keys)")
         text = check_pet(str(it.get("found_text", f"{name} found!")),
                          f"item {name} found_text")
         if len(text) > MSG_INTERIOR:
@@ -1343,29 +1351,30 @@ def main():
     o.append("; ---- security codes and the status line (row 24) ----")
     o.append(f"NUM_CODES     = {len(code_names)}")
     o.append(tbl("CODE_START", code_start, "count at mission start (SETUP_GAME)"))
-    tmpl = (" code:" + "".join(f" {c} 0" for c in code_names)) if code_names else ""
-    key_col = 0
+    # fields two spaces apart, no margin: "code: a 2 b 0  cards ==  launch keys ###"
+    fields = []
+    if code_names:
+        fields.append("code:" + "".join(f" {c} 0" for c in code_names))
+    card_col = key_col = 0
+    if card_items:                      # cards: one card glyph each (DRAW_STATUS)
+        fields.append("cards " + " " * len(card_items))
     if any(item_lkey):                  # launch keys: one key glyph each (DRAW_STATUS)
-        tmpl += "  keys "
-        key_col = len(tmpl)
-        tmpl += " " * sum(item_lkey)
-        tmpl += " card: "
-    else:
-        tmpl += "  card: "
-    lbl_w = 40 - len(tmpl)
-    for i, name in enumerate(items):
-        if not item_code[i] and not item_lkey[i] and len(item_labels[i].rstrip()) > lbl_w:
-            die(f"item {name}: label longer than {lbl_w} chars (the card field on the status line)")
-    if lbl_w < len("not found"):
-        die("status line: no room for the card label")
-    o.append("STAT_CNT_COL  = 9      ; column of code 0's digit; codes are 4 columns apart")
+        fields.append("launch keys " + " " * sum(item_lkey))
+    tmpl = "  ".join(fields)
+    if len(tmpl) > 40:
+        die("status line: too many codes, cards and launch keys for 40 columns")
+    if card_items:
+        card_col = tmpl.index("cards ") + len("cards ")
+    if any(item_lkey):
+        key_col = tmpl.index("launch keys ") + len("launch keys ")
+    o.append("STAT_CNT_COL  = 8      ; column of code 0's digit; codes are 4 columns apart")
     o.append(f"STAT_KEY_COL  = {key_col}     ; column of the first launch key glyph (0 = no launch keys)")
     o.append(f"NUM_LKEYS     = {sum(item_lkey)}      ; launch keys in the world (one glyph each)")
-    o.append(f"STAT_LBL_COL  = {len(tmpl)}     ; column of the card label")
-    o.append(f"STAT_LBL_W    = {lbl_w}     ; its width")
-    # "not found" sits in the label field: a carried card's label (always
-    # LABEL_WIDTH chars, space-padded) is drawn right over it
-    o.append(f'STAT_TMPL !pet "{(tmpl + "not found").ljust(40)}"')
+    o.append(f"STAT_CARD_COL = {card_col}     ; column of the first card glyph (0 = no cards)")
+    o.append(f"NUM_CARDS     = {len(card_items)}")
+    o.append(tbl("CARD_ITEM", card_items, "per card: its item index"))
+    o.append(tbl("CARD_COLOR", card_colors, "per card: its glyph's colour once found"))
+    o.append(f'STAT_TMPL !pet "{tmpl.ljust(40)}"')
     o.append("CODE_MSG_LO     ; terminal message: link refused, no code of this type")
     o.append("        !byte " + (",".join(f"<CODE_MSG_{i}" for i in range(len(code_names))) or "0"))
     o.append("CODE_MSG_HI")
@@ -1382,20 +1391,13 @@ def main():
     o.append(tbl("ITEM_CODE", item_code, "security code it adds when found: index + 1, 0 = a card/key item"))
     o.append(tbl("ITEM_LKEY", item_lkey, "1 = a launch key (art.interlock), not shown as the card"))
     if items:
-        o.append("ITEM_LABEL_LO   ; 12-char status-line label")
-        o.append("        !byte " + ",".join(f"<ITEM_LBL_{i}" for i in range(len(items))))
-        o.append("ITEM_LABEL_HI")
-        o.append("        !byte " + ",".join(f">ITEM_LBL_{i}" for i in range(len(items))))
         o.append("ITEM_MSG_LO     ; 40-char popup message row")
         o.append("        !byte " + ",".join(f"<ITEM_MSG_{i}" for i in range(len(items))))
         o.append("ITEM_MSG_HI")
         o.append("        !byte " + ",".join(f">ITEM_MSG_{i}" for i in range(len(items))))
-        for i, (label, msg) in enumerate(zip(item_labels, item_msgs)):
-            o.append(f'ITEM_LBL_{i} !pet "{label}"')
+        for i, msg in enumerate(item_msgs):
             o.append(f'ITEM_MSG_{i} !pet "    ", G_VERT_BAR, "{msg}", G_VERT_BAR, "    "')
     else:
-        o.append("ITEM_LABEL_LO")
-        o.append("ITEM_LABEL_HI")
         o.append("ITEM_MSG_LO")
         o.append("ITEM_MSG_HI")
     o.append("")

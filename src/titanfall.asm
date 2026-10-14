@@ -179,6 +179,7 @@ CH_PLUS = $2B
 CH_DASH = $2D
 CH_0    = $30
 CH_KEY  = $C0                   ; the key glyph (status line: launch keys)
+CH_CARD = $C1                   ; the key card glyph (status line: cards)
 CH_COLN = $3A
 CH_EQ   = $3D
 CH_BANG = $21

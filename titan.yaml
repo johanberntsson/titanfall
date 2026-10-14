@@ -179,15 +179,17 @@ security_codes:
   b: 0
 
 # Hidden items. Key order defines the item index (ITEM_* equates in world.asm).
-# label: shown in the status line after "card:" (max 12 chars).
+# An item that's neither a code nor a launch key is a card: a card glyph
+# after "card" on the status line, grey until found, then in its color:
+# (a C64 colour name, default white).
 # found_text: popup message when searched (max 30 chars).
-# code: <letter> makes it a security code instead (no label; adds one to
-#   that code's count; default found_text "security code <letter> found!").
+# code: <letter> makes it a security code instead (adds one to that
+#   code's count; default found_text "security code <letter> found!").
 # Runtime state per item: 0=hidden 1=carried 2=used.
 items:
   red_card:
     name: red access card
-    label: red
+    color: red                         # its glyph on the status line, once found
     found_text: red access card found!
   code_b1:
     code: b                            # a security code b: +1 to the B count
@@ -195,7 +197,7 @@ items:
     code: a                            # in the entrance's cabinet
   blue_card:
     name: blue access card
-    label: blue
+    color: blue
     found_text: blue access card found!
   code_a2:
     code: a                            # room 10's cabinet: pays for the room 10/11 dozers
@@ -209,15 +211,12 @@ items:
   # status line counts the ones carried ("keys 2") instead of the card slot
   launch_key_1:                        # optics
     launch_key: true
-    label: key
     found_text: launch key found!
   launch_key_2:                        # maze
     launch_key: true
-    label: key
     found_text: launch key found!
   launch_key_3:                        # vault
     launch_key: true
-    label: key
     found_text: launch key found!
 
 # Rooms. goal: is the room's line of orders, shown on row 1 as "orders:
