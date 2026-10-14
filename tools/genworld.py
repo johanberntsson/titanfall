@@ -1196,10 +1196,17 @@ def main():
                 searchable[ri][y][x] = False
             ilk["layer_art"].append([o_ for o_ in range(ROOM_MAP_BYTES) if md[o_] == ch])
         nkeys = sum(item_lkey)
-        if not (len(ilk["slots"]) == len(ilk_layers) == nkeys):
-            die(f"room {rname}: the interlock needs as many key slots as layers as "
-                f"launch_key items: {len(ilk['slots'])} slots, {len(ilk_layers)} layers, "
-                f"{nkeys} launch keys")
+        if not (len(ilk["slots"]) == nkeys >= len(ilk_layers)):
+            die(f"room {rname}: the interlock needs as many key slots as launch_key "
+                f"items, and at most that many layers: {len(ilk['slots'])} slots, "
+                f"{len(ilk_layers)} layers, {nkeys} launch keys")
+        # More keys than layers: the first keys turned open no layer (only the
+        # last one opens the innermost), so the console still needs them all.
+        # ILK_TOUCH/ILK_PAINT count keys in ILK_N; shifting LT_N and padding
+        # LAYER_ART with empty lists lines the layers up with the last keys.
+        skip = nkeys - len(ilk_layers)
+        ilk["lt"] = [(x, y, n + skip) for x, y, n in ilk["lt"]]
+        ilk["layer_art"] = [[]] * skip + ilk["layer_art"]
         sealed = [di for di in range(len(door["room"]))
                   if door["room"][di] == ri and door["key"][di] == 0xFF]
         if len(sealed) != 1:
@@ -1562,15 +1569,19 @@ def main():
     card_col = key_col = 0
     if card_items:                      # cards: one card glyph each (DRAW_STATUS)
         fields.append("cards " + " " * len(card_items))
+    key_label = "launch keys "
     if any(item_lkey):                  # launch keys: one key glyph each (DRAW_STATUS)
-        fields.append("launch keys " + " " * sum(item_lkey))
+        fields.append(key_label + " " * sum(item_lkey))
+        if len("  ".join(fields)) > 40:     # too long: just "keys"
+            key_label = "keys "
+            fields[-1] = key_label + " " * sum(item_lkey)
     tmpl = "  ".join(fields)
     if len(tmpl) > 40:
         die("status line: too many codes, cards and launch keys for 40 columns")
     if card_items:
         card_col = tmpl.index("cards ") + len("cards ")
     if any(item_lkey):
-        key_col = tmpl.index("launch keys ") + len("launch keys ")
+        key_col = tmpl.index(key_label) + len(key_label)
     o.append("STAT_CNT_COL  = 8      ; column of code 0's digit; codes are 4 columns apart")
     o.append(f"STAT_KEY_COL  = {key_col}     ; column of the first launch key glyph (0 = no launch keys)")
     o.append(f"NUM_LKEYS     = {sum(item_lkey)}      ; launch keys in the world (one glyph each)")
