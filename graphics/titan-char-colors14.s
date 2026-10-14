@@ -55,5 +55,5 @@ char_colors14:
 .byte $0b,$0b,$0b,$0a,$0b,$0b,$0b,$0b,$0b,$0b,$0b,$0b,$0b,$0b,$0b,$0b	; 816
 .byte $0b,$0b,$0b,$0b,$0b,$0b,$0b,$0e,$0e,$0e,$0e,$0e,$0e,$0e,$0e,$0e	; 832
 .byte $0e,$0e,$0e,$0e,$0e,$0e,$0e,$0e,$0e,$0e,$0e,$0e,$0e,$0e,$0e,$0e	; 848
-.byte $0e,$0e,$0e,$0e,$0e,$0e,$0e,$0e,$0e,$0e,$0e,$0e,$0e,$0e,$0e,$0e	; 864
+.byte $0e,$0e,$0e,$0e,$0b,$0b,$0b,$0b,$0e,$0e,$0e,$0e,$0e,$0e,$0e,$0e	; 864
 CHAR_COLORS14_COUNT = 880
