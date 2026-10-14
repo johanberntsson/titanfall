@@ -651,9 +651,12 @@ rooms:
     # on a fenced track (y 1) crosses the switch at (10,1) every lap and flips
     # the room. Right tunnel to the vault (row 5): red, green, red blocks with
     # rest tiles between -- step on as one drops, off before it rises. Left
-    # tunnel to the blue door: red, green, red with a switch on each rest tile,
-    # so you flip your own way through -- unless the metronome flips while
-    # you're on a block. The terminal links the dozer (free) to set the state.
+    # tunnel to the blue door: a switch at (6,5), then seven green blocks
+    # (5..2,5 and down x=1 to y=7) -- 56 frames on them, longer than the
+    # metronome's short window (~64 frames from flip to flip, dozer right of
+    # its switch) but not its long one (~96, dozer left of it): flip your own
+    # switch, or wait on it for the greens to drop, right after the dozer
+    # crosses heading left. The terminal links the dozer (free) to set the state.
     goal: {text: open the door, done: {opened: room10}}
     robots:
       - type: dozer
