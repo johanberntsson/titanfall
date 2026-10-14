@@ -1727,16 +1727,23 @@ DSTCL   cpx #NUM_CODES : bcs DSTCD
         iny : iny : iny : iny
         inx : bne DSTCL
 DSTCD
-        ; launch keys carried (ITEM_STATE=1), if the world has any
+        ; launch keys: one key glyph per key in the world, the found ones
+        ; (ITEM_STATE≠0: carried or turned in) yellow first, the rest grey
         lda #STAT_KEY_COL : beq DSTKD2   ; (world.asm comes later: no !if)
-        ldx #0 : ldy #CH_0
+        ldx #0 : ldy #0                  ; Y = keys found
 DSTKL   cpx #NUM_ITEMS : bcs DSTKD
         lda ITEM_LKEY,x : beq DSTKN
-        lda ITEM_STATE,x : cmp #1 : bne DSTKN
+        lda ITEM_STATE,x : beq DSTKN
         iny
 DSTKN   inx : bne DSTKL
-DSTKD   sty STAT_SCR+STAT_KEY_COL
-        lda #YELLOW : sta STAT_COL+STAT_KEY_COL
+DSTKD   sty TMP
+        ldx #0
+DSTKG   cpx #NUM_LKEYS : bcs DSTKD2
+        lda #CH_KEY : sta STAT_SCR+STAT_KEY_COL,x
+        lda #YELLOW : cpx TMP : bcc DSTKC
+        lda #MGRAY
+DSTKC   sta STAT_COL+STAT_KEY_COL,x
+        inx : bne DSTKG
 DSTKD2
         ; card: label of the first carried item (not used up, ITEM_STATE=1)
         ; that isn't a security code or a launch key

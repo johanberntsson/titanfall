@@ -97,7 +97,7 @@ charset:
 .byte $00,$7e,$7e,$66,$66,$76,$7e,$00,$db,$db,$00,$db,$db,$00,$db,$db	; 1488
 .byte $99,$5a,$3c,$ff,$ff,$3c,$5a,$99,$a5,$a5,$a5,$ff,$a5,$a5,$a5,$a5	; 1504
 .byte $ff,$81,$a5,$81,$bd,$81,$ff,$3c,$ff,$00,$ff,$00,$ff,$00,$ff,$00	; 1520
-.byte $ff,$ff,$ff,$00,$00,$ff,$ff,$ff,$f7,$e3,$c1,$80,$80,$e3,$c1,$ff	; 1536
+.byte $1e,$10,$1c,$10,$10,$18,$24,$18,$00,$7f,$6f,$6d,$59,$7f,$7f,$00	; 1536
 .byte $e7,$e7,$e7,$e7,$e7,$e7,$e7,$e7,$ff,$ff,$ff,$00,$00,$ff,$ff,$ff	; 1552
 .byte $ff,$ff,$00,$00,$ff,$ff,$ff,$ff,$ff,$00,$00,$ff,$ff,$ff,$ff,$ff	; 1568
 .byte $ff,$ff,$ff,$ff,$00,$00,$ff,$ff,$cf,$cf,$cf,$cf,$cf,$cf,$cf,$cf	; 1584

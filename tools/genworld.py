@@ -1345,11 +1345,13 @@ def main():
     o.append(tbl("CODE_START", code_start, "count at mission start (SETUP_GAME)"))
     tmpl = (" code:" + "".join(f" {c} 0" for c in code_names)) if code_names else ""
     key_col = 0
-    if any(item_lkey):                  # launch keys carried
+    if any(item_lkey):                  # launch keys: one key glyph each (DRAW_STATUS)
         tmpl += "  keys "
         key_col = len(tmpl)
-        tmpl += "0"
-    tmpl += "  card: "
+        tmpl += " " * sum(item_lkey)
+        tmpl += " card: "
+    else:
+        tmpl += "  card: "
     lbl_w = 40 - len(tmpl)
     for i, name in enumerate(items):
         if not item_code[i] and not item_lkey[i] and len(item_labels[i].rstrip()) > lbl_w:
@@ -1357,7 +1359,8 @@ def main():
     if lbl_w < len("not found"):
         die("status line: no room for the card label")
     o.append("STAT_CNT_COL  = 9      ; column of code 0's digit; codes are 4 columns apart")
-    o.append(f"STAT_KEY_COL  = {key_col}     ; column of the launch key count (0 = no launch keys)")
+    o.append(f"STAT_KEY_COL  = {key_col}     ; column of the first launch key glyph (0 = no launch keys)")
+    o.append(f"NUM_LKEYS     = {sum(item_lkey)}      ; launch keys in the world (one glyph each)")
     o.append(f"STAT_LBL_COL  = {len(tmpl)}     ; column of the card label")
     o.append(f"STAT_LBL_W    = {lbl_w}     ; its width")
     # "not found" sits in the label field: a carried card's label (always
