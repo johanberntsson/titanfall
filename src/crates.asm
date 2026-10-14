@@ -156,6 +156,8 @@ CPGO    lda CR_PIT : bne CPFILL
         ldy CR_IDX
         lda CR_NX : sta CRATE_X,y
         lda CR_NY : sta CRATE_Y,y
+        lda ACT_ROOM,x : jsr SW_ENTER    ; onto a switch: flip (switches.asm)
+        ldy CR_IDX
         lda ACT_ROOM,x : cmp CUR_ROOM : bne CPOLD
         lda CRATE_KIND,y : asl : asl : clc : adc #4
         jsr CRATE_PAINT

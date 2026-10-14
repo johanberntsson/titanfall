@@ -197,6 +197,7 @@ ROOM_OVERLAYS
         jsr CRATE_DRAW_ALL
         jsr GATE_PAINT
         jsr SHUT_PAINT                   ; open shutters (shutters.asm)
+        jsr SW_PAINT                     ; switches and blocks (switches.asm)
         jmp ILK_PAINT
 
 ; ART_LIST — PTR = a list of map offsets (lo, hi; a $ff hi byte ends it) in

@@ -188,7 +188,8 @@ RSRLSR  cpx #NUM_LASERS : bcs RSRLSRD
         lda LASER_ROOM,x : cmp CUR_ROOM : bne RSRLN
 RSRLGO  lda #0 : sta LASER_STATE,x
 RSRLN   inx : bne RSRLSR
-RSRLSRD jmp CRATE_RESET                ; the crates back where they started
+RSRLSRD jsr CRATE_RESET                ; the crates back where they started
+        jmp SW_ROOMRESET               ; switches and blocks (switches.asm)
 
 ; =============================================================================
 ; ANIM_LASER — make every laser beam crawl by flipping its dash pattern in
@@ -644,6 +645,7 @@ TMLASER
 TMCOMMIT
         lda NEWX : sta PLR_X
         lda NEWY : sta PLR_Y
+        lda CUR_ROOM : jsr SW_ENTER      ; onto a switch: flip (switches.asm)
         jsr TRAP_CHECK               ; under a laser trap? (may set PLR_DYING)
         jsr PLR_STEP_ANIM
         sec : rts
@@ -702,7 +704,9 @@ DENOPEN lda DOOR_DEST,x : cmp #$FF : bne DENGO
         jsr SETUP_WIN                ; $FF = mission exit
         sec : rts
 DENGO   pha
+        tay : lda #1 : sta ROOM_SEEN,y   ; the room ahead counts as visited
         jsr LEAVE_ROOM               ; goal not done: roll the room back
+                                     ;  (a visited: goal for the room ahead is)
         pla
         sta CUR_ROOM
         lda DOOR_AX,x : cmp #$FF : beq DENAY   ; $FF = keep current coord
@@ -1574,6 +1578,7 @@ AFNO    rts
 
 ; ACT_STEP_ANIM — X = actor took a step: alternate walk1/walk2 (rest -> walk1)
 ACT_STEP_ANIM
+        jsr SW_ACTOR                     ; onto a switch: flip (switches.asm)
         lda #0 : sta ACT_HOP,x           ; an ordinary step (HOP_* set it again)
         lda ACT_ANIM,x : cmp #1 : beq ASA2
         lda #1 : sta ACT_ANIM,x : rts

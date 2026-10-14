@@ -111,6 +111,7 @@ HOP_AI
         lda ACT_ROOM,x : jsr LASER_AT_A : bcs HAOUT
         lda NEWX : sta ACT_X,x
         lda NEWY : sta ACT_Y,x
+        jsr SW_ACTOR                     ; onto a switch: flip (switches.asm)
         lda #1 : sta ACT_HOP,x
 HAOUT   rts
 

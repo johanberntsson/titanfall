@@ -617,6 +617,28 @@ def main():
     emitter_tiles = {int(t) for t in art.get("emitter_tiles") or []}
     target_tiles = {int(t) for t in art.get("target_tiles") or []}
     shutter_tiles = {int(t) for t in art.get("shutter_tiles") or []}
+    # toggle switches and red/green blocks: 2x2 patterns (TL, TR, BL, BR)
+    sw_cfg, blk_cfg = art.get("switch") or {}, art.get("blocks") or {}
+    sw_pats = {}                        # pattern (tuple) -> 0 off / 1 on
+    blk_pats = {}                       # pattern -> (colour 0 red / 1 green, up)
+    pat_list = []                       # SW_PAT: off, on, red_up, green_up, red_down, green_down
+    if sw_cfg or blk_cfg:
+        for where, cfg_, keys in (("art.switch", sw_cfg, ("off", "on")),
+                                  ("art.blocks", blk_cfg, ("red_up", "green_up", "red_down", "green_down"))):
+            for k in keys:
+                raw = cfg_.get(k)
+                if raw is None and k in ("off", "on"):   # YAML reads bare off/on as booleans
+                    raw = cfg_.get(k == "on")
+                pat = [int(c) for c in (raw or [])]
+                if len(pat) != 4:
+                    die(f"{where}.{k}: 4 chars (top left, top right, bottom left, bottom right)")
+                pat_list.append(pat)
+        sw_pats = {tuple(pat_list[0]): 0, tuple(pat_list[1]): 1}
+        blk_pats = {tuple(pat_list[2]): (0, True), tuple(pat_list[3]): (1, True),
+                    tuple(pat_list[4]): (0, False), tuple(pat_list[5]): (1, False)}
+        if len(set(sw_pats) | set(blk_pats)) != 6:
+            die("art.switch / art.blocks: the six patterns must all differ")
+    sw_chars = {c for p in pat_list for c in p}
     beam_h_tile = int(art.get("beam_h_tile", 0))
     if emitter_tiles and not beam_h_tile:
         die("art.beam_h_tile is needed with emitter_tiles (the horizontal beam glyph)")
@@ -638,11 +660,16 @@ def main():
     pits = []                           # per room: grid[y][x] of pit tiles
     crate = {"room": [], "x": [], "y": [], "kind": [], "ch": None}   # movable crates/mirrors
     plate = {"room": [], "x": [], "y": []}                # pressure plate tiles
+    sw = {"room": [], "x": [], "y": []}                   # toggle switch tiles
+    blk = {"room": [], "x": [], "y": [], "col": []}       # red/green block tiles
+    sw_start = []                       # per room: 0 off / 1 on (from its switch art)
+    blk_tiles = []                      # per room: {(x, y)} of block tiles
     gate = {"room": [], "x": [], "y": []}                 # gate tiles (one gate per room)
     tgt = {"room": [], "x": [], "y": []}                  # laser target tiles
     emit = {"room": [], "x": [], "y": [], "dir": []}      # laser emitters (one per room)
     shut = {"room": [], "open": [], "closed": [], "first": [], "tiles": [], "art": []}  # timed shutters
     door_art = []                       # per door: [(map offset, new char), ...]
+    swdoor_art = {}                     # room -> map offsets of its switch doors' art
     if not laser_tiles:
         die("art.laser_tiles must list the laser beam/emitter screen codes")
     termz = {k: [] for k in ("room", "x1", "y1", "x2", "y2")}
@@ -764,6 +791,9 @@ def main():
             if sealed and key is not None:
                 die(f"room {rname}: a door is either sealed: (opened by the interlock "
                     f"console) or has a key:, not both")
+            swd = bool(d.get("switch"))   # open while the room's switches are on
+            if swd and (sealed or key is not None):
+                die(f"room {rname}: a switch: door can't have a key: or be sealed:")
             if key is not None and key not in item_index:
                 die(f"room {rname}: door key references unknown item {key!r}")
             if key is not None and item_code[item_index[key]]:
@@ -792,6 +822,13 @@ def main():
                     print(f"genworld: warning: room {rname}: locked door to {dest} "
                           f"has no art.door_tiles drawn at its wall - nothing "
                           f"will visibly open", file=sys.stderr)
+            if swd:
+                cells = door_art_patches(read_vchar64_map(room["vchar64_map"]),
+                                         drect, side, door_tiles, floor_tile)
+                if not cells:
+                    die(f"room {rname}: switch: door to {dest} has no art.door_tiles "
+                        f"drawn at its wall")
+                swdoor_art.setdefault(ri, []).extend(off for off, _ in cells)
             door_art.append(patches)
 
     for iname, ii in item_index.items():
@@ -931,6 +968,46 @@ def main():
                 if hit and (x, y) not in covered:
                     die(f"room {room['name']}: shutter chars at tile ({x},{y}) but no "
                         f"shutters: entry covers it")
+        # toggle switches and red/green blocks: every tile drawn exactly like
+        # one of the patterns. All switches of a room share one state (drawn the
+        # same); a red block is up (solid) while it's off, a green one while on.
+        state, covered_sw, rblk = None, set(), set()
+        for y in range(my + 1):
+            for x in range(mx + 1):
+                offs = [r * 40 + c for r in (2 * y, 2 * y + 1) for c in (2 * x, 2 * x + 1)]
+                pat = tuple(mapdata[o] for o in offs)
+                if pat in sw_pats:
+                    if state is not None and sw_pats[pat] != state:
+                        die(f"room {room['name']}: switch at ({x},{y}) is drawn "
+                            f"{'on' if sw_pats[pat] else 'off'}, unlike the room's other "
+                            f"switches (they share one state)")
+                    state = sw_pats[pat]
+                    sw["room"].append(ri); sw["x"].append(x); sw["y"].append(y)
+                elif pat in blk_pats:
+                    col, up = blk_pats[pat]
+                    blk["room"].append(ri); blk["x"].append(x); blk["y"].append(y)
+                    blk["col"].append(col)
+                    rblk.add((x, y))
+                    walls[ri][y][x] = up
+                else:
+                    continue
+                covered_sw.update(offs)
+                searchable[ri][y][x] = False
+        stray = [o for o in range(ROOM_MAP_BYTES) if mapdata[o] in sw_chars and o not in covered_sw]
+        if stray:
+            die(f"room {room['name']}: switch/block chars not forming a whole switch or "
+                f"block tile at " + ", ".join(f"col {o % 40} row {o // 40}" for o in stray[:6]))
+        if rblk and state is None:
+            die(f"room {room['name']}: red/green blocks but no switch")
+        state = state or 0
+        for bi in range(len(blk["room"])):
+            if blk["room"][bi] == ri and walls[ri][blk["y"][bi]][blk["x"][bi]] != (blk["col"][bi] == state):
+                die(f"room {room['name']}: block at ({blk['x'][bi]},{blk['y'][bi]}) is drawn "
+                    f"{'up' if walls[ri][blk['y'][bi]][blk['x'][bi]] else 'down'}, but with the "
+                    f"switches {'on' if state else 'off'} a {'green' if blk['col'][bi] else 'red'} "
+                    f"block is {'up' if blk['col'][bi] == state else 'down'}")
+        sw_start.append(state)
+        blk_tiles.append(rblk)
         if ri in plate["room"] and ri not in gate["room"]:
             die(f"room {room['name']}: pressure plates but no gate (art.gate_tiles)")
         if ri in emit["room"] and ri not in tgt["room"]:
@@ -998,6 +1075,20 @@ def main():
                 if y < len(walls[ri]) and x < len(walls[ri][y]) and not walls[ri][y][x]:
                     owner[(x, y)] = di
         door_owner.append(owner)
+        # a switch: door's tiles (those its door chars alone make solid) are
+        # blocks of colour 2: up (closed) while the switches are off, like red
+        for off in swdoor_art.get(ri, []):
+            x, y = off % 40 // 2, off // 40 // 2
+            if (x, y) in owner or walls[ri][y][x] or (x, y) in blk_tiles[ri]:
+                continue
+            if not any(sw["room"][i] == ri for i in range(len(sw["room"]))):
+                die(f"room {room['name']}: a switch: door but no switch in the art")
+            blk["room"].append(ri); blk["x"].append(x); blk["y"].append(y)
+            blk["col"].append(2)
+            blk_tiles[ri].add((x, y))
+            searchable[ri][y][x] = False
+            owner[(x, y)] = None         # (not forced solid below)
+            walls[ri][y][x] = sw_start[ri] == 0
         dgrid = wall_grid(read_vchar64_map(room["vchar64_map"]),
                           room["_maxx"], room["_maxy"], door_tiles)
         for y, row in enumerate(dgrid):
@@ -1072,6 +1163,9 @@ def main():
         room = rooms[ri]
         if not (0 <= x <= room["_maxx"] and 0 <= y <= room["_maxy"]):
             die(f"{what}: ({x},{y}) is outside room {room['name']}'s bounds")
+        if (x, y) in blk_tiles[ri]:
+            die(f"{what}: ({x},{y}) is a red/green block tile in room {room['name']} "
+                f"(it rises and falls with the switches)")
         if walls[ri][y][x]:
             die(f"{what}: ({x},{y}) is inside a wall in room {room['name']} "
                 f"(wall art in map cols {2*x}-{2*x+1}, rows {2*y}-{2*y+1})")
@@ -1232,6 +1326,33 @@ def main():
         for k in range(0, len(offs), 8):
             o.append("        !byte " + ",".join(f"${x & 0xff:02x},${x >> 8:02x}" for x in offs[k:k + 8]))
         o.append("        !byte $00,$ff")
+    o.append("")
+
+    o.append("; ---- toggle switches and red/green blocks (art.switch, art.blocks) ----")
+    o.append(f"NUM_SW  = {len(sw['room'])}")
+    o.append(tbl("SW_ROOM", sw["room"] or [0xFF]))
+    o.append(tbl("SW_X", sw["x"] or [0]))
+    o.append(tbl("SW_Y", sw["y"] or [0]))
+    o.append(f"NUM_BLK = {len(blk['room'])}")
+    o.append(tbl("BLK_ROOM", blk["room"] or [0xFF]))
+    o.append(tbl("BLK_X", blk["x"] or [0]))
+    o.append(tbl("BLK_Y", blk["y"] or [0]))
+    o.append(tbl("BLK_COL", blk["col"] or [0], "0 red (up while off), 1 green (up while on), 2 switch door (like red)"))
+    o.append("SWD_ART_LO      ; per room: its switch doors' art cells (lo, hi; $ff hi ends)")
+    o.append("        !byte " + ",".join(f"<SWD_ART_{i}" if i in swdoor_art else "<SWD_NONE"
+                                         for i in range(len(rooms))))
+    o.append("SWD_ART_HI")
+    o.append("        !byte " + ",".join(f">SWD_ART_{i}" if i in swdoor_art else ">SWD_NONE"
+                                         for i in range(len(rooms))))
+    o.append("SWD_NONE        !byte $00,$ff")
+    for i, offs in sorted(swdoor_art.items()):
+        o.append(f"SWD_ART_{i}")
+        for k in range(0, len(offs), 8):
+            o.append("        !byte " + ",".join(f"${x & 0xff:02x},${x >> 8:02x}" for x in offs[k:k + 8]))
+        o.append("        !byte $00,$ff")
+    o.append(tbl("SW_START", sw_start, "per room: the switches' state at the start (0 off, 1 on)"))
+    o.append("SW_PAT          ; 2x2 chars: switch off, on, block red up, green up, red down, green down")
+    o.append("        !byte " + ",".join(f"${c:02x}" for p in (pat_list or [[0] * 4] * 6) for c in p))
     o.append("")
 
     o.append("; ---- the launch interlock (art.interlock): key slots, barrier layers, console ----")
@@ -1634,6 +1755,7 @@ def main():
     # where the crates are)
     o.append("PIT_FILLED  !fill NUM_PITS+1    ; 1 = a crate filled it (floor now)")
     o.append("GATE_STATE  !fill NUM_ROOMS     ; per room: 0 closed, 1 held open (plates), 2 latched open")
+    o.append("SW_STATE    !fill NUM_ROOMS     ; per room: its switches 0 off / 1 on")
     o.append("ILK_N       !byte 0             ; launch keys inserted = interlock layers open")
     o.append("ILK_SLOT    !fill NUM_SLOTS+1   ; 1 = a key turned in this slot")
     o.append("CRATE_X     ; current tile of each movable crate ($ff = it filled a pit)")

@@ -77,6 +77,17 @@ art:
   emitter_tiles: [0xb3]
   target_tiles: [0xb8]
   shutter_tiles: [0xbf]                # timed shutters (a room's shutters: list)
+  # Toggle switches and red/green blocks (2x2 tiles, TL TR BL BR). A switch
+  # flips when the human, a non-flying robot or a pushed crate enters it; all
+  # switches of a room share one state. Red blocks are up (solid) while it's
+  # off, green ones while it's on. A block rising under the human kills, under
+  # a robot destroys it; a crate on it jams it down. Resets with the room.
+  switch: {off: [0xc5, 0xc5, 0xc4, 0xc4], on: [0xc4, 0xc4, 0xc6, 0xc6]}
+  blocks:
+    red_up: [0xc5, 0xc5, 0xc5, 0xc5]
+    green_up: [0xc6, 0xc6, 0xc6, 0xc6]
+    red_down: [0xc7, 0xc7, 0xc7, 0xc7]
+    green_down: [0xc8, 0xc8, 0xc8, 0xc8]
   beam_h_tile: 0xb4                    # the horizontal beam (vertical: laser_tiles[0])
   mirrors:
     slash: [0xb5, 0xb6, 0xb6, 0xb5]    # /
@@ -309,7 +320,7 @@ rooms:
         arrive: {x: 0}
       - at: {x1: -1, y1: 5, x2: -1, y2: 6}   # left wall opening, to the entrance
         leads_to: room5
-        arrive: {x: 19, y: 5}          # y 6 at the entrance's right edge is wall
+        arrive: {x: 18, y: 5}          # inside the switch door (it may be shut)
 
   - name: room4
     vchar64_map: graphics/titan-map04.s
@@ -341,12 +352,13 @@ rooms:
         start: {x: 1, y: 7}
         patrol: [{x: 1, y: 7}, {x: 4, y: 7}]   # the short corridor, left
     things:
-      - item: code_a1                  # the cabinet, top right
-        at: {x: 17, y: 2}
+      - item: code_a1                  # the cabinet, bottom right
+        at: {x: 17, y: 9}
     doors:
-      - at: {x1: 20, y1: 4, x2: 20, y2: 5}   # right wall opening, to room 3
+      - at: {x1: 20, y1: 4, x2: 20, y2: 5}   # right wall: the switch door, to room 3
         leads_to: room3
         arrive: {x: 0, y: 5}           # y 4 at room 3's left edge is wall
+        switch: true                   # open while the switch at (18,2) is on
 
   - name: room6
     vchar64_map: graphics/titan-map06.s
@@ -633,10 +645,22 @@ rooms:
 
   - name: room16                       # top row, between the plates and the vault
     vchar64_map: graphics/titan-map16.s
-    label: room16
+    label: switch
     player_start: {x: 10, y: 5}
-    # Empty for now: just the walls and the doorways.
+    # Switches and red/green blocks, kept in time by a "metronome": a dozer
+    # on a fenced track (y 1) crosses the switch at (10,1) every lap and flips
+    # the room. Right tunnel to the vault (row 5): red, green, red blocks with
+    # rest tiles between -- step on as one drops, off before it rises. Left
+    # tunnel to the blue door: red, green, red with a switch on each rest tile,
+    # so you flip your own way through -- unless the metronome flips while
+    # you're on a block. The terminal links the dozer (free) to set the state.
     goal: {text: open the door, done: {opened: room10}}
+    robots:
+      - type: dozer
+        name: bot-1616  dozer
+        code: none
+        start: {x: 7, y: 1}
+        patrol: [{x: 7, y: 1}, {x: 12, y: 1}]   # across the switch at (10,1)
     doors:
       - at: {x1: 12, y1: 11, x2: 16, y2: 11} # bottom wall opening, to room 6
         leads_to: room6
