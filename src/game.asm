@@ -987,11 +987,11 @@ UPDSP2  lda ACT_X,x : sta NEWX
         jsr GL_TARGET
         jsr UPD_DYING : bcs UPDSOFF      ; drawn on the laser tile: destroyed
         jsr GLIDE                        ; (preserves X/Y)
-        jsr HOP_COLOR                    ; a jumper's charge colour
         lda GL_PXL,x : sta NEWX          ; NEWX/NEWY/GLT_H now hold the
         lda GL_PY,x  : sta NEWY          ;  sprite's pixel position
         lda GL_PXH,x : sta GLT_H
         jsr HOP_ARC                      ; mid-jump: lift it along an arc
+        jsr HOP_COLOR                    ; a jumper's charge/jump colour
         lda ACT_DIR,x : sta TMP
         lda ACT_ANIM,x : sta TMP2
         lda ACT_TYPE,x : tax

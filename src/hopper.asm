@@ -126,15 +126,17 @@ HOPD1   cmp #2 : lda #0 : rol : sta HOP_OK
         rts
 
 ; -----------------------------------------------------------------------------
-; HOP_COLOR — from UPD_SLOT, every frame: X = actor, Y = robot slot. A
-; jumper's sprite colour: HOP_COL while charged, flashing between its own
-; colour and HOP_COL while charging, else its own (TYPE_COLOR) — which also
-; puts it back once a link ends. Preserves X/Y.
+; HOP_COLOR — from UPD_SLOT after HOP_ARC, every frame: X = actor, Y =
+; robot slot. A jumper's sprite colour: HOP_COL in mid-jump (HOP_LEAP —
+; also an AI hop) or while charged, flashing between its own colour and
+; HOP_COL while charging, else its own (TYPE_COLOR) — which also puts it
+; back once a link ends or a hop lands. Preserves X/Y.
 ; -----------------------------------------------------------------------------
 HOP_COLOR
         tya : pha
         ldy ACT_TYPE,x : lda TYPE_JUMP,y : beq HCLDONE
         lda TYPE_COLOR,y : sta HOP_C
+        lda HOP_LEAP : bne HCLW          ; in the air
         txa : clc : adc #1 : cmp PLAYER_MODE : bne HCLSET   ; not driven
         lda HOP_JMP : bne HCLW
         lda HOP_CHG : and #4 : beq HCLSET
