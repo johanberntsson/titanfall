@@ -154,12 +154,23 @@ actor_types:
   #             it (it flashes, then turns white): the next two moves are
   #             2-tile jumps over floor, a pit or a laser. By itself it now
   #             and then hops two tiles over floor
+  # robodex:    the type's page in the terminal's robodex (robot information):
+  #             name: and type: (max 20 chars each), notes: (what it does) and
+  #             linked: (what it does when you drive it; drawn after a
+  #             "linked:" label) -- prose, word-wrapped to 26 chars, 5 lines
+  #             for both together. Types without one aren't listed; a page
+  #             shows once a robot of the type is in a visited room
   human:
     sprite: sprite_down_rest
     color: ltred
   sentry:
     sprite: robot_down_rest
     color: orange
+    robodex:
+      name: sentry
+      type: armed guard
+      notes: patrols a short beat and fires bolts along its row when it sees you.
+      linked: fire shoots a bolt the way it faces.
   splicer:
     sprite: robot_down_rest
     color: green
@@ -167,19 +178,41 @@ actor_types:
     sprite: dozer_down_rest
     push: true                         # driven, it pushes crates
     color: yellow
+    robodex:
+      name: dozer
+      type: construction unit
+      notes: harmless, slow and strong.
+      linked: it can push heavy items around.
   tripod:
     sprite: tripod_down_rest
     color: ltgreen
+    robodex:
+      name: tripod
+      type: security walker
+      notes: >-
+        watches the line it walks along. some charge at intruders, others
+        raise a force field. touching it kills.
   drone:
     sprite: drone_down_hover
     anim: hover
     fly: true                          # driven, it hovers over pits
     color: yellow
+    robodex:
+      name: drone
+      type: flying scout
+      notes: roams the room and rushes at intruders on its row.
+      linked: it flies, and is heavy enough to hold a pressure plate.
   hopper:                              # spring hopper robot
     sprite: hopper_down_rest
     anim: hover                        # rest/crouch/rest/leap, always bouncing
     jump: true                         # charged double jumps, random hops
     color: purple
+    robodex:
+      name: hopper
+      type: spring jumper
+      linked: >-
+        stand still and hold fire for 2 seconds to charge it (it turns
+        white). the next two moves are jumps over obstacles.
 
 # Security codes: one-letter code types and how many the player starts with
 # (0-9, at most 3 types). Every robot names the code its terminal link

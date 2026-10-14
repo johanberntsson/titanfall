@@ -271,12 +271,15 @@ CS_HEAD !pet "    defense command hq  -  0400 hours   "
 
 CS_DIALOG
         !byte 1 : !pet "you wanted to see me, sir?", 0
-        !byte 0 : !pet "yes, agent 9. we have an", 1, "emergency at titan silo 17.", 0
+        !byte 0 : !pet "yes, agent 9. we have an", 1, "emergency at titan silo "
+CS_SILO !pet "17.", 0
         !byte 1 : !pet "what happened?", 0
         !byte 0 : !pet "the robots have taken over", 1, "the silo. the whole crew", 1, "is dead.", 0
         !byte 1 : !pet "who is behind this?", 0
         !byte 0 : !pet "we don't know. but they are", 1, "preparing a missile launch.", 0
-        !byte 0 : !pet "the missile will be ready", 1, "in less than six hours.", 0
+        !byte 0 : !pet "the missile will be ready", 1, "in less than "
+CS_HRS  !pet "six hours.  ", 0     ; (LVL_NEXT: word + " hours." + spaces;
+                                    ;  the bubble is as wide as line 1 anyway)
         !byte 1 : !pet "what about a military", 1, "strike?", 0
         !byte 0 : !pet "too dangerous. the silo", 1, "is built to take a hit.", 0
         !byte 0 : !pet "only a single agent can", 1, "get inside undetected.", 1, "it has to be you, 9.", 0

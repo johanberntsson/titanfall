@@ -58,7 +58,9 @@ GAME_TICK_DONE
 ; tail-jumps into RESET_ROUND for everything else.
 ; =============================================================================
 SETUP_GAME
-        lda #CFG_CLK_H : sta CLK_H
+        ldx START_H : stx CLK_H          ; the start hour drops with every win
+        lda REACT_KTL,x : sta REACT_KL   ;  (win.asm), and with it the reactor
+        lda REACT_KTH,x : sta REACT_KH   ;  gauge's scale
         lda #CFG_CLK_M : sta CLK_M
         lda #CFG_CLK_S : sta CLK_S
         lda #0   : sta CLK_TICK
@@ -426,9 +428,9 @@ TICK_REACTOR
         ; with M = minutes left (CLK_H*60+CLK_M) and START = the starting
         ; countdown in minutes — 10 at mission start (one green segment:
         ; visibly safe), 99 as the clock runs out (so a death penalty
-        ; visibly heats it up). M*89/START is done as M * REACT_K,
-        ; REACT_K = 89*256/START precomputed at assembly time, taking the
-        ; high byte. REACT_JIT is a 0-3 flicker shown on top,
+        ; visibly heats it up). M*89/START is done as M * REACT_KL/KH,
+        ; = 89*256/START, taking the high byte (REACT_KTL/KTH in win.asm,
+        ; one per start hour, precomputed at assembly time). REACT_JIT is a 0-3 flicker shown on top,
         ; re-rolled from the LFSR every 8 frames (display only).
         lda LFSR_ST : asl : bcc RCTNFB : eor #$B8
 RCTNFB  sta LFSR_ST
@@ -445,17 +447,15 @@ RCTMUL  lda #0 : sta PTR : sta PTR+1     ; PTR = M * REACT_K (16-bit;
         ldx #16                          ;  M <= START keeps it <= 89*256)
 RCTML   asl PTR : rol PTR+1
         asl TMP : rol TMP2 : bcc RCTMN
-        lda PTR : clc : adc #<REACT_K : sta PTR
-        lda PTR+1 : adc #>REACT_K : sta PTR+1
+        lda PTR : clc : adc REACT_KL : sta PTR
+        lda PTR+1 : adc REACT_KH : sta PTR+1
 RCTMN   dex : bne RCTML
         lda #99 : sec : sbc PTR+1
         bcs RCTSET : lda #0
 RCTSET  sta REACT_TEMP
         rts
 
-REACT_START_M = CFG_CLK_H*60 + CFG_CLK_M
 REACT_SPAN = 89                         ; 99 - starting temperature (10)
-REACT_K = (REACT_SPAN*256 + REACT_START_M DIV 2) DIV REACT_START_M
 
 ; =============================================================================
 ; READ_KEYS

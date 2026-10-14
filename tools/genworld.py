@@ -11,6 +11,7 @@ Usage: python3 tools/genworld.py titan.yaml src/world.asm
 """
 
 import sys
+import textwrap
 
 import yaml
 
@@ -36,6 +37,9 @@ IDLE_NAMES = ["patrol", "roam"]                           # idle: values; index 
 ATTACK_NAMES = ["none", "rush", "shoot", "forcefield"]     # attack: values; index = ATK_* in world.asm
 MAX_CODES = 3             # security code types (status line: " code: a 2 b 0 c 0    card: " + label)
 MSG_INTERIOR = 30         # popup box interior width (matches SBOX_* strings)
+DEX_WIDTH = 26            # robodex text column (cols 12-37 of the screen)
+DEX_FIELD = DEX_WIDTH - 6  # robodex name/type after "name: " / "type: "
+DEX_NOTES = 5             # robodex note lines (rows 11-15)
 TERM_NAME_WIDTH = 22      # robot name in the terminal menu (cols 5-26; the
                           # status word is drawn at cols 28-36)
 
@@ -518,6 +522,56 @@ def main():
         type_jump.append(1 if t.get("jump", False) else 0)   # charged 2-tile jumps
         if name != "human":
             type_ai[name] = behaviour(t, ("patrol", "none"), f"actor type {name}")
+
+    # robodex: the terminal's robot information pages, one per type that has
+    # a robodex: entry. Lines are (label, text): the label ("name:") is drawn
+    # in white, the text in the line's colour. notes: and linked: are prose,
+    # word-wrapped here; linked: gets a "linked:" label.
+    dex = []                            # (type index, [(label, text)])
+    for name, t in types.items():
+        d = t.get("robodex")
+        if d is None:
+            continue
+        what = f"actor type {name}: robodex"
+        if name == "human":
+            die(f"{what}: the player has no robodex page")
+        if not isinstance(d, dict):
+            die(f"{what}: needs name:, type: and notes: / linked:")
+        lines = []
+        for key in ("name", "type"):
+            v = check_pet(str(d.get(key, name if key == "name" else "")).lower(), f"{what} {key}")
+            if not v:
+                die(f"{what}: needs a {key}:")
+            if len(v) > DEX_FIELD:
+                die(f"{what}: {key} {v!r} is longer than {DEX_FIELD} chars")
+            lines.append((f"{key}:", " " + v))
+
+        def prose(key, label=""):
+            v = d.get(key) or ""
+            if isinstance(v, list):
+                v = " ".join(map(str, v))
+            v = check_pet(" ".join(str(v).lower().split()), f"{what} {key}")
+            if not v:
+                return []
+            wrapped = textwrap.wrap((label + " " if label else "") + v, DEX_WIDTH)
+            if any(len(w) > DEX_WIDTH for w in wrapped):
+                die(f"{what}: {key}: a word is longer than {DEX_WIDTH} chars")
+            out = [("", w) for w in wrapped]
+            if label:
+                out[0] = (label, out[0][1][len(label):])
+            return out
+        notes, linked = prose("notes"), prose("linked", "linked:")
+        if len(notes) + len(linked) > DEX_NOTES:
+            die(f"{what}: notes and linked wrap to {len(notes) + len(linked)} lines "
+                f"of {DEX_WIDTH} chars; at most {DEX_NOTES} fit")
+        lines.append(("", ""))
+        lines += notes
+        if notes and linked and len(notes) + len(linked) < DEX_NOTES:
+            lines.append(("", ""))      # room for a blank line between them
+        lines += linked
+        dex.append((type_index[name], lines))
+    if len(dex) > 9:
+        die("robodex: at most 9 pages (one digit in the page counter)")
 
     # ---- security codes ------------------------------------------------
     # name -> how many the player starts with. Linking a robot that needs a
@@ -1225,6 +1279,11 @@ def main():
     o.append("; =============================================================================")
     o.append("")
     o.append(f"NUM_ROOMS     = {len(rooms)}")
+    dex_types = {ti for ti, _ in dex}
+    for tname, ti in type_index.items():
+        if ti in act["type"] and ti not in dex_types:
+            print(f"genworld: warning: actor type {tname}: no robodex: entry "
+                  "(it won't show in the terminal's robodex)")
     o.append(f"NUM_ACTORS    = {len(act['type'])}")
     o.append(f"NUM_ITEMS     = {len(items)}")
     o.append(f"NUM_DOORS     = {len(door['room'])}")
@@ -1261,6 +1320,30 @@ def main():
     o.append(tbl("TYPE_PUSH", type_push, "1 = pushes crates while player-driven"))
     o.append(tbl("TYPE_FLY", type_fly, "1 = flies over pits while player-driven"))
     o.append(tbl("TYPE_JUMP", type_jump, "1 = charged 2-tile jumps while driven, random hops by itself"))
+    o.append("")
+
+    o.append("; ---- robodex (terminal robot information, robodex.asm): one page per")
+    o.append("; actor type with a robodex: entry; lines separated by 1, 0 ends, 2 toggles")
+    o.append("; between white (a label) and the line's colour ----")
+    o.append(f"NUM_DEX = {len(dex)}")
+    o.append(tbl("DEX_TYPE", [ti for ti, _ in dex], "actor type of each page"))
+    o.append("DEX_LO")
+    o.append("        !byte " + (",".join(f"<DEX_{i}" for i in range(len(dex))) or "0"))
+    o.append("DEX_HI")
+    o.append("        !byte " + (",".join(f">DEX_{i}" for i in range(len(dex))) or "0"))
+    for i, (_, lines) in enumerate(dex):
+        toks = []
+        for j, (label, text) in enumerate(lines):
+            if j:
+                toks.append("1")
+            if label:                   # 2 = colour toggle: label in white
+                toks += ["2", f'"{label}"', "2"]
+            if text:
+                toks.append(f'"{text}"')
+        o.append(f"DEX_{i} !pet " + ", ".join(toks + ["0"]))
+        nbytes = sum(len(l) + len(t) + (2 if l else 0) + 1 for l, t in lines)
+        if nbytes > 255:
+            die(f"robodex page {i}: {nbytes} bytes of text, at most 255")
     o.append("")
 
     o.append("; ---- movable crates (art.crate_tiles on a whole tile; not in ROOM_MAP_n,")

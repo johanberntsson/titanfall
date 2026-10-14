@@ -2,9 +2,14 @@
 #           OPEN
 # ------------------------
 
+hopper recharge a bit shorter - 1 second
+
+
 # ------------------------
 #           DONE
 # ------------------------
+
+need to tell player that hopper need recharging 
 
 Dont show rooms in the map that haven't been visited yet
 

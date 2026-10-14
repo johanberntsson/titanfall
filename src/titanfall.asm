@@ -37,7 +37,8 @@ PTR2       = $16
 TMP        = $18
 TMP2       = $19
 GAME_STATE = $1A   ; 0=intro  1=game  2=gameover  3=terminal  4=win  5=map  6=popup
-                   ; 7=explosion  8=cut scene  9=help (pause)
+                   ; 7=explosion  8=cut scene  9=help (pause)  10=carrier lock
+                   ; 11=robodex
 DEATH_TMR  = $1B   ; death pause countdown (= length of the death sound)
 BLINK_TMR  = $1C   ; blink counter
 BLINK_ST   = $1D   ; 0=text visible  1=hidden
@@ -358,7 +359,9 @@ MLNOT7  cmp #9 : bne MLNOT9
         jmp DO_HELP
 MLNOT9  cmp #10 : bne MLNOT10
         jmp DO_CARRIER
-MLNOT10 jmp DO_CUTSCENE
+MLNOT10 cmp #11 : bne MLNOT11
+        jmp DO_DEX
+MLNOT11 jmp DO_CUTSCENE
 
 ; =============================================================================
 ; CLS — clears all 1024 bytes of screen + colour RAM
@@ -590,6 +593,7 @@ SPRITES_END
         !source "src/carrier.asm"
         !source "src/shutters.asm"
         !source "src/switches.asm"
+        !source "src/robodex.asm"
 HIGH_END
 !if HIGH_END > $C000 {                  ; ($A000-$BFFF is RAM: BASIC is banked out at init)
         !error "code/data above $4000 runs into the music at $C000"

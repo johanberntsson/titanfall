@@ -3,9 +3,11 @@
 ; =============================================================================
 ; The menu is built on entry: one row per robot in the current room (rows
 ; 8-11, from the generated ACT_TROW_* strings — at most 4 robots per room),
-; then "view map" (row 13) and "logoff" (row 14). TM_ACT says what each
-; entry does: an actor index (link to it), TM_MAP or TM_LOGOFF.
-TERM_MAX    = 7
+; then "decode reset key" (row 12, carrier.asm), "view map" (row 13),
+; "robodex" (row 14, robodex.asm) and "logoff" (row 15). TM_ACT says what
+; each entry does: an actor index (link to it), TM_CARRIER, TM_MAP, TM_DEX
+; or TM_LOGOFF.
+TERM_MAX    = 8
 TM_MAP      = $FE
 TM_LOGOFF   = $FF
 TERM_RROW   = 8                         ; first robot row
@@ -81,12 +83,15 @@ TSADONE
         lda RESET_KEYS : clc : adc #CH_0  ; "(keys: n)"
         sta SCRN+CL_ROW*40+34
 TSANODEC
-        ldy TERM_N                       ; then view map, logoff
+        ldy TERM_N                       ; then view map, robodex, logoff
         lda #TM_MAP : sta TM_ACT,y
         lda #13 : sta TM_ROW,y
         iny
+        lda #TM_DEX : sta TM_ACT,y
+        lda #DEX_ROW : sta TM_ROW,y
+        iny
         lda #TM_LOGOFF : sta TM_ACT,y
-        lda #14 : sta TM_ROW,y
+        lda #15 : sta TM_ROW,y
         iny : sty TERM_N
         lda TERM_SEL : bpl TSSEL         ; fresh entry ($FF): on logoff
         dey : sty TERM_SEL
@@ -131,7 +136,10 @@ TERM_FIRE
         cpx #TM_LOGOFF : beq TERM_ABORT
         cpx #TM_CARRIER : bne TFNOTCL
         jmp SETUP_CARRIER                ; the mini-game (carrier.asm)
-TFNOTCL cpx #TM_MAP : bne TERM_ROBOT
+TFNOTCL cpx #TM_DEX : bne TFNOTDX
+        jsr SETUP_DEX                    ; robot information (robodex.asm)
+        jmp TERM_DONE
+TFNOTDX cpx #TM_MAP : bne TERM_ROBOT
         jsr SETUP_MAP
         jmp TERM_DONE
 
@@ -214,8 +222,8 @@ TERM_ROWS
         !byte 11, GREEN,   <SCR_BLANK, >SCR_BLANK
         !byte 12, GREEN,   <SCR_BLANK, >SCR_BLANK
         !byte 13, GREEN,   <TBOX_MAP, >TBOX_MAP
-        !byte 14, GREEN,   <TBOX_OFF, >TBOX_OFF
-        !byte 15, GREEN,   <SCR_BLANK, >SCR_BLANK
+        !byte 14, GREEN,   <TBOX_DEX, >TBOX_DEX
+        !byte 15, GREEN,   <TBOX_OFF, >TBOX_OFF
         !byte 16, LTRED,   <TBOX_HNT, >TBOX_HNT
         !byte 17, LTGREEN, <SCR_BORDER_BOTTOM, >SCR_BORDER_BOTTOM
         !byte $FF
@@ -227,6 +235,7 @@ TBOX_TTL  !pet G_VERT_BAR, "  * sector drone network - terminal   ", G_VERT_BAR
 TBOX_SUB  !pet G_VERT_BAR, "  access verified. select unit:       ", G_VERT_BAR
 TBOX_NONE !pet G_VERT_BAR, "    no units in this sector           ", G_VERT_BAR
 TBOX_MAP  !pet G_VERT_BAR, "    view map                          ", G_VERT_BAR
+TBOX_DEX  !pet G_VERT_BAR, "    robodex - unit information        ", G_VERT_BAR
 TBOX_OFF  !pet G_VERT_BAR, "    logoff                            ", G_VERT_BAR
 TBOX_DEC  !pet G_VERT_BAR, "    decode reset key      (keys: 0)   ", G_VERT_BAR
 TBOX_HNT  !pet G_VERT_BAR, "    fire=select    up/down=move       ", G_VERT_BAR

@@ -105,13 +105,14 @@ DHOUT   lda #$FF : sta CIA1_PRA
         jmp MAIN_LOOP
 
 ; HLP_INGAME — C set if the interrupted state is part of a game under way
-; (game, terminal, map, popup)
+; (game, terminal, map, popup, robodex)
 HLP_INGAME
         lda HLP_STATE
         cmp #1 : beq HIGYES
         cmp #3 : beq HIGYES
         cmp #5 : beq HIGYES
         cmp #6 : beq HIGYES
+        cmp #11 : beq HIGYES
         clc : rts
 HIGYES  sec : rts
 
@@ -190,6 +191,7 @@ HELP_RESTART
 HRSTMUS lda #0 : sta MUSIC_OFF          ;  set, so the IRQ doesn't play it)
         sta $C6
         lda #$FF : sta CIA1_PRA
+        jsr LVL_RESET                   ; the first game's clock and silo
         jsr SETUP_GAME
         jmp MAIN_LOOP
 

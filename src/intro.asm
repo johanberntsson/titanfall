@@ -134,7 +134,8 @@ ITR_AUTH_LEN = * - ITR_AUTH
 ITR_TAG     !pet G_VERT_BAR, "  infiltrate. subvert. stop launch.   ", G_VERT_BAR
 ITR_M1      !pet G_VERT_BAR, "  mission: abort launch sequence      ", G_VERT_BAR
 ITR_M2      !pet G_VERT_BAR, "  location: titan missile complex     ", G_VERT_BAR
-ITR_M3      !pet G_VERT_BAR, "  warning: launch in t-minus 5 hours  ", G_VERT_BAR
+ITR_M3      !pet G_VERT_BAR, "  warning: launch in t-minus "
+ITR_HRS     !pet "5 hours  ", G_VERT_BAR    ; (LVL_NEXT patches the digit)
 
 TXT_PRESS   !pet "         press fire to start            "
 TXT_F1HELP  !pet "              f1 for help               "
