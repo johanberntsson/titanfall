@@ -22,7 +22,9 @@ use them to stop the launch before the clock reaches zero.
 (and mode) it was started on and sets itself up for it. The game is timed for
 PAL (50 Hz).
 
-**C64:** download [`release/titanfall.d64`](release/titanfall.d64) and load it
+### Commodore 64
+
+Download [`release/titanfall.d64`](release/titanfall.d64) and load it
 the usual way:
 
 ```
@@ -39,7 +41,9 @@ x64sc -basicload titanfall.d64`
 Without `-basicload`, VICE's autostart loads with `,8,1`,
 which doesn't work for this file).
 
-**MEGA65:** copy [`release/titanfall.prg`](release/titanfall.prg) onto a disk
+### MEGA65
+
+Copy [`release/titanfall.prg`](release/titanfall.prg) onto a disk
 image or the SD card and load it straight from the MEGA65's own C65 mode; no
 `GO64` needed:
 
