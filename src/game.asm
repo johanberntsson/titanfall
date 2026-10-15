@@ -537,7 +537,7 @@ RKFDONE
         lda #0 : sta NEAR_TERM
         lda PLAYER_MODE : bne RKSEARCHCHK
         ldx #0
-RKTL    cpx #NUM_TERMZONES : bcs RKSEARCHCHK
+RKTL    cpx #NUM_TERMZONES : bcs RKCOMM
         lda TERMZ_ROOM,x : cmp CUR_ROOM : bne RKTN
         lda PLR_X : cmp TERMZ_X1,x : bcc RKTN
         lda TERMZ_X2,x : cmp PLR_X : bcc RKTN
@@ -545,11 +545,20 @@ RKTL    cpx #NUM_TERMZONES : bcs RKSEARCHCHK
         lda TERMZ_Y2,x : cmp PLR_Y : bcc RKTN
         lda #1 : sta NEAR_TERM
         lda KEY_SPC : beq RKSEARCHCHK
-        stx TERM_ZONE                    ; (carrier lock: one key per terminal)
         lda #$FF : sta TERM_SEL          ; (= logoff, SETUP_TERMINAL)
         jsr SETUP_TERMINAL
         rts
 RKTN    inx : bne RKTL
+        ; Fire on a COMM desk tile (COMM_* tables, art.comm_tiles; room 3)
+        ; starts the carrier lock (carrier.asm) instead of a search.
+RKCOMM  lda KEY_SPC : beq RKSEARCHCHK
+        ldx #0
+RKCL    cpx #NUM_COMMT : bcs RKSEARCHCHK
+        lda COMM_ROOM,x : cmp CUR_ROOM : bne RKCN
+        lda COMM_X,x : cmp PLR_X : bne RKCN
+        lda COMM_Y,x : cmp PLR_Y : bne RKCN
+        jmp SETUP_CARRIER                ; (returns; GAME_ALIVE sees state 10)
+RKCN    inx : bne RKCL
 RKSEARCHCHK
         lda PLAYER_MODE : bne RKPROXY
         jmp SEARCH_TICK                  ; hold fire to search (popup.asm)

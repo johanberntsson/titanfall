@@ -1,8 +1,8 @@
 ; =============================================================================
-; CARRIER LOCK (GAME_STATE = 10) — the terminal mini-game that wins reset keys
+; CARRIER LOCK (GAME_STATE = 10) — the COMM desk mini-game that wins reset keys
 ; =============================================================================
-; "decode reset key" in a terminal's menu (TM_CARRIER; once per terminal,
-; CL_DONE) starts it. Voice 1 plays the hidden target tone as a buzzy pulse —
+; Fire on a COMM desk tile (art.comm_tiles, room 3; READ_KEYS) starts it, as
+; often as the player likes — every key won makes the next one harder. Voice 1 plays the hidden target tone as a buzzy pulse —
 ; alone for the first second (CL_LISTEN), so the player hears what to match —
 ; then voice 2 joins with the dial as a soft triangle (different timbres, or
 ; the two blend into one sound), starting 25-55% off. Left/right (joystick or
@@ -14,8 +14,8 @@
 ; of the target (CL_MODE). Inside the lock window (WIN units) the tuner wave turns green
 ; and the lock bar fills; outside it drains at twice that rate. A full bar
 ; wins. The clock keeps running; an attempt times out after ~30 s (CL_TSTEP:
-; "signal lost", try again); fire aborts. A win: CL_DONE for this terminal,
-; one more reset key (RESET_KEYS; F1 -> R spends one instead of the time
+; "signal lost", try again); fire aborts or, once it's over, returns to the
+; room. A win: one more reset key (RESET_KEYS; F1 -> R spends one instead of the time
 ; penalty) and CL_WON + 1, which selects the next, harder level — one column
 ; per key in the tables below:
 ;   WIN   the lock window (units of difference)
@@ -30,13 +30,8 @@
 ; lock is out of reach: ten keys can't be won.
 ; =============================================================================
 
-TM_CARRIER = $FD                        ; terminal menu entry (terminal.asm)
-CL_ROW     = 12                         ; its menu row
-
 RESET_KEYS !byte 0                      ; reset keys held (F1 -> R)
 CL_WON     !byte 0                      ; keys won this game (the level)
-CL_DONE    !fill NUM_TERMZONES+1        ; per terminal zone: 1 = paid out
-TERM_ZONE  !byte 0                      ; the zone the terminal was opened in
 
 CL_LVL   !byte 0                        ; level index, min(CL_WON, 9)
 CL_ST    !byte 0                        ; 0 tuning, 1 won, 2 lost
@@ -83,16 +78,12 @@ CL_JIT   !byte        0,  0,  0,  0,  3,  6,  9,  8,  6,  6
 CL_HINT  !byte        2,  2,  2,  1,  0,  0,  0,  0,  0,  0
 
 ; -----------------------------------------------------------------------------
-; CL_RESET — SETUP_GAME: no keys won, every terminal pays out again
+; CL_RESET — SETUP_GAME: the starting reset keys, back to the first level
 ; -----------------------------------------------------------------------------
 CL_RESET
         lda #CFG_RESET_START : sta RESET_KEYS
         lda #0 : sta CL_WON
-        ldx #0
-CLRL    cpx #NUM_TERMZONES : bcs CLRD
-        sta CL_DONE,x
-        inx : bne CLRL
-CLRD    rts
+        rts
 
 ; -----------------------------------------------------------------------------
 ; SUB_MINUTES — A = minutes (1-59): take them off the clock, clamped at
@@ -113,7 +104,8 @@ SMCHK   lda CLK_H : ora CLK_M : ora CLK_S
         rts
 
 ; -----------------------------------------------------------------------------
-; SETUP_CARRIER — from the terminal menu (jmp): draw the screen, start the tones
+; SETUP_CARRIER — from READ_KEYS (fire on a COMM desk; a tail call, so it
+; returns to DO_GAME, which sees state 10): draw the screen, start the tones
 ; -----------------------------------------------------------------------------
 SETUP_CARRIER
         lda #10 : sta GAME_STATE
@@ -160,7 +152,7 @@ CLSDST  sta CL_DIAL+1
         lda #$00 : sta $D405 : sta $D40C ; attack/decay 0
         lda #$F0 : sta $D406 : sta $D40D ; sustain full, release 0
         lda #$0F : sta $D418
-        jmp MAIN_LOOP
+        rts
 
 ; CL_CLAMP — keep the dial in CL_MIN .. CL_MAXHI*256+255
 CL_CLAMP
@@ -207,14 +199,12 @@ CL_END  sta TMP2
         lda #$10 : sta $D40B
         jmp MAIN_LOOP
 
-; CL_EXIT — back to the terminal menu (cursor on logoff)
+; CL_EXIT — back to the room (as the terminal's logoff)
 CL_EXIT
         lda #0 : sta $D404 : sta $D40B
         lda CL_MOFF : sta MUSIC_OFF
         lda #0 : sta $C6
-        lda #$FF : sta TERM_SEL
-        jsr SETUP_TERMINAL
-        jmp MAIN_LOOP
+        jmp TERM_ABORT                   ; (terminal.asm)
 
 ; CL_DIALIN — left/right: turn the dial. The speed follows the range mode
 ; (CL_DET, last frame's): coarse, a steady CL_CSPD units a frame; detailed,
@@ -361,11 +351,10 @@ CLLOUT  lda #0 : sta CL_IN               ; out of it: the bar drains at
         dec CL_HC
 CLLDONE rts
 
-; CL_WIN_IT — a key: this terminal is done, the next level is harder
+; CL_WIN_IT — a key: the next level is harder
 CL_WIN_IT
         lda #1 : sta CL_ST
         jsr CL_BARS                      ; the full lock bar (no time tick)
-        ldx TERM_ZONE : lda #1 : sta CL_DONE,x
         lda RESET_KEYS : cmp #9 : bcs CLWMAX
         inc RESET_KEYS
 CLWMAX  inc CL_WON

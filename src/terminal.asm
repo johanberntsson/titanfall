@@ -3,10 +3,9 @@
 ; =============================================================================
 ; The menu is built on entry: one row per robot in the current room (rows
 ; 8-11, from the generated ACT_TROW_* strings — at most 4 robots per room),
-; then "decode reset key" (row 12, carrier.asm), "view map" (row 13),
-; "robodex" (row 14, robodex.asm) and "logoff" (row 15). TM_ACT says what
-; each entry does: an actor index (link to it), TM_CARRIER, TM_MAP, TM_DEX
-; or TM_LOGOFF.
+; then "view map" (row 13), "robodex" (row 14, robodex.asm) and "logoff"
+; (row 15). TM_ACT says what each entry does: an actor index (link to it),
+; TM_MAP, TM_DEX or TM_LOGOFF.
 TERM_MAX    = 8
 TM_MAP      = $FE
 TM_LOGOFF   = $FF
@@ -72,17 +71,6 @@ TSDL    lda TST_DEAD-28,y : jsr PET2SCREEN : sta (PTR2),y
         dey : cpy #28 : bcs TSDL
 TSAN    inx : bne TSAL
 TSADONE
-        ldx TERM_ZONE                    ; decode reset key, unless this
-        lda CL_DONE,x : bne TSANODEC     ;  terminal has paid out already
-        ldy TERM_N
-        lda #TM_CARRIER : sta TM_ACT,y
-        lda #CL_ROW : sta TM_ROW,y
-        inc TERM_N
-        lda #<TBOX_DEC : sta PTR : lda #>TBOX_DEC : sta PTR+1
-        lda #CL_ROW : jsr DRAW_ROW
-        lda RESET_KEYS : clc : adc #CH_0  ; "(keys: n)"
-        sta SCRN+CL_ROW*40+34
-TSANODEC
         ldy TERM_N                       ; then view map, robodex, logoff
         lda #TM_MAP : sta TM_ACT,y
         lda #13 : sta TM_ROW,y
@@ -134,9 +122,7 @@ TERM_DOWN
 TERM_FIRE
         ldy TERM_SEL : ldx TM_ACT,y
         cpx #TM_LOGOFF : beq TERM_ABORT
-        cpx #TM_CARRIER : bne TFNOTCL
-        jmp SETUP_CARRIER                ; the mini-game (carrier.asm)
-TFNOTCL cpx #TM_DEX : bne TFNOTDX
+        cpx #TM_DEX : bne TFNOTDX
         jsr SETUP_DEX                    ; robot information (robodex.asm)
         jmp TERM_DONE
 TFNOTDX cpx #TM_MAP : bne TERM_ROBOT
@@ -237,7 +223,6 @@ TBOX_NONE !pet G_VERT_BAR, "    no units in this sector           ", G_VERT_BAR
 TBOX_MAP  !pet G_VERT_BAR, "    view map                          ", G_VERT_BAR
 TBOX_DEX  !pet G_VERT_BAR, "    robodex - unit information        ", G_VERT_BAR
 TBOX_OFF  !pet G_VERT_BAR, "    logoff                            ", G_VERT_BAR
-TBOX_DEC  !pet G_VERT_BAR, "    decode reset key      (keys: 0)   ", G_VERT_BAR
 TBOX_HNT  !pet G_VERT_BAR, "    fire=select    up/down=move       ", G_VERT_BAR
 TST_DEAD  !pet "destroyed"
 TMSG_LCK  !pet "  access denied. unit locked by titan.  "

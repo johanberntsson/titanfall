@@ -53,6 +53,10 @@ art:
   # Terminal chars. Every group of these in a room's art is a terminal,
   # used with fire from its own tiles or any tile next to them.
   terminal_tiles: [0x8c, 0x8d, 0x8e, 0x8f]
+  # COMM desk chars. Fire on a tile with any of these (room 3's desk) starts
+  # the carrier lock mini-game, which wins reset keys. Nothing may be
+  # placed on one (fire there never searches).
+  comm_tiles: [0xda, 0xdb, 0xdc, 0xdd, 0xde, 0xe0, 0xe1]
   # Laser trap chars. A trap fires down its char column (with the first
   # laser_tiles char, the beam) when the player steps onto a tile below it,
   # up to the first solid tile -- a wall or a crate blocks it (push the
@@ -102,6 +106,7 @@ art:
   # The missile: on game over its room is shown (no sprites) and these chars
   # fly up off the screen, leaving the art around them. All in one room.
   missile_tiles: [0xa5, 0xa7, 0xa8, 0xc3, 0xdf, 0xe9]
+  missile_room: room4                  # the one that's launched (room 3 has a decorative one)
   # The launch interlock (one room): a key slot per launch key (a 2x2 tile
   # of slot chars, lit when a key is turned in it), nested barrier layers
   # around the release console -- one layer opens per key, outermost first,
@@ -355,10 +360,10 @@ rooms:
         attack: forcefield             # advances behind a force field when it sees you
         start: {x: 14, y: 7}
     things:
-      - item: blue_card                # the furniture, bottom left
-        at: {x: 1, y: 9}
+      - item: blue_card                # the chests, bottom right
+        at: {x: 17, y: 9}
       - item: code_a7                  # the cabinet at the top (not in the goal)
-        at: {x: 4, y: 1}
+        at: {x: 15, y: 1}
     doors:
       - at: {x1: 6, y1: 11, x2: 10, y2: 11}  # bottom wall opening, back to room 2
         leads_to: room2
@@ -366,9 +371,9 @@ rooms:
       - at: {x1: 20, y1: 5, x2: 20, y2: 6}   # right wall opening, to room 6
         leads_to: room6
         arrive: {x: 0}
-      - at: {x1: -1, y1: 5, x2: -1, y2: 6}   # left wall opening, to the entrance
+      - at: {x1: -1, y1: 8, x2: -1, y2: 8}   # left wall opening, to the entrance
         leads_to: room5
-        arrive: {x: 18, y: 5}          # inside the switch door (it may be shut)
+        arrive: {x: 18, y: 8}          # inside the switch door (it may be shut)
 
   - name: room4
     vchar64_map: graphics/titan-map04.s
@@ -403,9 +408,9 @@ rooms:
       - item: code_a1                  # the cabinet, bottom right
         at: {x: 17, y: 9}
     doors:
-      - at: {x1: 20, y1: 4, x2: 20, y2: 5}   # right wall: the switch door, to room 3
+      - at: {x1: 20, y1: 8, x2: 20, y2: 9}   # right wall: the switch door, to room 3
         leads_to: room3
-        arrive: {x: 0, y: 5}           # y 4 at room 3's left edge is wall
+        arrive: {x: 0, y: 8}           # y 9 at room 3's left edge is wall
         switch: true                   # open while the switch at (18,2) is on
 
   - name: room6

@@ -653,6 +653,7 @@ def main():
     beam_tile = int((art.get("laser_tiles") or [0])[0])   # the beam glyph (traps draw it)
     trap_tiles = {int(t) for t in art.get("trap_tiles") or []}
     terminal_tiles = {int(t) for t in art.get("terminal_tiles") or []}
+    comm_tiles = {int(t) for t in art.get("comm_tiles") or []}
     door_tiles = {int(t) for t in art.get("door_tiles") or []}
     win_tiles = {int(t) for t in art.get("win_tiles") or []}
     pit_tiles = {int(t) for t in art.get("pit_tiles") or []}
@@ -712,6 +713,11 @@ def main():
     missile_tiles = {int(t) for t in art.get("missile_tiles") or []}
     if not missile_tiles:
         die("art.missile_tiles is missing (the missile's chars, launched on game over)")
+    # optional: the room whose missile is launched; missile chars in other
+    # rooms are then plain decoration
+    missile_room = art.get("missile_room")
+    if missile_room is not None and missile_room not in room_index:
+        die(f"art.missile_room: unknown room {missile_room!r}")
     targets = []                        # per room: grid[y][x] of win-target tiles
     pits = []                           # per room: grid[y][x] of pit tiles
     crate = {"room": [], "x": [], "y": [], "kind": [], "ch": None}   # movable crates/mirrors
@@ -729,6 +735,7 @@ def main():
     if not laser_tiles:
         die("art.laser_tiles must list the laser beam/emitter screen codes")
     termz = {k: [] for k in ("room", "x1", "y1", "x2", "y2")}
+    comm = {k: [] for k in ("room", "x", "y")}   # COMM desk tiles (the carrier lock)
 
     for ri, room in enumerate(rooms):
         rname = room["name"]
@@ -831,6 +838,15 @@ def main():
             termz["y1"].append(max(0, r0 // 2 - 1))
             termz["x2"].append(min(room["_maxx"], c1 // 2 + 1))
             termz["y2"].append(min(room["_maxy"], r1 // 2 + 1))
+
+        # COMM desks: every tile with an art.comm_tiles char; fire on one
+        # starts the carrier lock
+        cmap = read_vchar64_map(room["vchar64_map"])
+        for y in range(TILES_Y):
+            for x in range(TILES_X):
+                if any(cmap[r * 40 + c] in comm_tiles
+                       for r in (2 * y, 2 * y + 1) for c in (2 * x, 2 * x + 1)):
+                    comm["room"].append(ri); comm["x"].append(x); comm["y"].append(y)
 
         for d in room.get("doors") or []:
             at = d["at"]
@@ -1051,8 +1067,11 @@ def main():
                 searchable[ri][y][x] = False
         stray = [o for o in range(ROOM_MAP_BYTES) if mapdata[o] in sw_chars and o not in covered_sw]
         if stray:
-            die(f"room {room['name']}: switch/block chars not forming a whole switch or "
-                f"block tile at " + ", ".join(f"col {o % 40} row {o // 40}" for o in stray[:6]))
+            # A warning, not an error: only whole patterns become switches or
+            # blocks, so stray chars are just art (room 3 uses 0xc4 as a fill).
+            print(f"genworld: warning: room {room['name']}: switch/block chars not forming "
+                  f"a whole switch or block tile (plain art) at "
+                  + ", ".join(f"col {o % 40} row {o // 40}" for o in stray[:6]), file=sys.stderr)
         if rblk and state is None:
             die(f"room {room['name']}: red/green blocks but no switch")
         state = state or 0
@@ -1275,6 +1294,15 @@ def main():
                 die(f"item {list(item_index)[ii]!r} at ({x},{y}) is next to a terminal "
                     f"in room {rooms[ri]['name']}: fire there opens the terminal, "
                     f"so it could never be searched for")
+        for ci in range(len(comm["room"])):
+            if (comm["room"][ci], comm["x"][ci], comm["y"][ci]) == (ri, x, y):
+                die(f"item {list(item_index)[ii]!r} at ({x},{y}) is on a COMM desk "
+                    f"in room {rooms[ri]['name']}: fire there starts the carrier lock, "
+                    f"so it could never be searched for")
+    for ci in range(len(comm["room"])):
+        if walls[comm["room"][ci]][comm["y"][ci]][comm["x"][ci]] & 1:
+            die(f"COMM desk tile ({comm['x'][ci]},{comm['y'][ci]}) in room "
+                f"{rooms[comm['room'][ci]]['name']} is solid: nobody can stand on it")
 
 
     map_scr, map_col, map_hl, map_cor = build_map(rooms, room_index[start_room], map_doors)
@@ -1298,6 +1326,7 @@ def main():
     o.append(f"NUM_DOORS     = {len(door['room'])}")
     o.append(f"NUM_LASERS    = {len(laser['room'])}")
     o.append(f"NUM_TERMZONES = {len(termz['room'])}")
+    o.append(f"NUM_COMMT     = {len(comm['room'])}")
     o.append(f"NUM_CRATES    = {len(crate['room'])}")
     o.append(f"START_ROOM    = {room_index[start_room]}")
     o.append(f"CFG_CLK_H     = {clk_h}")
@@ -1674,6 +1703,9 @@ def main():
     for name, key in (("TERMZ_ROOM", "room"), ("TERMZ_X1", "x1"), ("TERMZ_Y1", "y1"),
                       ("TERMZ_X2", "x2"), ("TERMZ_Y2", "y2")):
         o.append(tbl(name, [byte(v, "termz") for v in termz[key]]))
+    o.append("; ---- COMM desk tiles (art.comm_tiles; fire on one starts the carrier lock) ----")
+    for name, key in (("COMM_ROOM", "room"), ("COMM_X", "x"), ("COMM_Y", "y")):
+        o.append(tbl(name, [byte(v, "comm") for v in comm[key]]))
     o.append("")
 
     o.append("; ---- win-target art: per room, the map offsets of every art.win_tiles char")
@@ -1695,16 +1727,19 @@ def main():
     o.append("")
 
     # the missile: the bounding box of the art.missile_tiles chars, which must
-    # all be in one room; SETUP_GAMEOVER shows that room and launches it
+    # all be in one room (or in art.missile_room, if given); SETUP_GAMEOVER
+    # shows that room and launches it
     msl_rooms = []
     for i, room in enumerate(rooms):
+        if missile_room is not None and room["name"] != missile_room:
+            continue
         mapdata = read_vchar64_map(room["vchar64_map"])
         cells = [(o_ // 40, o_ % 40) for o_ in range(ROOM_MAP_BYTES) if mapdata[o_] in missile_tiles]
         if cells:
             msl_rooms.append((i, mapdata, cells))
     if len(msl_rooms) != 1:
         die("art.missile_tiles chars must appear in exactly one room "
-            f"(found in {len(msl_rooms)})")
+            f"(found in {len(msl_rooms)}; art.missile_room picks one)")
     mi, mapdata, cells = msl_rooms[0]
     my0 = min(r for r, c in cells); my1 = max(r for r, c in cells)
     mx0 = min(c for r, c in cells); mx1 = max(c for r, c in cells)
