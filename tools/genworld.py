@@ -510,9 +510,11 @@ def main():
             die(f"actor type {name}: directions must be 2 (left/right) or 4")
         type_dir0.append(4 - dirs)       # first facing present (DIR_DOWN or DIR_LEFT)
         anim = str(t.get("anim", "walk"))
-        if anim not in ("walk", "hover"):
-            die(f"actor type {name}: anim must be walk or hover")
-        type_anim.append(1 if anim == "hover" else 0)
+        if anim not in ("walk", "hover", "hop"):
+            die(f"actor type {name}: anim must be walk, hover or hop")
+        # hop: like hover, but 4 frames per facing (rest, charged, move1,
+        # move2) -- the charged pose while a driven jumper is charged
+        type_anim.append({"walk": 0, "hover": 1, "hop": 2}[anim])
         color = str(t.get("color", "ltgray")).lower()
         if color not in C64_COLORS:
             die(f"actor type {name}: unknown color {color!r}")
@@ -1323,7 +1325,7 @@ def main():
     o.append("        !byte " + ",".join(f"{s}/64" for s in type_sprite))
     o.append(tbl("TYPE_COLOR", type_color, "sprite colour"))
     o.append(tbl("TYPE_DIR0", type_dir0, "first facing with frames (0=all 4, 2=left/right only)"))
-    o.append(tbl("TYPE_ANIM", type_anim, "0=walk (steps animate) 1=hover (always animating)"))
+    o.append(tbl("TYPE_ANIM", type_anim, "0=walk (steps animate) 1=hover (always animating) 2=hop (hover, 4 frames per facing)"))
     o.append(tbl("TYPE_PUSH", type_push, "1 = pushes crates while player-driven"))
     o.append(tbl("TYPE_FLY", type_fly, "1 = flies over pits while player-driven"))
     o.append(tbl("TYPE_JUMP", type_jump, "1 = charged 2-tile jumps while driven, random hops by itself"))

@@ -48,17 +48,19 @@ Joystick in port 2. The keyboard works the same way: WASD moves and Space is fir
   reaches zero, the mission has failed. The reactor gauge next to it heats up
   as time runs out.
 - **Dying costs time.** Lasers, robots and their weapons kill on contact.
-  Each death costs 30 minutes of countdown, and you start again from the
-  entry room. Anything you've found stays found, and any security codes you
+  Each death costs 30 minutes of countdown, and you start again where you
+  entered the room. Anything you've found stays found, and any security codes you
   spent in the room where you died are given back (codes spent in earlier
   rooms stay spent).
 - **Searching.** Stand on a piece of furniture or anything else in the room
   and hold fire to search it, Impossible Mission style (bare floor has
   nothing to search). It takes a moment, and the robots don't wait while you
   search.
-- **Terminals.** The consoles let you view the sector map and take over a
-  robot in the same room. Taking one over costs a **security code** of the
-  right type (shown on the bottom line, e.g. `CODE: A 2 B 0`). The link
+- **Terminals.** The consoles let you view the sector map, read about the
+  robots you've met (the *robodex*) and take over a robot in the same room.
+  Taking one over costs a **security code** of the right type (shown on the
+  bottom line, e.g. `CODE: A 2 B 0`). More codes are hidden around the
+  complex. The link
   lasts **30 seconds** (a popup names the robot; the time starts when you
   close it): the countdown is shown in the top left, and then control snaps
   back to you. Press F7 to hand control back sooner.
@@ -66,8 +68,13 @@ Joystick in port 2. The keyboard works the same way: WASD moves and Space is fir
   wander the whole room. When they spot you, some charge, some shoot, and
   some advance behind a force field. They see along their own row, so keep
   that in mind.
-- **Cards** open locked doors. A carried card is shown on the bottom line
-  (`CARD:`), and it's used up when it opens its door.
+- **Cards** open locked doors. Each card has a glyph on the bottom line
+  (after `CARDS`) that lights up in the card's colour once you've found it;
+  a card is used up when it opens its door.
+- **Launch keys.** The silo door is sealed. Four launch keys are hidden in
+  the complex (the glyphs after `KEYS` on the bottom line light up as you
+  find them); turn them in at the launch interlock to open its cage and
+  reach the console that releases the door.
 - **Stuck? Reset the room.** A puzzle can end up unsolvable (a crate pushed
   into a corner, the robot you needed destroyed). Leaving a room before
   you've solved it puts it back the way it was. You can also press F1 and
@@ -77,7 +84,9 @@ Joystick in port 2. The keyboard works the same way: WASD moves and Space is fir
   the carrier lock. The computer plays a tone, then yours joins in. Turn
   yours with left and right until the two waves on the screen line up and
   the beating between the tones stops (your wave turns green when you're
-  close enough), then hold it there until the lock bar is full. Each
+  close enough), then hold it there until the lock bar is full. The dial
+  moves fast while you're far off and slows right down once you're close,
+  so you can't overshoot. Each
   terminal gives one key, and every key is harder to win than the last. The
   countdown keeps running while you play.
 
@@ -89,7 +98,8 @@ Hints, for when you're stuck:
 1. The laser in the first room can't be crossed on foot, but a robot driven
    into it will burn it out (and itself with it).
 2. Something red is hidden behind that laser.
-3. One room holds a security code of a type you don't start with.
+3. One room holds a security code of a type you don't start with. A hopper
+   has to jump for it.
 4. The missile room's power stack is what keeps the launch alive, and the
    robot guarding it has a gun.
 

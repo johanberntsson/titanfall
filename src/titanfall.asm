@@ -105,6 +105,7 @@ HOP_MX     = $63   ; HOP_TRY: the middle tile of the jump
 HOP_MY     = $64
 HOP_C      = $65   ; HOP_COLOR: the colour being set
 HOP_LEAP   = $66   ; HOP_ARC: 1 = this sprite is mid-jump (FRAME_PTR: leap pose)
+HOP_SHOW   = $68   ; HOP_COLOR: 1 = the driven jumper is charged (FRAME_PTR: charged pose)
 HOP_ARCH   = $67   ; HOP_ARC: the arc's height this frame
 LINK_JIF   = $44   ; robot link: frames into the current second (0-49)
 POPUP_ST   = $33   ; popup: 0=waiting for opening space to be released, 1=armed
@@ -540,7 +541,7 @@ SCR_BORDER_BOTTOM  !pet G_RD_LL, G_HORIZ_BAR, G_HORIZ_BAR, G_HORIZ_BAR, G_HORIZ_
 ; FRAME_PTR in game.asm picks the frame. Every actor set has all 4 facings
 ; (12 frames).
 ; =============================================================================
-SPRITE_FRAMES = 12+12+12+12+12+12+2+2+2+4
+SPRITE_FRAMES = 12+12+12+12+12+16+2+2+2+4
         * = CHARSET - SPRITE_FRAMES*64
 SPRITES_START
         !source "src/c64_walker_sprites.asm"       ; player:  12 frames

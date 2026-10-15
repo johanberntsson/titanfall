@@ -134,7 +134,10 @@ DEX_FRAME
         ldx DEX_SEL : ldy DEX_LIST,x
         ldx DEX_TYPE,y
         lda DEX_AN : lsr : lsr : lsr : and #3 : tay
-        lda TYPE_SPRPTR,x : clc : adc DEX_FRM,y
+        lda DEX_FRM,y : beq DXF0
+        ldy TYPE_ANIM,x : cpy #2 : bne DXF0
+        adc #0                           ; a hop type: skip the charged pose
+DXF0    clc : adc TYPE_SPRPTR,x          ;  (C set: cpy #2)
         sta SPRPTR+7
         rts
 

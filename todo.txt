@@ -2,12 +2,17 @@
 #           OPEN
 # ------------------------
 
-hopper recharge a bit shorter - 1 second
-
-
 # ------------------------
 #           DONE
 # ------------------------
+
+Hopper shows a charged pose (new hopper_*_charged frames) while charged and white
+
+Carrier lock: the dial was the real problem - now fast far off, slow close in
+(tried and dropped: range-mode label, wavelength-only scope, guitar-tuner needle)
+
+Fourth launch key in the moat (the interlock has four slots), B code moved to hops,
+bonus A codes in optics, hall and switch
 
 need to tell player that hopper need recharging 
 

@@ -1590,6 +1590,8 @@ ASA2    lda #2 : sta ACT_ANIM,x : rts
 ;   TYPE_SPRPTR + (facing - TYPE_DIR0)*3 + frame
 ; A "hover" type (TYPE_ANIM=1) ignores TMP2 and loops hover/move1/hover/
 ; move2 off ANIM_CNT instead (8 frames per pose), so it is always moving.
+; A "hop" type (2) hovers too, with 4 frames per facing — rest, charged,
+; move1, move2 — and shows the charged pose while HOP_SHOW (HOP_COLOR).
 ; Preserves Y; clobbers TMP/TMP2.
 ; ---------------------------------------------------------------------------
 FRAME_PTR
@@ -1603,7 +1605,16 @@ FPHOVER lda ANIM_CNT
         sta TMP2 : jmp FPWALK
 FPHREST lda #0 : sta TMP2            ; even pose: hover
 FPWALK  lda TMP : sec : sbc TYPE_DIR0,x : sta TMP   ; facing group 0-3
-        asl : adc TMP                ; *3 (C clear: group <= 3)
+        lda TYPE_ANIM,x : cmp #2 : beq FPHOP
+        lda TMP : asl : adc TMP      ; *3 (C clear: group <= 3)
+        adc TMP2
+        clc : adc TYPE_SPRPTR,x
+        rts
+FPHOP   lda HOP_SHOW : bne FPHA      ; charged: frame 1 (A = 1)
+        lda TMP2 : beq FPHA          ; rest: frame 0
+        adc #0                       ; move1/2: frames 2/3 (C set: cmp #2)
+FPHA    sta TMP2
+        lda TMP : asl : asl          ; *4
         adc TMP2
         clc : adc TYPE_SPRPTR,x
         rts

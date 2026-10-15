@@ -206,7 +206,9 @@ actor_types:
       linked: it flies, and is heavy enough to hold a pressure plate.
   hopper:                              # spring hopper robot
     sprite: hopper_down_rest
-    anim: hover                        # rest/crouch/rest/leap, always bouncing
+    anim: hop                          # hover (rest/crouch/rest/leap, always
+                                       #  bouncing), 4 frames per facing: the
+                                       #  charged pose while charged
     jump: true                         # charged double jumps, random hops
     color: purple
     robodex:
