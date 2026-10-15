@@ -7,6 +7,12 @@
 #           DONE
 # ------------------------
 
+Full SID reset at startup (TEST bit on all four MEGA65 SIDs): the weak snare and
+silent carrier-lock voice after a reset are gone - verified on the real MEGA65
+
+Burnt-out laser in LASERS flashed for a moment when a popup closed (DRAW_ROOM
+now patches destroyed lasers and opened doors into ROOM_BUF before the blit)
+
 Room 3 (hall) redrawn: doorway to the entrance moved to tile row 8, the blue
 card and code_a7 moved with the furniture, a fenced-off decorative area with
 a second missile (art.missile_room picks the one that's launched)

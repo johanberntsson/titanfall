@@ -32,39 +32,39 @@ LOAD "TITANFALL",8
 RUN
 ```
 
-In VICE, `use 
+In VICE, use
 
 ```
-x64sc -basicload titanfall.d64` 
+x64sc -basicload titanfall.d64
 ```
 
-Without `-basicload`, VICE's autostart loads with `,8,1`,
-which doesn't work for this file).
+(without `-basicload`, VICE's autostart loads with `,8,1`, which doesn't
+work for this file).
 
 ### MEGA65
 
-Copy [`release/titanfall.prg`](release/titanfall.prg) onto a disk
-image or the SD card and load it straight from the MEGA65's own C65 mode; no
-`GO64` needed:
+Use the disk image [`release/titanfall.d81`](release/titanfall.d81), or copy
+[`release/titanfall.prg`](release/titanfall.prg) onto a disk image or the SD
+card, and load it straight from the MEGA65's own C65 mode; no `GO64` needed:
 
 ```
-DLOAD "TITANFALL" 
-RUN
-```
-Or 
-
-```
-DLOAD "TITANFALL",U12 
+DLOAD "TITANFALL"
 RUN
 ```
 
-if using a SD card. It also works after `GO64`, with
+or, from the SD card:
+
+```
+DLOAD "TITANFALL",U12
+RUN
+```
+ It also works after `GO64`, with
 `LOAD "TITANFALL",8` as on a C64.
 
-You can also use the [Xemu](https://github.lgb.hu/xemu/) emulator: `
+You can also use the [Xemu](https://github.lgb.hu/xemu/) emulator:
 
 ```
-xemu-xmega65 -prg titanfall.prg`.
+xemu-xmega65 -prg titanfall.prg
 ```
 
 ## Controls
@@ -157,7 +157,7 @@ Needs Python 3 with PyYAML, [ACME](https://sourceforge.net/projects/acme-crossas
 make          # build titanfall.prg (C64 + MEGA65) and titanfall-c64.prg (C64 only)
 make c64      # build and start it in VICE
 make mega65   # build and start it in Xemu (xemu-xmega65)
-make release  # build release/titanfall.d64 and release/titanfall.prg
+make release  # build release/titanfall.d64, release/titanfall.d81 and release/titanfall.prg
 make clean
 ```
 
