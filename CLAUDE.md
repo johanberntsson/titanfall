@@ -12,7 +12,7 @@ This is a Commodore 64 game called **TITAN Fall** (working title) — a cinemati
 make        # generate world.asm + assemble + pack + wrap: titanfall.prg (C64 + MEGA65) and titanfall-c64.prg (C64 only)
 make c64    # build and launch titanfall.prg in VICE (x64sc -basicload)
 make mega65 # build and launch titanfall.prg in xemu-xmega65 (-prg)
-make release # build release/titanfall.d64 (c1541: fresh disk "titan fall", the game as TITANFALL) + release/titanfall.prg
+make release # build release/titanfall.d64 (C64) and release/titanfall.d81 (MEGA65) (c1541: fresh disk "titan fall", the game as TITANFALL) + release/titanfall.prg
 make sid    # build music/titan_theme.sid — the tune alone as a PSID file for SID players
 make clean  # remove game.prg, titanfall.prg, titanfall-c64.prg, c65toc64wrapper.prg, music/titan_theme.prg/.sid and the generated src/world.asm + src/charset.asm
 ```

@@ -8,6 +8,7 @@ BIN    = game.prg
 C64PRG = $(TARGET)-c64.prg
 PRG    = $(TARGET).prg
 D64    = release/$(TARGET).d64
+D81    = release/$(TARGET).d81
 WRAPPER_PRG = c65toc64wrapper.prg
 
 ACME = acme
@@ -57,14 +58,20 @@ $(PRG): $(WRAPPER_PRG) $(C64PRG)
 $(WRAPPER_PRG): $(WRAPPER)
 	$(ACME) --setpc 0x2001 --cpu m65 -f cbm -o $@ $<
 
-# release disk image: the packed game as the only file on a fresh D64
-release: $(D64)
+# release disk images: the packed game as the only file on a fresh D64
+# (C64) and D81 (MEGA65)
+release: $(D64) $(D81)
 
 $(D64): $(PRG) sid
 	mkdir -p release
 	rm -f $(D64)
 	cp ${PRG} release
 	$(C1541) -format "titan fall,tf" d64 $(D64) -write $(PRG) $(TARGET)
+
+$(D81): $(PRG)
+	mkdir -p release
+	rm -f $(D81)
+	$(C1541) -format "titan fall,tf" d81 $(D81) -write $(PRG) $(TARGET)
 
 # VICE's autostart loads with ,8,1 unless told otherwise
 c64: $(PRG)
