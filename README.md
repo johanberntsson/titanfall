@@ -44,12 +44,13 @@ image or the SD card and load it straight from the MEGA65's own C65 mode — no
 `GO64` needed:
 
 ```
-DLOAD "TITANFALL"
+DLOAD "TITANFALL" 
 RUN
 ```
+Or DLOAD "TITANFALL",U12 if using a SD card. It also works after `GO64`, with
+`LOAD "TITANFALL",8` as on a C64.
 
-It also works after `GO64`, with `LOAD "TITANFALL",8` as on a C64. You can
-also use the [Xemu](https://github.lgb.hu/xemu/) emulator: `
+You can also use the [Xemu](https://github.lgb.hu/xemu/) emulator: `
 
 ```
 xemu-xmega65 -prg titanfall.prg`.
