@@ -6,12 +6,11 @@
 ; CRATE_PAINT, TRAP_ROWS, BEAM_CELL).
 ; =============================================================================
 
-; ROOM_UNPACK — CUR_ROOM's map into ROOM_BUF, unless it's there already
-; (RU_ROOM; the packed data never changes). Clobbers A/X/Y/PTR/PTR2.
+; ROOM_UNPACK — CUR_ROOM's map into ROOM_BUF, on every DRAW_ROOM: ERASE_ART
+; patches destroyed lasers / opened doors into the buffer, and a reset
+; brings a laser back. Clobbers A/X/Y/PTR/PTR2.
 ROOM_UNPACK
-        lda CUR_ROOM : cmp RU_ROOM : beq RUOUT
-        sta RU_ROOM
-        tax
+        ldx CUR_ROOM
         lda ROOM_MAP_LO,x : sta PTR
         lda ROOM_MAP_HI,x : sta PTR+1
         lda #<ROOM_BUF : sta PTR2
@@ -40,5 +39,4 @@ RU_DST  clc : adc PTR2 : sta PTR2        ; PTR2 += A
         bcc RUD1 : inc PTR2+1
 RUD1    rts
 
-RU_ROOM !byte $FF                        ; the room in ROOM_BUF ($ff = none)
 ROOM_BUF !fill 22*40, 0                  ; the current room's map, unpacked

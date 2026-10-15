@@ -1638,6 +1638,27 @@ DRAW_ROOM
         sta FIELD_ACT                    ;  field)
         lda #1 : sta FIRE_PREV           ;  its small popup); want a new press
         jsr ROOM_UNPACK                  ; the room's map into ROOM_BUF (rle.asm)
+        ; the map data always has every laser drawn in: erase the ones in
+        ; this room that are already destroyed — in ROOM_BUF (ERASE_ART
+        ; patches it too) before the blit, so they never flash on screen
+        ldy #0
+DRMLSR  cpy #NUM_LASERS : bcs DRMLSRD
+        lda LASER_STATE,y : beq DRMLSRN
+        lda LASER_ROOM,y : cmp CUR_ROOM : bne DRMLSRN
+        tya : pha
+        jsr ERASE_LASER
+        pla : tay
+DRMLSRN iny : bne DRMLSR
+DRMLSRD
+        ldy #0                       ; ... and the doors already opened
+DRMDOOR cpy #NUM_DOORS : bcs DRMDOORD
+        lda DOOR_OPEN,y : beq DRMDOORN
+        lda DOOR_ROOM,y : cmp CUR_ROOM : bne DRMDOORN
+        tya : pha
+        jsr ERASE_DOOR
+        pla : tay
+DRMDOORN iny : bne DRMDOOR
+DRMDOORD
         jsr DRMSETPTR
         lda #<(SCRN+80) : sta PTR2 : lda #>(SCRN+80) : sta PTR2+1
         ldx #3 : ldy #0
@@ -1658,26 +1679,6 @@ DRMCPG  jsr COL_BYTE : iny : bne DRMCPG
         ldy #0
 DRMCTAIL jsr COL_BYTE : iny : cpy #112 : bcc DRMCTAIL
 
-        ; the map data always has every laser drawn in: erase the ones in
-        ; this room that are already destroyed
-        ldy #0
-DRMLSR  cpy #NUM_LASERS : bcs DRMLSRD
-        lda LASER_STATE,y : beq DRMLSRN
-        lda LASER_ROOM,y : cmp CUR_ROOM : bne DRMLSRN
-        tya : pha
-        jsr ERASE_LASER
-        pla : tay
-DRMLSRN iny : bne DRMLSR
-DRMLSRD
-        ldy #0                       ; ... and the doors already opened
-DRMDOOR cpy #NUM_DOORS : bcs DRMDOORD
-        lda DOOR_OPEN,y : beq DRMDOORN
-        lda DOOR_ROOM,y : cmp CUR_ROOM : bne DRMDOORN
-        tya : pha
-        jsr ERASE_DOOR
-        pla : tay
-DRMDOORN iny : bne DRMDOOR
-DRMDOORD
         jsr CRATE_DRAW_ALL           ; the movable crates where they are now
         jsr ROOM_DYNAMIC             ; gate, emitter beam, trap beam (beam.asm)
         jsr WIN_FLICKER              ; power cell in its current colour
@@ -1689,8 +1690,10 @@ DRMDOORD
 ; screen (+ their colour RAM from TILE_COLORS) using the patch list
 ; genworld.py computed from the room art (LASER_ART_n: map offset lo/hi +
 ; new screen code per entry, $ff hi byte ends it). ERASE_DOOR (Y = door
-; index, DOOR_ART_n) does the same for an opened door's art. Only call them
-; while that room is on screen. Preserve X; clobber A/Y/PTR/PTR2/TMP.
+; index, DOOR_ART_n) does the same for an opened door's art. Both patch the
+; same cells in ROOM_BUF too, so every "map chars back" path and the next
+; redraw keep them erased (DRAW_ROOM unpacks the map afresh every time). Only
+; call them while that room is on screen. Preserve X; clobber A/Y/PTR/PTR2/TMP.
 ; ---------------------------------------------------------------------------
 ERASE_DOOR
         lda DOOR_ART_LO,y : sta PTR
@@ -1711,9 +1714,14 @@ ELSL    lda (PTR),y : clc : adc #<(SCRN+80) : sta PTR2   ; map offset -> screen
         tax : lda TILE_COLORS,x : tax
         lda PTR2+1 : clc : adc #>(CRAM-SCRN) : sta PTR2+1 ; same cell in colour RAM
         txa : sta (PTR2),y
+        lda PTR2 : clc : adc #<ELS_BOFS : sta PTR2       ; same cell in ROOM_BUF,
+        lda PTR2+1 : adc #>ELS_BOFS : sta PTR2+1         ;  so the map's chars
+        ldy TMP : dey : lda (PTR),y                      ;  put back later (and
+        ldy #0 : sta (PTR2),y                            ;  every redraw) match
         ldy TMP : jmp ELSL
 ELSDONE pla : tax
         rts
+ELS_BOFS = (ROOM_BUF - CRAM - 80) & $FFFF           ; colour RAM cell -> ROOM_BUF
 
 DRMSETPTR
         lda #<ROOM_BUF : sta PTR
