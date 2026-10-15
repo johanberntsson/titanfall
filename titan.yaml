@@ -612,7 +612,7 @@ rooms:
   - name: room13                       # below hops (bottom left corner)
     vchar64_map: graphics/titan-map13.s
     label: moat
-    player_start: {x: 14, y: 0}
+    player_start: {x: 15, y: 0}
     # Two robots working together: the island in the middle sits in a moat
     # of pits two tiles wide. The drone flies over pits but can't push; the
     # dozer pushes crates but is shut in its pen behind the gate (5,6). Fly
@@ -638,14 +638,14 @@ rooms:
       - item: code_a3                  # the bench, top left (not in the goal)
         at: {x: 3, y: 1}
     doors:
-      - at: {x1: 14, y1: -1, x2: 15, y2: -1}  # top wall opening, back to room 14
+      - at: {x1: 15, y1: -1, x2: 16, y2: -1}  # top wall opening, back to room 14
         leads_to: room14
         arrive: {y: 10}
 
   - name: room14                       # left of the hub
     vchar64_map: graphics/titan-map14.s
     label: hops
-    player_start: {x: 18, y: 5}
+    player_start: {x: 19, y: 5}
     # The human and the hopper together: the vault's gate (15,2) opens while
     # both plates are loaded. Plate B (16,2) is in the terminal's zone: stand
     # on it and link the hopper. Plate A (2,8) is across the lower field:
@@ -669,7 +669,7 @@ rooms:
       - at: {x1: 20, y1: 5, x2: 20, y2: 6}   # right wall opening, back to room 2
         leads_to: room2
         arrive: {x: 0}
-      - at: {x1: 14, y1: 11, x2: 15, y2: 11}  # bottom wall opening, to room 13
+      - at: {x1: 15, y1: 11, x2: 16, y2: 11}  # bottom wall opening, to room 13
         leads_to: room13
         arrive: {y: 0}
 

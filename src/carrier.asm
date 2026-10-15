@@ -136,10 +136,10 @@ SETUP_CARRIER
         lda #0 : sta $C6
         lda MUSIC_OFF : sta CL_MOFF
         lda #1 : sta MUSIC_OFF           ; (first: then no music frame sneaks in)
-        lda #0 : sta SND_TMR
         lda #$08 : sta $D404 : sta $D40B ; TEST: both oscillators restart
                                          ;  from a known state (CL_SOUND
                                          ;  rewrites the waveform next frame)
+        lda #0 : sta SND_TMR             ; (A = 0 for the stores below)
         sta CL_ST : sta CL_HELD : sta CL_DET : sta CL_SLOW : sta CL_DT : sta CL_JOFS : sta CL_T
         sta CL_HC : sta CL_HT : sta CL_TT : sta CL_IN
         lda #CL_LISTEN : sta CL_LSN
