@@ -40,14 +40,21 @@ Without `-basicload`, VICE's autostart loads with `,8,1`,
 which doesn't work for this file).
 
 **MEGA65:** copy [`release/titanfall.prg`](release/titanfall.prg) onto a disk
-image or the SD card and load it straight from the MEGA65's own C65 mode — no
+image or the SD card and load it straight from the MEGA65's own C65 mode; no
 `GO64` needed:
 
 ```
 DLOAD "TITANFALL" 
 RUN
 ```
-Or DLOAD "TITANFALL",U12 if using a SD card. It also works after `GO64`, with
+Or 
+
+```
+DLOAD "TITANFALL",U12 
+RUN
+```
+
+if using a SD card. It also works after `GO64`, with
 `LOAD "TITANFALL",8` as on a C64.
 
 You can also use the [Xemu](https://github.lgb.hu/xemu/) emulator: `
