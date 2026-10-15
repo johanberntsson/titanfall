@@ -27,6 +27,7 @@ GA_CLOCKOK
         lda ANIM_CNT : and #7 : bne GA_NOLASER
         jsr ANIM_LASER          ; flicker the beams ~6 times a second
 GA_NOLASER
+        jsr ANIM_COMM           ; the COMM desk's sine wave and antenna (carrier.asm)
         lda ANIM_CNT : and #15 : bne GA_NOWIN
         jsr WIN_FLICKER         ; power cell: cyan <-> purple
 GA_NOWIN

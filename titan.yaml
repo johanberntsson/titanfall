@@ -361,7 +361,7 @@ rooms:
         start: {x: 14, y: 7}
     things:
       - item: blue_card                # the chests, bottom right
-        at: {x: 17, y: 9}
+        at: {x: 16, y: 9}
       - item: code_a7                  # the cabinet at the top (not in the goal)
         at: {x: 15, y: 1}
     doors:

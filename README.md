@@ -14,6 +14,7 @@ use them to stop the launch before the clock reaches zero.
 |---|---|
 | ![Title screen](screenshots/title.png) | ![The missile room](screenshots/missile_room.png) |
 | ![A tripod advancing behind its force field](screenshots/forcefield.png) | ![The sector map](screenshots/sector_map.png) |
+| ![Robodex page](screenshots/robodex.png) | ![The reset code mini-game](screenshots/minigame.png) |
 
 ## Running it
 
@@ -80,15 +81,14 @@ Joystick in port 2. The keyboard works the same way: WASD moves and Space is fir
   you've solved it puts it back the way it was. You can also press F1 and
   then R to reset it on the spot, but that costs 10 minutes of countdown,
   unless you have a **reset key**.
-- **Reset keys** are won at the terminals: choose *decode reset key* to play
-  the carrier lock. The computer plays a tone, then yours joins in. Turn
+- **Reset keys** are won at the COMM desk in the hall: stand at it and press
+  fire to play the carrier lock. The computer plays a tone, then yours joins in. Turn
   yours with left and right until the two waves on the screen line up and
   the beating between the tones stops (your wave turns green when you're
   close enough), then hold it there until the lock bar is full. The dial
   moves fast while you're far off and slows right down once you're close,
-  so you can't overshoot. Each
-  terminal gives one key, and every key is harder to win than the last. The
-  countdown keeps running while you play.
+  so you can't overshoot. You can play as often as you like, but every key
+  is harder to win than the last. The countdown keeps running while you play.
 
 Hints, for when you're stuck:
 

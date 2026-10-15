@@ -86,6 +86,30 @@ CL_RESET
         rts
 
 ; -----------------------------------------------------------------------------
+; ANIM_COMM — every game frame (GAME_ALIVE): every COMM_RATE frames swap the
+; bitmaps of the two sine waves' chars ($D6 <-> $D7, $D8 <-> $D9) and the radio antenna's
+; ($CB <-> $CC) in the charset, so every one on screen pulses at once with
+; no screen writes (like ANIM_LASER). Each pair shares its TILE_COLORS colour.
+; -----------------------------------------------------------------------------
+COMM_RATE = 25                          ; 2 swaps a second
+COMM_TMR  !byte COMM_RATE
+CH_SINE   = CHARSET+$D6*8               ; $D6, $D7
+CH_SINE2  = CHARSET+$D8*8               ; $D8, $D9 (the second wave)
+CH_ANT    = CHARSET+$CB*8               ; $CB, $CC
+ANIM_COMM
+        dec COMM_TMR : bne ACDONE
+        lda #COMM_RATE : sta COMM_TMR
+        ldx #7
+ACSWAP  lda CH_SINE,x : ldy CH_SINE+8,x
+        sta CH_SINE+8,x : tya : sta CH_SINE,x
+        lda CH_SINE2,x : ldy CH_SINE2+8,x
+        sta CH_SINE2+8,x : tya : sta CH_SINE2,x
+        lda CH_ANT,x : ldy CH_ANT+8,x
+        sta CH_ANT+8,x : tya : sta CH_ANT,x
+        dex : bpl ACSWAP
+ACDONE  rts
+
+; -----------------------------------------------------------------------------
 ; SUB_MINUTES — A = minutes (1-59): take them off the clock, clamped at
 ; 0:00:00. Returns Z set (A = 0) if the clock is now at zero. Death penalty
 ; (APPLY_DEATH_PENALTY) and the F1 -> R reset without a key (help.asm).

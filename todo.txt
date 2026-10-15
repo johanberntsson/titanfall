@@ -2,11 +2,20 @@
 #           OPEN
 # ------------------------
 
-New, updated, screenshots for README
 
 # ------------------------
 #           DONE
 # ------------------------
+
+Room 3 (hall) redrawn: doorway to the entrance moved to tile row 8, the blue
+card and code_a7 moved with the furniture, a fenced-off decorative area with
+a second missile (art.missile_room picks the one that's launched)
+
+Carrier lock moved from the terminals to room 3's COMM desk (art.comm_tiles,
+fire on the desk); playable again and again; the desk's sine waves and
+antenna pulse (ANIM_COMM, charset swaps twice a second)
+
+New, updated, screenshots for README
 
 Hopper shows a charged pose (new hopper_*_charged frames) while charged and white
 
