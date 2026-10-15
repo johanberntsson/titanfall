@@ -139,8 +139,8 @@ Hints, for when you're stuck:
 1. The laser in the first room can't be crossed on foot, but a robot driven
    into it will burn it out (and itself with it).
 2. Something red is hidden behind that laser.
-3. One room holds a security code of a type you don't start with. A hopper
-   has to jump for it.
+3. Two rooms hold a security code of a type you don't start with. In one a
+   hopper has to jump for it; in the other a robot has to shoot for it.
 4. The missile room's power stack is what keeps the launch alive, and the
    robot guarding it has a gun.
 

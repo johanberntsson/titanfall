@@ -226,12 +226,26 @@ CH_SOLID = $E0   ; solid block (ROM glyph; $A0 is a room tile in our charset)
         lda #$7F   : sta CIA1_ICR        ; disable all CIA1 IRQ sources
         lda CIA1_ICR                     ; ack any pending CIA1 IRQ
 
-        ; Silence SID
-        ldx #$18
-SIDCLR  lda #0
-        sta $D400,x
+        ; Reset the SID. Zeroing the registers isn't enough on real hardware:
+        ; a reset doesn't clear the chip's internal state (oscillators, the
+        ; noise generator -- which can lock up silent --, envelopes). Pass 1
+        ; writes $08 everywhere: the TEST bit (gate off) holds every
+        ; oscillator at 0 and refills the noise shift register, release 8
+        ; drains the envelopes; it's held ~0.8 s (an 8580's noise register
+        ; needs ~0.65 s). Pass 2 zeroes it all. $D400-$D47F covers the
+        ; MEGA65's four SIDs; on a C64 it's mirrors of the one.
+        lda #$08
+SIDPASS ldx #$7F
+SIDCLR  sta $D400,x
         dex
         bpl SIDCLR
+        tay : beq SIDDONE                ; pass 2 done
+        ldy #40                          ; hold TEST 40 frames
+SIDW1   bit $D011 : bpl SIDW1            ; raster line >= 256 ...
+SIDW2   bit $D011 : bmi SIDW2            ; ... and back to the top
+        dey : bne SIDW1
+        lda #0 : beq SIDPASS
+SIDDONE
 
         ; Init music (titan_theme ignores A)
         lda #0

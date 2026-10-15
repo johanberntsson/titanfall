@@ -245,7 +245,9 @@ items:
     color: red                         # its glyph on the status line, once found
     found_text: red access card found!
   code_b1:
-    code: b                            # room 14's vault: the only B, for the silo guard
+    code: b                            # room 14's vault: the B for the silo guard
+  code_b2:
+    code: b                            # room 15's vault: a spare B for the silo
   code_a1:
     code: a                            # in the entrance's cabinet
   blue_card:
@@ -259,7 +261,7 @@ items:
   code_a4:
     code: a                            # room 8's cabinet
   code_a5:
-    code: a                            # room 15's vault: pays back the sentry's link
+    code: a                            # room 7's bottom right (a bonus)
   code_a6:
     code: a                            # room 11's bookshelf, bottom left (a bonus)
   code_a7:
@@ -456,6 +458,8 @@ rooms:
     things:
       - item: launch_key_2             # top left, past the crates
         at: {x: 1, y: 1}
+      - item: code_a5                  # bottom right (a bonus)
+        at: {x: 18, y: 9}
     doors:
       - at: {x1: -1, y1: 4, x2: -1, y2: 5}   # left wall opening, back to room 6
         leads_to: room6
@@ -690,7 +694,7 @@ rooms:
       - {at: {x: 8, y: 5}, open: 24, closed: 40, first_open: 40}   # a tile in ~5
       - {at: {x: 12, y: 5}, open: 20, closed: 50, first_open: 15}
     things:
-      - item: code_a5
+      - item: code_b2
         at: {x: 2, y: 1}
     doors:
       - at: {x1: -1, y1: 8, x2: -1, y2: 8}   # left wall opening, back to room 2
@@ -721,6 +725,12 @@ rooms:
         code: none
         start: {x: 7, y: 1}
         patrol: [{x: 7, y: 1}, {x: 12, y: 1}]   # across the switch at (10,1)
+      - type: hopper
+        name: bot-1617  hopper
+        code: a
+        locked: true                   # can't be linked at the terminal
+        idle: roam                     # hops around the lower hall, harmless
+        start: {x: 5, y: 8}            #  (but touching it still kills)
     things:
       - item: code_a8                  # the cabinet, top left (not in the goal)
         at: {x: 1, y: 1}
