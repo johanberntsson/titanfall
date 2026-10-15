@@ -4,25 +4,27 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-This is a Commodore 64 game called **TITAN Fall** (working title) — a cinematic infiltration puzzle thriller in the vein of *Impossible Mission* and *Paradroid*. The player infiltrates an automated missile launch complex and must subvert its drone workforce to stop a launch countdown. The game is targeted at PAL/NTSC C64 hardware. See `design/gamedesign.md` for the full design document — it is partly out of date but is kept as a source of ideas for future features; this file and `titan.yaml` describe what is actually implemented.
+This is a Commodore 64 game called **TITAN Fall** (working title) — a cinematic infiltration puzzle thriller in the vein of *Impossible Mission* and *Paradroid*. The player infiltrates an automated missile launch complex and must subvert its drone workforce to stop a launch countdown. The game is targeted at PAL/NTSC C64 hardware; the release PRG also runs on the MEGA65 (a wrapper switches it to C64 mode — see "Build & Run"). See `design/gamedesign.md` for the full design document — it is partly out of date but is kept as a source of ideas for future features; this file and `titan.yaml` describe what is actually implemented.
 
 ## Build & Run
 
 ```
-make        # generate world.asm + assemble + pack
-make run    # generate, assemble, pack, and launch in Vice
-make release # build release/titanfall.d64 (c1541: fresh disk "titan fall", the packed game as TITANFALL)
+make        # generate world.asm + assemble + pack + wrap: titanfall.prg (C64 + MEGA65) and titanfall-c64.prg (C64 only)
+make c64    # build and launch titanfall.prg in VICE (x64sc -basicload)
+make mega65 # build and launch titanfall.prg in xemu-xmega65 (-prg)
+make release # build release/titanfall.d64 (c1541: fresh disk "titan fall", the game as TITANFALL) + release/titanfall.prg
 make sid    # build music/titan_theme.sid — the tune alone as a PSID file for SID players
-make clean  # remove game.prg, titanfall.prg, music/titan_theme.prg/.sid and the generated src/world.asm + src/charset.asm
+make clean  # remove game.prg, titanfall.prg, titanfall-c64.prg, c65toc64wrapper.prg, music/titan_theme.prg/.sid and the generated src/world.asm + src/charset.asm
 ```
 
-The build is four steps handled by the Makefile:
+The build is five steps handled by the Makefile:
 1. **tools/genworld.py** (Python 3 + PyYAML) generates `src/world.asm` from `titan.yaml` — all world data tables (rooms, actors, items, doors, lasers, terminal zones) plus the room map data converted from the vchar64 exports
 2. **tools/gencharset.py** generates `src/charset.asm` (`TILE_COLORS` + `CHARSET`) from the vchar64 exports `graphics/titan-charset.s` and `graphics/titan-tile-colors.s`
 3. **ACME 0.97** assembles `src/titanfall.asm` → `game.prg` (`-f cbm`, 2-byte load header)
-4. **Exomizer** packs `game.prg` + the music PRG (`music/titan_theme.prg`, assembled by ACME from `music/titan_theme.asm`) into a self-extracting `titanfall.prg`
+4. **Exomizer** packs `game.prg` + the music PRG (`music/titan_theme.prg`, assembled by ACME from `music/titan_theme.asm`) into a self-extracting `titanfall-c64.prg` (a plain C64 PRG at `$0801`, SYS 2061)
+5. **The C65/C64 wrapper** (`src/c65toc64wrapper.asm`, adapted from Ozmoo; assembled with `--setpc 0x2001 --cpu m65` into `c65toc64wrapper.prg`) is put in front of it: `titanfall.prg`, the release file. Its BASIC line `IF PEEK(44)=8 THEN SYS 2081 : ELSE BANK 0 : SYS 8225` branches on where it was loaded. C65 mode (MEGA65, loaded at `$2001`): C64 memory map, DMA the game down to `$0801`, 1 MHz, VIC back to VIC-II mode (`$D031`/`$D054`/`$D02F` = 0), C64 KERNAL init, `jmp 2061`. C64 mode (C64, or MEGA65 after `GO64`, loaded at `$0801`): a plain 6502 copy (no MEGA65 opcodes on that path) from the tape buffer, then `jmp 2061`. On a C64 it must be loaded with `,8` — with `,8,1` it lands at `$2001` and doesn't run (so `make c64` passes VICE `-basicload`). `GAME_ENTRY` in the wrapper must match exomizer's SYS address
 
-Emulator: **x64sc** (Vice). Do not run `acme` directly; always use `make`.
+Emulators: **x64sc** (Vice), **xemu-xmega65** (Xemu, for the MEGA65). Do not run `acme` directly; always use `make`.
 
 **`src/world.asm` is generated — never edit it** (it's in `.gitignore` and `make clean` removes it). To change rooms, robots, items, doors, lasers, the starting clock, or the death penalty, edit `titan.yaml` and rebuild. `tools/genworld.py` validates the config (unknown room/item references, >4 robots per room, over-long strings, etc.) and fails the build with a clear message.
 
@@ -65,7 +67,9 @@ Other files:
 - `tools/gencharset.py` — build-time generator vchar64 charset/tile-colour exports → `src/charset.asm`
 - `graphics/` — vchar64 project files (`.vchar64proj`) and their raw ASM exports (`.s`); source of truth for room art, edited in vchar64 and re-exported, not hand-edited
 - `game.prg` — intermediate assembled output (not committed)
-- `titanfall.prg` — final self-extracting packed output (not committed)
+- `titanfall-c64.prg` — the self-extracting packed game, C64 only (not committed, not released)
+- `src/c65toc64wrapper.asm` — the C65/C64 mode wrapper (MEGA65 support; assembled on its own into `c65toc64wrapper.prg`, not `!source`d — see "Build & Run")
+- `titanfall.prg` — final output, the wrapper + `titanfall-c64.prg`: runs on the C64 and the MEGA65 (not committed; copied to `release/`)
 - `music/titan_theme.asm` — the game's music, our own tune *Countdown*, and its player (see "SID / Music")
 - `music/titan_theme_sid.asm` — PSID header wrapper for `make sid`
 
@@ -73,7 +77,7 @@ Other files:
 
 ### BASIC stub convention
 
-Only `src/titanfall.asm` carries the BASIC stub. The `* = $0801` loader appears once in the whole codebase:
+Only `src/titanfall.asm` carries the game's BASIC stub. The `* = $0801` loader appears once in the whole codebase (`src/c65toc64wrapper.asm` has its own BASIC line, at `$2001`, in front of the packed game — it never touches this one):
 
 ```asm
 * = $0801
@@ -94,7 +98,7 @@ The SYS address in `!pet` must be kept in sync manually if the header ever chang
 
 | Address | Purpose |
 |---------|---------|
-| `$0801` | BASIC stub (SYS 2064) |
+| `$0801` | BASIC stub (SYS 2064) — where the game always runs: exomizer unpacks it here, after the wrapper has moved the packed file down to `$0801` (from `$2001` on a MEGA65 in C65 mode) |
 | `$0810` | Entry point / code start (code + `TILE_COLORS` must end before `SPRITES_START`, `$2280` today — ~185 bytes left, see the TILE_COLORS gotcha). Holds `titanfall.asm`'s code + `game.asm` + `interlock.asm` + `shutters.asm` + `TILE_COLORS` |
 | `$0340–$0397` | Tape buffer, reused as `SP_BUF` (screen + colour cells under the small search popup) |
 | `$0400–$07FF` | Screen RAM (default VIC bank) |
@@ -626,6 +630,8 @@ All string-copy loops call `jsr PET2SCREEN` to convert PETSCII to screen codes b
 
 ## Current Status
 
+**2026-10-15: MEGA65 support.** `titanfall.prg` (and the release) is now Ozmoo's C65/C64 wrapper (`src/c65toc64wrapper.asm`) in front of the packed game; the C64-only file is `titanfall-c64.prg`. `make c64` / `make mega65` replace `make run`. The wrapper was fixed on the way: its C64-mode path ran MEGA65 opcodes and DMA (it would have crashed a real C64 — now a plain 6502 copy), and C65 mode left the VIC in 80 columns (now `$D031`/`$D054`/`$D02F` cleared) and the CPU at 40 MHz (now `POKE 0,64` — not verified that it takes). Verified: the release D64 reaches the intro in VICE (loaded with `,8`), the PRG in xemu (C65 mode). Not tested: gameplay and timing on the MEGA65, real hardware, D64 mounting on the MEGA65.
+
 **2026-10-10: content complete — next phase is balancing and play-testing.** Eleven rooms on the 4×4 sector map, every planned mechanic in: lasers (burnt out by a driven robot), laser traps, pits, pushable crates (filling pits), pressure plates holding a gate open (room 10), a laser emitter steered by pushable mirrors onto a target (room 11), keyed doors, security codes, terminals and robot links, five robot behaviours (patrol/roam × none/rush/shoot/forcefield), up to four robots per room (room 9, the arcade room), death with a time penalty, a respawn grace period, and room roll-back when an unfinished room is left. The main route then (before the interlock, see below): entrance (5) → room 2 → room 3 → east wing (6, 7: blue card) → vault (8: code B) → room 9 → room 1 (red card) → room 2's blast door → missile room (4): take over the guard with code B and shoot the power cell. Rooms 10 and 11 (via room 8's left doorway) were a side branch; since the interlock, room 11 holds a launch key, so they're on the main route. The music stops on game over until the intro.
 
 **2026-10-11: the launch interlock.** Three launch keys (optics, maze, vault) must be turned in the new interlock room (12, between hub and silo; the silo moved one cell right) to open its cage ring by ring and reach the console that releases the sealed silo door. The red card still opens the hub's blast door (now into the interlock); the blue card moved to the hall. Route: entrance → hub → hall (blue card) → east wing (trap, maze: key 2) → vault (code B, key 3) → plates → optics (key 1) → back through the vault and east wing → hub → arcade → lasers (red card) → hub's blast door → interlock (turn the three keys, the console releases the silo door) → silo: take over the guard with code B and shoot the power cell. The A-code economy is unchanged (room 12's tripod is locked, and room 12 has no terminal).
@@ -651,7 +657,7 @@ All string-copy loops call `jsr PET2SCREEN` to convert PETSCII to screen codes b
 
 The core puzzle loop is in place and playable end-to-end: start in the entrance (room 5) past its sentry, explore, take over the dozer via the terminal, drive it into the laser (it slides into the beam, the beam vanishes from the art with a "bzzzt"), search for the red card, open room 2's locked door into the interlock, collect the four launch keys (room 7's crate puzzle, room 8's vault, room 11's mirrors, room 13's moat; the blue card from room 3 opens room 16's door to the plates; the B security code is in hops' vault), turn them in the interlock to release the silo door, take over the missile-room guard and shoot the power cell to win — with a real risk/reward death penalty (lose time + respawn where the room was entered) instead of an instant Game Over, and Game Over genuinely tied to the countdown clock hitting zero. As of 2026-10-09 the orders line (row 1) tells the player each room's goal and marks it done, closed doors are solid, and a tile searched once answers "nothing here" at once.
 
-The world is **config-driven**: rooms (bounds, player start, vchar64 map), robots (type, start, patrol waypoints, idle/attack behaviour), items (position, label, found-text), doors (rect, destination, arrival position, key), lasers, the starting clock, the death penalty and the art codes (floor, laser, wall chars) all live in `titan.yaml` and are compiled into `src/world.asm` data tables at build time. Interior walls, terminals and the laser-erase patches are derived from the room art by `genworld.py` (and the sector map from the doors), which also rejects placements inside walls. Adding a room = a vchar64 map export + a `rooms:` entry + its doors; the sector map is generated from the doors. Adding an item, door, laser, robot, security code or robot behaviour (`idle:` `patrol`/`roam` × `attack:` `none`/`rush`/`shoot`/`forcefield`) is config-only. `make release` builds `release/titanfall.d64`.
+The world is **config-driven**: rooms (bounds, player start, vchar64 map), robots (type, start, patrol waypoints, idle/attack behaviour), items (position, label, found-text), doors (rect, destination, arrival position, key), lasers, the starting clock, the death penalty and the art codes (floor, laser, wall chars) all live in `titan.yaml` and are compiled into `src/world.asm` data tables at build time. Interior walls, terminals and the laser-erase patches are derived from the room art by `genworld.py` (and the sector map from the doors), which also rejects placements inside walls. Adding a room = a vchar64 map export + a `rooms:` entry + its doors; the sector map is generated from the doors. Adding an item, door, laser, robot, security code or robot behaviour (`idle:` `patrol`/`roam` × `attack:` `none`/`rush`/`shoot`/`forcefield`) is config-only. `make release` builds `release/titanfall.d64` and `release/titanfall.prg` (C64 and MEGA65).
 
 Presentation (as of 2026-10-07): multicolour animated sprites with 4-way facing (walker player; a sentry and a tracked dozer in room 1, a hovering drone in room 2, a tripod in room 3, a guard robot in room 4), smooth gliding movement between tiles, a PETSCII block-letter title logo + author line on the intro, rounded PETSCII frames with uniform frame colours on every box (intro, game over, win, terminal, popups, sector map), a working reactor thermometer tied to the countdown, a flickering cyan/purple power cell, a 2-second explosion (screen shake via the fine-scroll registers, border fire, explosion sound) as the win payoff, and an original music theme (*Countdown*, 2026-10-08; replaced the third-party tune — awaiting play-test feedback). The obvious visual glitches (robots over the terminal, wrong spawn in room 2, walking through walls, blank reactor HUD, terminal cursor on several rows) are fixed.
 

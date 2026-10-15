@@ -18,12 +18,41 @@ use them to stop the launch before the clock reaches zero.
 
 ## Running it
 
-Download [`release/titanfall.d64`](release/titanfall.d64). In VICE: `x64sc titanfall.d64`.
-On a real C64 (PAL; the game is timed for 50 Hz):
+`titanfall.prg` runs on both the C64 and the MEGA65: it detects which machine
+(and mode) it was started on and sets itself up for it. The game is timed for
+PAL (50 Hz).
+
+**C64:** download [`release/titanfall.d64`](release/titanfall.d64) and load it
+the usual way:
 
 ```
 LOAD "TITANFALL",8
 RUN
+```
+
+In VICE, `use 
+
+```
+x64sc -basicload titanfall.d64` 
+```
+
+Without `-basicload`, VICE's autostart loads with `,8,1`,
+which doesn't work for this file).
+
+**MEGA65:** copy [`release/titanfall.prg`](release/titanfall.prg) onto a disk
+image or the SD card and load it straight from the MEGA65's own C65 mode — no
+`GO64` needed:
+
+```
+DLOAD "TITANFALL"
+RUN
+```
+
+It also works after `GO64`, with `LOAD "TITANFALL",8` as on a C64. You can
+also use the [Xemu](https://github.lgb.hu/xemu/) emulator: `
+
+```
+xemu-xmega65 -prg titanfall.prg`.
 ```
 
 ## Controls
@@ -109,12 +138,14 @@ Hints, for when you're stuck:
 
 Needs Python 3 with PyYAML, [ACME](https://sourceforge.net/projects/acme-crossass/)
 0.97, [Exomizer](https://bitbucket.org/magli143/exomizer) and
-[VICE](https://vice-emu.sourceforge.io/) (`x64sc`, and `c1541` for the disk image).
+[VICE](https://vice-emu.sourceforge.io/) (`x64sc`, and `c1541` for the disk image);
+[Xemu](https://github.lgb.hu/xemu/) for `make mega65`.
 
 ```
-make          # build titanfall.prg
-make run      # build and start it in VICE
-make release  # build release/titanfall.d64
+make          # build titanfall.prg (C64 + MEGA65) and titanfall-c64.prg (C64 only)
+make c64      # build and start it in VICE
+make mega65   # build and start it in Xemu (xemu-xmega65)
+make release  # build release/titanfall.d64 and release/titanfall.prg
 make clean
 ```
 

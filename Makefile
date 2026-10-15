@@ -2,16 +2,21 @@ TARGET = titanfall
 SRC    = src/titanfall.asm
 WORLD  = src/world.asm
 CHARSET = src/charset.asm
-SRCS   = $(wildcard src/*.asm) $(WORLD) $(CHARSET)
+WRAPPER = src/c65toc64wrapper.asm
+SRCS   = $(filter-out $(WRAPPER),$(wildcard src/*.asm)) $(WORLD) $(CHARSET)
 BIN    = game.prg
+C64PRG = $(TARGET)-c64.prg
 PRG    = $(TARGET).prg
 D64    = release/$(TARGET).d64
+WRAPPER_PRG = c65toc64wrapper.prg
 
 ACME = acme
 VICE = x64sc
 EXOMIZER = exomizer
 C1541 = c1541
 PYTHON = python3
+# SDL/xemu doesn't play nice with pipewire
+XMEGA65 = SDL_AUDIODRIVER=pulseaudio xemu-xmega65
 
 MUSIC_PRG = music/titan_theme.prg
 MUSIC_SID = music/titan_theme.sid
@@ -38,8 +43,19 @@ sid: $(MUSIC_SID)
 $(MUSIC_SID): music/titan_theme_sid.asm $(MUSIC_PRG)
 	$(ACME) -f plain -o $@ $<
 
-$(PRG): $(BIN) $(MUSIC_PRG)
-	$(EXOMIZER) sfx sys,0x0801 $(BIN) $(MUSIC_PRG) -o $(PRG)
+# the packed game on its own: a plain C64 PRG at $0801
+$(C64PRG): $(BIN) $(MUSIC_PRG)
+	$(EXOMIZER) sfx sys,0x0801 $(BIN) $(MUSIC_PRG) -o $(C64PRG)
+
+# the game: one PRG for both the MEGA65 and the C64 — the C65/C64 mode wrapper
+# (loads at $2001 in C65 mode, $0801 in C64 mode) with the packed game
+# appended; it moves the game down to $0801 in C64 memory mode and starts it.
+# On a C64 it's loaded with LOAD"TITANFALL",8 (not ,8,1)
+$(PRG): $(WRAPPER_PRG) $(C64PRG)
+	cat $(WRAPPER_PRG) $(C64PRG) > $@
+
+$(WRAPPER_PRG): $(WRAPPER)
+	$(ACME) --setpc 0x2001 --cpu m65 -f cbm -o $@ $<
 
 # release disk image: the packed game as the only file on a fresh D64
 release: $(D64)
@@ -50,10 +66,14 @@ $(D64): $(PRG) sid
 	cp ${PRG} release
 	$(C1541) -format "titan fall,tf" d64 $(D64) -write $(PRG) $(TARGET)
 
-run: $(PRG)
-	$(VICE) $(PRG)
+# VICE's autostart loads with ,8,1 unless told otherwise
+c64: $(PRG)
+	$(VICE) -basicload $(PRG)
+
+mega65: $(PRG)
+	$(XMEGA65) -besure -prg $(PRG)
 
 clean:
-	rm -f $(PRG) $(BIN) $(WORLD) $(CHARSET) $(MUSIC_PRG) $(MUSIC_SID)
+	rm -f $(PRG) $(C64PRG) $(BIN) $(WRAPPER_PRG) $(WORLD) $(CHARSET) $(MUSIC_PRG) $(MUSIC_SID)
 
-.PHONY: all release run clean sid
+.PHONY: all release c64 mega65 clean sid
