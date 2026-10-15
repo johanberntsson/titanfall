@@ -6,10 +6,12 @@
 ; alone for the first second (CL_LISTEN), so the player hears what to match —
 ; then voice 2 joins with the dial as a soft triangle (different timbres, or
 ; the two blend into one sound), starting 25-55% off. Left/right (joystick or
-; A/D) turn the dial: CL_RMIN units a frame, doubling every 8 frames held up
-; to CL_RMAX. The tones beat at their frequency difference — 1 SID unit is
+; A/D) turn the dial: fast and steady in coarse range mode, slow in detailed
+; (CL_DIALIN). The tones beat at their frequency difference — 1 SID unit is
 ; about 0.06 Hz — and the scope shows the target and tuner waves on top of
-; each other. Inside the lock window (WIN units) the tuner wave turns green
+; each other (the tuner's wavelength off by the difference, and sliding at
+; the beat rate). The dial is fast in coarse range, slow within CL_DETAIL
+; of the target (CL_MODE). Inside the lock window (WIN units) the tuner wave turns green
 ; and the lock bar fills; outside it drains at twice that rate. A full bar
 ; wins. The clock keeps running; an attempt times out after ~30 s (CL_TSTEP:
 ; "signal lost", try again); fire aborts. A win: CL_DONE for this terminal,
@@ -46,9 +48,14 @@ CL_JOFS  !byte 0                        ; jitter offset (signed)
 CL_DDIR  !byte 0                        ; drift direction: 0 up, 1 down
 CL_DT    !byte 0                        ; drift timer
 CL_RATE  !byte 0                        ; dial speed, units per frame
-CL_RMIN  = 2                            ; its start (one tap: ~2 units)
-CL_RMAX  = 64                           ;  and top speed
-CL_HELD  !byte 0                        ; frames left/right held
+CL_RMIN  = 1                            ; detailed: its start (a tap: ~5 units)
+CL_FMAX  = 6                            ;  and top speed
+CL_CSPD  = 48                           ; coarse: the speed (worst start ~3 s)
+CL_HELD  !byte 0                        ; frames into the current speed step
+CL_SLOW  !byte 0                        ; 1 = this hold reached detailed range
+CL_DET   !byte 0                        ; range mode: 0 coarse, 8 detailed (dial speed)
+CL_DETAIL = 48                          ; |diff| below it: detailed
+!if CL_CSPD >= 2*CL_DETAIL { !error "CL_CSPD would jump across the detailed zone" }
 CL_PH    !word 0                        ; beat phase (scope)
 CL_DIFF  !word 0                        ; |dial - target|
 CL_SD    !word 0                        ; dial - target (signed)
@@ -114,7 +121,7 @@ SETUP_CARRIER
         lda MUSIC_OFF : sta CL_MOFF
         lda #1 : sta MUSIC_OFF           ; (first: then no music frame sneaks in)
         lda #0 : sta SND_TMR
-        sta CL_ST : sta CL_HELD : sta CL_DT : sta CL_JOFS : sta CL_T
+        sta CL_ST : sta CL_HELD : sta CL_DET : sta CL_SLOW : sta CL_DT : sta CL_JOFS : sta CL_T
         sta CL_HC : sta CL_HT : sta CL_TT : sta CL_IN
         lda #CL_LISTEN : sta CL_LSN
         lda #0
@@ -183,6 +190,7 @@ CLNOAB  inc CL_T
         jsr CL_DRIFTS
         jsr CL_SOUND
         jsr CL_LOCK
+        jsr CL_MODE
         jsr CL_SCOPE
         jsr CL_BARS
         lda CL_TC : bne CLOUT            ; time's up: "signal lost"
@@ -208,8 +216,13 @@ CL_EXIT
         jsr SETUP_TERMINAL
         jmp MAIN_LOOP
 
-; CL_DIALIN — left/right: turn the dial, CL_RMIN units/frame doubling
-; every 8 frames held (up to CL_RMAX); let go and it's fine again
+; CL_DIALIN — left/right: turn the dial. The speed follows the range mode
+; (CL_DET, last frame's): coarse, a steady CL_CSPD units a frame; detailed,
+; CL_RMIN, one more every 8 frames held, up to CL_FMAX — entering detailed
+; mode drops it to CL_RMIN at once, and it stays slow until let go
+; (CL_SLOW: holding on through the zone mustn't speed up on the far side).
+; CL_CSPD < 2*CL_DETAIL, so the dial can't jump across the detailed zone. (Speeding up with hold time —
+; doubling, then +25% steps — felt like "nothing, then it flies away".)
 CL_DIALIN
         lda #0 : sta TMP2                ; bit 0 left, bit 1 right
         lda JOY_PREV : and #$04 : beq CLDA
@@ -226,9 +239,17 @@ CLDK    lda #$FF : sta CIA1_PRA
         lda TMP2 : beq CLDREL
         cmp #3 : beq CLDREL              ; both: nothing
         inc CL_HELD
-        lda CL_HELD : and #7 : bne CLDMOV
-        lda CL_RATE : cmp #CL_RMAX : bcs CLDMOV
-        asl CL_RATE
+        lda CL_DET : bne CLDDET
+        lda CL_SLOW : beq CLDCO          ; slowed on this hold: stay slow
+        bne CLDF
+CLDDET  lda #1 : sta CL_SLOW
+        lda CL_RATE : cmp #CL_FMAX+1 : bcc CLDF
+        lda #CL_RMIN : sta CL_RATE       ; just came in from coarse: slow
+        lda #0 : sta CL_HELD
+CLDF    lda CL_HELD : and #7 : bne CLDMOV
+        lda CL_RATE : cmp #CL_FMAX : bcs CLDMOV
+        inc CL_RATE : bne CLDMOV         ; detailed: +1 every 8 frames
+CLDCO   lda #CL_CSPD : sta CL_RATE       ; coarse: one steady speed
 CLDMOV  lda TMP2 : cmp #1 : bne CLDUP
         lda CL_DIAL : sec : sbc CL_RATE : sta CL_DIAL
         bcs CLDCL
@@ -238,7 +259,7 @@ CLDUP   lda CL_DIAL : clc : adc CL_RATE : sta CL_DIAL
         bcc CLDCL
         inc CL_DIAL+1
 CLDCL   jmp CL_CLAMP
-CLDREL  lda #0 : sta CL_HELD
+CLDREL  lda #0 : sta CL_HELD : sta CL_SLOW
         lda #CL_RMIN : sta CL_RATE
         rts
 
@@ -420,6 +441,16 @@ CLSTNL  sec : ror : ror PTR : dex : bne CLSTNL   ; arithmetic shift (negative)
         lda PTR : clc : adc #32 : sta TMP2
         rts
 CLSTMIN lda #8 : sta TMP2
+        rts
+
+; CL_MODE — the range mode (CL_DET) for the dial's speed (CL_DIALIN):
+; coarse (fast) while |diff| >= CL_DETAIL, detailed (slow) closer in
+CL_MODE
+        ldy #0                           ; coarse
+        lda CL_DIFF+1 : bne CLMOD
+        lda CL_DIFF : cmp #CL_DETAIL : bcs CLMOD
+        ldy #8                           ; detailed
+CLMOD   sty CL_DET
         rts
 
 ; CL_BARS — dial position, lock bar, time bar (and the time count-down)

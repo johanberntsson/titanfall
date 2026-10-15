@@ -514,13 +514,15 @@ ITR_SEP    !pet G_VERT_BAR, "  ==================================  " , G_VERT_BA
 SCR_BORDER_BOTTOM  !pet G_RD_LL, G_HORIZ_BAR, G_HORIZ_BAR, G_HORIZ_BAR, G_HORIZ_BAR, G_HORIZ_BAR, G_HORIZ_BAR, G_HORIZ_BAR, G_HORIZ_BAR, G_HORIZ_BAR, G_HORIZ_BAR, G_HORIZ_BAR, G_HORIZ_BAR, G_HORIZ_BAR, G_HORIZ_BAR, G_HORIZ_BAR, G_HORIZ_BAR, G_HORIZ_BAR, G_HORIZ_BAR, G_HORIZ_BAR, G_HORIZ_BAR, G_HORIZ_BAR, G_HORIZ_BAR, G_HORIZ_BAR, G_HORIZ_BAR, G_HORIZ_BAR, G_HORIZ_BAR, G_HORIZ_BAR, G_HORIZ_BAR, G_HORIZ_BAR, G_HORIZ_BAR, G_HORIZ_BAR, G_HORIZ_BAR, G_HORIZ_BAR, G_HORIZ_BAR, G_HORIZ_BAR, G_HORIZ_BAR, G_HORIZ_BAR, G_HORIZ_BAR, G_RD_LR
 
 ; =============================================================================
-; State modules. Only game.asm (the per-frame gameplay code) stays down here
-; in the code area below the sprite block; the other state modules are
+; State modules. game.asm (the per-frame gameplay code) stays down here in
+; the code area below the sprite block; most other state modules are
 ; CPU-only code and live above $4000, after the world data (see the end of
-; this file). The code area is bounded by SPRITES_START — check headroom
-; (CLAUDE.md, TILE_COLORS gotcha).
+; this file). interlock.asm moved down here too (2026-10-15) when the high
+; area ran out of room. The code area is bounded by SPRITES_START — check
+; headroom (CLAUDE.md, TILE_COLORS gotcha).
 ; =============================================================================
         !source "src/game.asm"
+        !source "src/interlock.asm"
         !source "src/charset.asm"
 
 ; =============================================================================
@@ -587,7 +589,6 @@ SPRITES_END
         !source "src/plates.asm"
         !source "src/beam.asm"
         !source "src/help.asm"
-        !source "src/interlock.asm"
         !source "src/rle.asm"
         !source "src/hopper.asm"
         !source "src/carrier.asm"
