@@ -4,3 +4,6 @@ src/charset.asm
 music/titan_theme.sid
 sokoban-levels/
 __pycache__/
+c/build/
+titanfall-c.prg
+titanfall-c-c64.prg

@@ -28,6 +28,19 @@ Emulators: **x64sc** (Vice), **xemu-xmega65** (Xemu, for the MEGA65). Do not run
 
 **`src/world.asm` is generated — never edit it** (it's in `.gitignore` and `make clean` removes it). To change rooms, robots, items, doors, lasers, the starting clock, or the death penalty, edit `titan.yaml` and rebuild. `tools/genworld.py` validates the config (unknown room/item references, >4 robots per room, over-long strings, etc.) and fails the build with a clear message.
 
+## The C port (calypsi branch)
+
+**Status (2026-10-16): finished experiment, kept as a comparison.** The `calypsi` branch holds a complete port of the game to C, built alongside the asm game to answer whether C with Calypsi is competitive with assembly on the C64. Answer: yes. Played side by side, the two feel identical; the C is +29% bytes for the same modules (code alone ~+13%), uses the same CPU per frame (58–63% against 58–59%) after profiler-guided tuning, and is 3,968 lines (3% asm) against 4,602. Not tested: a full play-through to the win in one game, and real hardware. Full results, memory maps of both builds and the TL;DR: `c/COMPARISON.md`. Don't develop the game further on this branch; gameplay work happens on `main` (asm).
+
+`c/` holds the same game in C, built with Calypsi 5.18 into the same kind of PRG (`make cgame` → `titanfall-c.prg`; `make c-c64` / `make c-mega65` run it; `make cclean`; `make compare` prints bytes and lines per module, asm against C). `make` alone still builds the asm game. It ports the asm modules one to one (`c/src/<module>.c`, with the asm's names; `game.asm` is `game.c` + `move.c` + `actors.c`; the only asm is `c/src/irq.s`: the BASIC bank-out before the C startup, the raster IRQ, the sound effects) and takes its data from the asm build's generated files through `tools/acme2c.py`, so `titan.yaml` stays the single source. Text is ASCII, converted by `scr()` (`titan.h`).
+
+Differences from the asm build:
+- **Memory map**: one program memory `$0801–$BFFF` with the sprites and charset pinned (`c/titan-c64.scm`); the code below the sprites is in `lowcode` sections; the large rarely-read data (packed room maps, sector map, logo, robodex pages, 7.4 KB) lives in the RAM under the KERNAL ROM, read with `kernal_out()`/`kernal_in()`; the C stack at `$CE00`. The linker's Intel hex is split into PRGs by `tools/hex2prg.py` for exomizer. ~1.1 KB free.
+- **Speed changes the asm doesn't have**: robots take their AI turns on staggered frames (each keeps its own rhythm, so robots in a room don't step in unison); in the game state the IRQ skips the KERNAL's keyboard scan; the HUD, status line, orders line and reactor are only redrawn or recomputed when they change; a switch flip checks each robot once; `fill()`/`copy()` replace Calypsi's slow `memset`/`memcpy`. `irq_frames`/`loop_frames` (`main.c`) count dropped frames.
+- **Gotchas** (`c/README.md`): Calypsi 5.18 sign-extends `ptr + (uint8_t)(a + b)`, so use a `uint8_t` temporary; write `(SCRN + n)[i]`, not `SCRN[n + i]`; keep per-frame arithmetic in 8 bits; build with `--no-cross-call`; read `c/build/*.lst` and profile with VICE 3.10's `prof`.
+
+If the C build is ever revived, **any gameplay change made in the asm has to be made in the C too** (the data follows by itself).
+
 ## Code Layout
 
 The source is split into one orchestrator and a set of state/feature modules (table below), all `!source`d into a single ACME assembly pass. Only `game.asm`, `interlock.asm` and `shutters.asm` (with `titanfall.asm` itself and the generated `TILE_COLORS`) sit in the code area below the sprite block; every other module (`intro.asm`, `gameover.asm`, `win.asm`, `terminal.asm`, `map.asm`, `popup.asm`, `cutscene.asm`, `orders.asm`, `crates.asm`, `traps.asm`, `plates.asm`, `beam.asm`, `help.asm`, `rle.asm`, `hopper.asm`, `carrier.asm`, `switches.asm`) is `!source`d at the end of `titanfall.asm`, after the world data above `$4000` (see "Memory Layout"):
