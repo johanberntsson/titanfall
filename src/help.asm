@@ -13,7 +13,7 @@
 ; and, listed under "from this screen you can also select:",
 ;   r                reset the room (like a death): spends a reset key, or
 ;                    without one costs CFG_RESET_M minutes
-;   run/stop         restart the game (SETUP_GAME; in VICE, Esc is Run/Stop)
+;   run/stop         restart: back to the intro (in VICE, Esc is Run/Stop)
 ; R/F7 only work when a game is under way (R: not while the player is dying,
 ; or it would dodge the death penalty).
 ; =============================================================================
@@ -180,20 +180,19 @@ HRSGO   jsr RESTORE_CODES
         lda #GRACE_LEN : sta GRACE_TMR
         jmp MAIN_LOOP
 
-; Run/Stop: a new game from the start (the briefing is skipped)
+; Run/Stop: back to the intro with the first game's settings (fire there
+; runs the briefing and SETUP_GAME, which initialises the game)
 HELP_RESTART
         lda #0 : sta $D017 : sta $D01D  ; the cut scene's sprite setup
         sta VIC_SP_MSB                  ;  (as CS_END)
         lda #LTGRAY : sta $D026
         lda TYPE_COLOR+ATYPE_HUMAN : sta VIC_SPCOL0
-        lda HLP_MOFF : beq HRSTMUS      ; game over had stopped the music:
-        jsr MUSIC_INIT                  ;  from the top (MUSIC_OFF is still
-HRSTMUS lda #0 : sta MUSIC_OFF          ;  set, so the IRQ doesn't play it)
+        jsr MUSIC_INIT                  ; the theme from the top (MUSIC_OFF is
+        lda #0 : sta MUSIC_OFF          ;  still set, so the IRQ doesn't play it)
         sta $C6
         lda #$FF : sta CIA1_PRA
         jsr LVL_RESET                   ; the first game's clock and silo
-        jsr SETUP_GAME
-        jmp MAIN_LOOP
+        jmp SHOW_INTRO
 
 ; -----------------------------------------------------------------------------
 ; Help screen rows (40 bytes each)
